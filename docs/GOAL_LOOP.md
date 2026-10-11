@@ -41,6 +41,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   costing nothing when off). Reviewed: every diagnostic switch is set before #242's summary flags, the module already
   runs the interrupt test in `bw_host_quiet`, and the Mac and iPhone builder uses the same `direct_calls.py` watch list.
 - **Also merged today:** draw fusion on for Linux (#247, from jkoehler11's Steam Deck run on #215) and Swap L and R (#248, #244).
+- **Afternoon:** pdale-boop's #243 (`--host-only` rebuilds in about a minute; I checked its mods step on the Mac with macOS's bash 3.2: byte-identical source, 32 s instead of 42) and #250 (every cutscene in the stage select marked before or after the Helmaroc King fight) merged. #251: the stage select should set the flag a cutscene needs and block saving for the rest of that session. #252 makes Mac, iPhone and iPad builds tiered like the PC builds: 61 minutes of compile instead of 79, and on an iPad Pro the same game-thread load in a trained and an untrained place. Apple builds still compile without the PC builds' preparations (PRIORITIES row 6).
 - **Android (#93):** every item on its merge checklist is done; speed is the gate (Outset 67 to 80% on the Fold 7 against
   "holds 30"). LiquidAzir has been asked to merge `main` with #242, turn hidden symbols off for Android and measure.
 - **New reports:** a 2-core A6 laptop that can't hold 30 at sea, game thread (#246); D-pad in the item screens (#245);
@@ -50,7 +51,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 
 ## Next: the next release
 
-Not dated yet. It carries #242, #210, #247 and #248, plus whatever of row 0 below is ready. Before the freeze: the
+Not dated yet. It carries #242, #210, #243, #247, #248 and #250 (and #252 once merged), plus whatever of row 0 below is ready. Before the freeze: the
 468-place sweep on the candidate (row 8), Forest Haven played with fusion on Linux, the Linux AppImage from a
 contributor's own disc, and `player-check.sh`. Chris decides when to freeze.
 
