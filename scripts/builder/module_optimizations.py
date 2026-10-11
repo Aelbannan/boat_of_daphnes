@@ -37,10 +37,19 @@ def cmake_flags(mode):
     return [f"-DBLUEWAKE_{name}={'ON' if mode == 'combined-v1' else 'OFF'}" for name in FEATURES]
 
 
-def fingerprint(mode):
+def steps(lean=False):
+    """STEPS, with fast_blocks.py making Elliott Tate's lean copies when asked, as the
+    Windows and Linux builders do by default (--lean-blocks)."""
+    return tuple(step + ("--lean",) if lean and step[0] == "scripts/windows/fast_blocks.py" else step
+                 for step in STEPS)
+
+
+def fingerprint(mode, lean=False):
     if mode == "none":
         return "none"
     digest = hashlib.sha256(mode.encode() + Path(__file__).read_bytes())
+    if lean:
+        digest.update(b"\0lean-blocks")
     for folder in ("scripts/windows", "scripts/mods", "cmake/composite", "runtime/host/src", "windows/src"):
         for path in sorted((ROOT / folder).rglob("*")):
             if path.is_file() and path.suffix in (".py", ".c", ".h", ".cpp", ".mm", ".m"):
@@ -53,12 +62,12 @@ def tree_digest(path):
                                     str(path)], text=True).split()[0]
 
 
-def prepare(out, mode):
+def prepare(out, mode, lean=False):
     if mode == "none":
         return
     source = out / "composite-src"
     receipt = out / "module-optimizations.json"
-    key, before = fingerprint(mode), tree_digest(source)
+    key, before = fingerprint(mode, lean), tree_digest(source)
     try:
         previous = json.loads(receipt.read_text())
     except (OSError, ValueError):
@@ -68,7 +77,7 @@ def prepare(out, mode):
         return
     # A failed preparation never updates the final digest. The builder's next
     # source stage preserves the partial tree and regenerates the verified base.
-    for script, *flags in STEPS:
+    for script, *flags in steps(lean):
         subprocess.run([sys.executable, str(ROOT / script), str(source), *flags], check=True)
     after = tree_digest(source)
     receipt.write_text(json.dumps({"mode": mode, "recipe": key, "digest": after}, indent=2) + "\n")
@@ -80,15 +89,16 @@ def main():
     parser.add_argument("action", choices=("fingerprint", "flags", "prepare"))
     parser.add_argument("mode", choices=MODES)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--lean", action="store_true", help="lean block copies (fast_blocks.py --lean)")
     args = parser.parse_args()
     if args.action == "fingerprint":
-        print(fingerprint(args.mode))
+        print(fingerprint(args.mode, args.lean))
     elif args.action == "flags":
         print("\n".join(cmake_flags(args.mode)))
     elif args.out is None:
         parser.error("prepare requires --out")
     else:
-        prepare(args.out, args.mode)
+        prepare(args.out, args.mode, args.lean)
 
 
 if __name__ == "__main__":

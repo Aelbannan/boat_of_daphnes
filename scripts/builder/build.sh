@@ -29,6 +29,8 @@
 #   --game NAME               profile to use (default bluewake)
 #   --platform ios|tvos|macos Apple target (default ios)
 #   --combined-optimizations opt into the measured Mac optimization candidate
+#   --lean-blocks             with --combined-optimizations: Elliott Tate's lean block copies,
+#                             as the Windows and Linux builders use by default
 #   --identity NAME           codesign identity, e.g. "Apple Development: You (TEAMID)"
 #   --profile FILE            device provisioning profile (with --identity)
 #   --install DEVICE          install with devicectl after signing (needs --identity)
@@ -63,7 +65,7 @@ module_optimizations=none
 composite_pgo=()
 # -O2 always: -O1 compiled in 47 min instead of 80 but held only 26 FPS
 # on an iPad Pro (M2) at Outset (docs/BUILDER.md), so there is no quick option.
-device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1 tiered=1
+device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1 tiered=1 lean_arg=""
 
 die() { echo "builder: $*" >&2; exit 1; }
 step() { echo; echo "==> $*"; }
@@ -83,6 +85,7 @@ while [ $# -gt 0 ]; do
         --game) game=$2; shift 2 ;;
         --platform) platform=$2; shift 2 ;;
         --combined-optimizations) module_optimizations=combined-v1; shift ;;
+        --lean-blocks) lean_arg=--lean; shift ;;
         --identity) identity=$2; shift 2 ;;
         --profile) profile=$2; shift 2 ;;
         --install) install_device=$2; shift 2 ;;
@@ -107,6 +110,7 @@ done
 if [ "$module_optimizations" != none ]; then
     [ "$platform" = macos ] && [ "$app_only" -eq 0 ] || die "--combined-optimizations needs a personal --platform macos build"
 fi
+[ -z "$lean_arg" ] || [ "$module_optimizations" != none ] || die "--lean-blocks needs --combined-optimizations"
 if [ "$platform" = macos ]; then
     [ -z "$ipa$published_app$profile$install_device" ] || die "macOS produces a local .app; --ipa, --app, --profile and --install are device-only"
 fi
@@ -241,7 +245,7 @@ fi
 step "6/9 mods"
 if [ "$mods" -eq 1 ]; then profile_mods; else echo "skipped"; fi
 if [ "$module_optimizations" != none ]; then
-    run module-prepare python3 "$root/scripts/builder/module_optimizations.py" prepare "$module_optimizations" --out "$out"
+    run module-prepare python3 "$root/scripts/builder/module_optimizations.py" prepare "$module_optimizations" $lean_arg --out "$out"
 fi
 
 if [ "$train_pgo" -eq 1 ]; then
