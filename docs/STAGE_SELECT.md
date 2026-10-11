@@ -23,13 +23,39 @@ Then:
 
 - **Hold R while starting a file** (from choosing the quest log until the screen fades): the stage select
   opens instead of your save point. Without R the file loads as usual.
-- **F7 during play** opens it from wherever you are. **F7 in the menu** takes you back: to the entrance
-  of the room you were in, with your time of day and day of the week. The game does not keep Link's exact
-  position.
+- **F7 during play** asks first (see below), then opens it from wherever you are. **F7 in the menu** takes
+  you back: to the entrance of the room you were in, with your time of day and day of the week. The game
+  does not keep Link's exact position. F7 does nothing while an event runs (a cutscene, a conversation, a
+  door): leaving one halfway can mark it seen without giving you what its end gives.
 - **On a controller**, Back (View on Xbox, Share or Create on PlayStation, ⧉ on the Steam Deck) opens
   BlueWake's settings, and the button under the stage select's toggle does what F7 does: **Go to the stage
   select** in play, **Back to where I was** in the menu. Before a file has started it is greyed out: hold R
   as you start one instead.
+
+## Saving is off after you use it
+
+Once the stage select has opened, the game can't save until BlueWake restarts. Warping can leave a file
+in a state the story never reaches by itself (a cutscene's flag set, a scene marked seen without its
+reward, items given or not), and the safest fix is not to write any of it. Until you restart, the
+memory card answers as if it had been taken out, and the game's no-card message is reworded to say why:
+the pause menu's Save says "The game cannot be saved. Saving is off because the stage select was used.
+Restart BlueWake to save again." Your card is fine, and the log says the same. (Refusing only the writes
+was worse: the game either retried on its own forever or called the card damaged.) Restart BlueWake and
+your file is exactly as it was before you opened the menu. Save first: nothing after opening it can be
+kept, including the save the game offers after the credits (the one that starts the Second Quest).
+Save states (F5) don't get around it. A state taken after the stage select was used still can't be
+saved from when it's loaded later, even after a restart: the rewritten message is in the game's memory
+the state holds, and BlueWake looks for it whenever the game mounts the card.
+
+So that this never costs you progress, **F7 during play asks first**: "Go to the stage select?", with
+**Cancel** (Esc, or B on a controller; it has the focus) and **Go to the stage select** (or F7 again).
+Save first if you have progress to keep. Holding R as a file starts doesn't ask, since the file has just
+loaded. The settings menu's stage select section says the same, and says when saving is off.
+
+If you'd rather keep saving and take the risk, start BlueWake with `--stage-select-saves` (or set
+`BLUEWAKE_STAGE_SELECT_SAVES=1`, as on a Mac). Saving then stays on, F7 doesn't ask, and the settings
+menu says so. Back up your card first: a save made after warping can leave your file somewhere the story
+can't go on from.
 
 The stage select is in the desktop apps (Mac, Linux, Windows and the Steam Deck). The iPhone and iPad app
 doesn't have it.
@@ -45,7 +71,7 @@ The menu lists them on screen.
 | R / L | Choose a different spawn point in the room (only ones the room has) |
 | X / Y | Time of day: normal, fast, morning, noon, evening, night, or a fixed hour |
 | D-pad Left/Right | Day of the week |
-| Z | Which half of the story Link's cutscene animations are set for: before or after the Helmaroc King fight |
+| Z | Which half of the story Link's cutscene animations are set for: before or after the Helmaroc King fight (set for you on marked cutscenes) |
 | Start | Go |
 
 ## Notes on the names
@@ -58,9 +84,11 @@ Some names end in a note:
   the fight, loads the second set.) The game keeps only one set loaded (`/res/Object/LkD00.arc` or
   `LkD01.arc`, chosen by story flag 0x2D01), and playing a cutscene from the other half crashes. Every
   cutscene on the Cutscenes line is marked, by where it falls in the story (ZeldaSpeedRuns' "Flags and
-  Triggers" page lists which cutscenes use which set). Press Z until the line at the bottom says the right
-  half. This is the developers' own "demo 23" switch (controller 3's A in the original menu). It sets a
-  real story flag, so put it back before you save a real file.
+  Triggers" page lists which cutscenes use which set). Picking a marked cutscene sets the flag for it, so
+  it plays; F7 back to where you were puts your file's own setting back. Z is the developers' own "demo
+  23" switch (controller 3's A in the original menu) for everywhere else.
+  Some cutscenes still won't start when your file is missing the story progress they expect. The stage
+  select doesn't fake that progress.
 - **(crash)**: the place's default spawn point crashes when started cold (Wind Temple R04 and R08: the
   room's doors ask about Link before he is fully created). Pick another spawn point with R/L.
 - **(hangs)**: a developer test room that loads but never lets Link in.

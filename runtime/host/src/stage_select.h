@@ -1,6 +1,7 @@
 #ifndef BLUEWAKE_STAGE_SELECT_H
 #define BLUEWAKE_STAGE_SELECT_H
 
+#include "card_runtime.h"
 #include "core/cpu.h"
 #include "stage_select_key.h"
 
@@ -406,6 +407,7 @@ static inline u16 bluewake_stage_select_pad_buttons(u64 retrace, u16 buttons) {
 #define BLUEWAKE_STAGE_SELECT_PAD3_TRIG 0x803A4E9Au    // g_mDoCPd_cpadInfo[2].mButtonTrig
 #define BLUEWAKE_STAGE_SELECT_DEMO23 0x803F72A6u       // the menu's l_demo23
 #define BLUEWAKE_STAGE_SELECT_FLAG_2D 0x803C5259u      // event flags (save + 0x624) byte 0x2D: bit 0x01 is 0x2D01
+#define BLUEWAKE_STAGE_SELECT_EVENT_MODE 0x803C9EA2u   // g_dComIfG_gameInfo.play.mEvtCtrl's mode: 0 with no event
 
 static atomic_uint bluewake_stage_select_key_presses;
 static bool bluewake_stage_select_in_game; // a file has started
@@ -413,13 +415,50 @@ static bool bluewake_stage_select_kept;
 static u8 bluewake_stage_select_kept_place[12];
 static u32 bluewake_stage_select_kept_time;
 static u16 bluewake_stage_select_kept_date;
+static u8 bluewake_stage_select_kept_half; // the file's own flag 0x2D01 (bit 0x01)
 static bool bluewake_stage_select_going_back;
 static bool bluewake_stage_select_restore_time;
 static atomic_bool bluewake_stage_select_menu_open; // from its execute to its delete
 
+// Opening the stage select from play turns saving off, which would lose
+// whatever the player has not saved yet, so a press there asks first: the
+// settings menus show the question, and its Go (or F7 again) opens it.
+static atomic_int bluewake_stage_select_asking; // 0; 1 asked, not on screen yet; 2 on screen
+
+static inline void bluewake_stage_select_press(void) {
+    atomic_fetch_add_explicit(&bluewake_stage_select_key_presses, 1u, memory_order_relaxed);
+}
+
+bool bluewake_stage_select_take_question(void) {
+    int asked = 1;
+    return atomic_compare_exchange_strong(&bluewake_stage_select_asking, &asked, 2);
+}
+
+bool bluewake_stage_select_asking_now(void) { return atomic_load(&bluewake_stage_select_asking) != 0; }
+
+void bluewake_stage_select_answer(bool go) {
+    if (atomic_exchange(&bluewake_stage_select_asking, 0) == 0)
+        return;
+    fprintf(stderr, "[stage-select] %s\n", go ? "going; saving turns off" : "cancelled");
+    if (go)
+        bluewake_stage_select_press();
+}
+
 void bluewake_stage_select_hotkey(void) {
-    if (bluewake_stage_select_armed)
-        atomic_fetch_add_explicit(&bluewake_stage_select_key_presses, 1u, memory_order_relaxed);
+    if (!bluewake_stage_select_armed)
+        return;
+    if (bluewake_stage_select_asking_now()) {
+        bluewake_stage_select_answer(true);
+        return;
+    }
+    if (bluewake_stage_select_in_game && !bluewake_card_runtime_writes_refused() &&
+        !bluewake_card_runtime_saving_kept() &&
+        !atomic_load_explicit(&bluewake_stage_select_menu_open, memory_order_relaxed)) {
+        atomic_store(&bluewake_stage_select_asking, 1);
+        fprintf(stderr, "[stage-select] F7: asking first, since saving turns off once it opens\n");
+        return;
+    }
+    bluewake_stage_select_press();
 }
 
 int bluewake_stage_select_state(void) {
@@ -429,6 +468,10 @@ int bluewake_stage_select_state(void) {
         return bluewake_stage_select_kept ? BW_STAGE_SELECT_BACK : BW_STAGE_SELECT_PICK;
     return bluewake_stage_select_in_game ? BW_STAGE_SELECT_OPEN : BW_STAGE_SELECT_NO_FILE;
 }
+
+bool bluewake_stage_select_saving_off(void) { return bluewake_card_runtime_writes_refused(); }
+
+bool bluewake_stage_select_saving_kept(void) { return bluewake_card_runtime_saving_kept(); }
 
 static inline bool bluewake_stage_select_key_pending(void) {
     return atomic_load_explicit(&bluewake_stage_select_key_presses, memory_order_relaxed) != 0u;
@@ -655,6 +698,7 @@ static inline void bluewake_stage_select_warp(CPUState* cpu) {
         mem_write32(cpu, BLUEWAKE_STAGE_SELECT_SAVE_TIME, bits);
     }
     bluewake_warp_applied = true;
+    bluewake_card_runtime_refuse_writes(cpu, "BLUEWAKE_WARP went to a place");
     cpu->gpr[4] = BLUEWAKE_STAGE_SELECT_PLAY; // a new game skips its opening too
     static bool told;
     if (!told)
@@ -672,6 +716,13 @@ static __attribute__((noinline)) bool bluewake_stage_select_redirect_body(CPUSta
     bluewake_stage_select_key_take();
     if (!bluewake_stage_select_in_game || !bluewake_stage_select_ram(cpu->gpr[3], 4u))
         return false; // the title screen runs on the play scene's code too
+    if (mem_read8(cpu, BLUEWAKE_STAGE_SELECT_EVENT_MODE) != 0u) {
+        // A cutscene, a conversation or a door: leaving one halfway can mark
+        // it seen without giving what its end gives.
+        fprintf(stderr, "[stage-select] F7: not while an event is running\n");
+        return false;
+    }
+    bluewake_stage_select_kept_half = mem_read8(cpu, BLUEWAKE_STAGE_SELECT_FLAG_2D) & 0x01u;
     for (u32 i = 0; i < 12u; ++i)
         bluewake_stage_select_kept_place[i] = mem_read8(cpu, BLUEWAKE_STAGE_SELECT_CUR_STAGE + i);
     bluewake_stage_select_kept_time = mem_read32(cpu, BLUEWAKE_STAGE_SELECT_SAVE_TIME);
@@ -716,10 +767,37 @@ static inline void bluewake_stage_select_key_in_menu(CPUState* cpu) {
                 (u16)(mem_read16(cpu, BLUEWAKE_STAGE_SELECT_PAD1_TRIG) | BLUEWAKE_STAGE_SELECT_GAME_START));
 }
 
+static inline void bluewake_stage_select_set_half(CPUState* cpu, bool after) {
+    const u8 flags = mem_read8(cpu, BLUEWAKE_STAGE_SELECT_FLAG_2D);
+    mem_write8(cpu, BLUEWAKE_STAGE_SELECT_FLAG_2D, after ? (u8)(flags | 0x01u) : (u8)(flags & ~0x01u));
+    mem_write16(cpu, BLUEWAKE_STAGE_SELECT_DEMO23, after ? 1u : 0u);
+}
+
+// The menu's change to the play scene, to the place picked: a cutscene marked
+// (before) or (after) gets the half of the story it needs, so Link's matching
+// animations load. Every other place keeps what Z set.
+static inline void bluewake_stage_select_half_for_pick(CPUState* cpu) {
+    const u32 cursor = mem_read32(cpu, BLUEWAKE_STAGE_SELECT_CURSOR);
+    const u32 points = mem_read32(cpu, BLUEWAKE_STAGE_SELECT_GROUP_POINT);
+    if (cursor > 255u || !bluewake_stage_select_ram(points + cursor, 1u))
+        return;
+    const BluewakeStageSelectName* name =
+        bluewake_stage_select_find_line((long)cursor, (s8)mem_read8(cpu, points + cursor));
+    if (name == NULL)
+        return;
+    const bool after = strcmp(name->note, "after") == 0;
+    if (!after && strcmp(name->note, "before") != 0)
+        return;
+    bluewake_stage_select_set_half(cpu, after);
+    fprintf(stderr, "[stage-select] %s: story set to %s the Helmaroc King fight\n", name->text,
+            after ? "after" : "before");
+}
+
 // The menu's change to the play scene, on the way back: the kept place over
-// the room it set.
+// the room it set, and the file's own half of the story.
 static inline void bluewake_stage_select_go_back(CPUState* cpu) {
     bluewake_stage_select_going_back = false;
+    bluewake_stage_select_set_half(cpu, bluewake_stage_select_kept_half != 0u);
     for (u32 i = 0; i < 12u; ++i)
         mem_write8(cpu, BLUEWAKE_STAGE_SELECT_NEXT_STAGE + i, bluewake_stage_select_kept_place[i]);
     bluewake_stage_select_restore_time = true;
@@ -732,6 +810,11 @@ static __attribute__((noinline)) void bluewake_stage_select_dispatch_body(CPUSta
         return;
     if (address == BLUEWAKE_STAGE_SELECT_EXECUTE) {
         atomic_store_explicit(&bluewake_stage_select_menu_open, true, memory_order_relaxed);
+        // Warping can leave a file in a state the game never expects (a
+        // flipped story flag, a cutscene seen without its reward), so nothing
+        // after this is saved: restarting brings the file back as it was.
+        if (!bluewake_card_runtime_writes_refused())
+            bluewake_card_runtime_refuse_writes(cpu, "the stage select was opened");
         if (!bluewake_stage_select_texts_done)
             bluewake_stage_select_translate(cpu);
         if (bluewake_stage_select_name_count != 0u) {
@@ -788,6 +871,8 @@ static __attribute__((noinline)) void bluewake_stage_select_dispatch_body(CPUSta
         mem_write8(cpu, BLUEWAKE_STAGE_SELECT_AUDIO_LOAD_TIMER, 0u);
         if (bluewake_stage_select_going_back)
             bluewake_stage_select_go_back(cpu);
+        else
+            bluewake_stage_select_half_for_pick(cpu);
         return;
     }
     if (cpu->lr != BLUEWAKE_STAGE_SELECT_NAME_RETURN ||
