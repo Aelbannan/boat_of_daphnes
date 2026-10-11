@@ -36,6 +36,8 @@
 #                             training and a Mac test build saved, but slower in game
 #                             (about 27.5 instead of 30 FPS measured on an iPad Pro M2)
 #   --no-pgo                  skip all optimization profiles (also skips training)
+#   --no-tiered               compile the chunks the profile never ran at -O2 too, not
+#                             -O1 (a much longer compile; Windows and Linux do the same)
 #   --train-pgo               train even when it would otherwise be skipped (default on)
 #   --training-save FILE      optional personal memory card for training (copied)
 #   --composite-pgo FILE      LLVM .profdata for the game module (repeatable; replaces
@@ -61,7 +63,7 @@ module_optimizations=none
 composite_pgo=()
 # -O2 always: -O1 compiled in 47 min instead of 80 but held only 26 FPS
 # on an iPad Pro (M2) at Outset (docs/BUILDER.md), so there is no quick option.
-device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1
+device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1 tiered=1
 
 die() { echo "builder: $*" >&2; exit 1; }
 step() { echo; echo "==> $*"; }
@@ -87,6 +89,7 @@ while [ $# -gt 0 ]; do
         --composite-pgo) composite_pgo+=("$2"); shift 2 ;;
         --host-pgo) host_pgo=$2; shift 2 ;;
         --no-pgo) use_pgo=0; shift ;;
+        --no-tiered) tiered=0; shift ;;
         --train-pgo) train_pgo=1; shift ;;
         --no-train) train_pgo=0; shift ;;
         --training-save) training_save=$2; shift 2 ;;

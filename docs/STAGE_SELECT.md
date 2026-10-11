@@ -45,19 +45,22 @@ The menu lists them on screen.
 | R / L | Choose a different spawn point in the room (only ones the room has) |
 | X / Y | Time of day: normal, fast, morning, noon, evening, night, or a fixed hour |
 | D-pad Left/Right | Day of the week |
-| Z | Which half of the story Link's cutscene animations are set for: before or after Aryll's rescue |
+| Z | Which half of the story Link's cutscene animations are set for: before or after the Helmaroc King fight |
 | Start | Go |
 
 ## Notes on the names
 
 Some names end in a note:
 
-- **(before)** and **(after)**: the cutscene needs Link's cutscene animations from before or after
-  Aryll's rescue at the Forsaken Fortress. The game keeps only one set loaded (`/res/Object/LkD00.arc`
-  or `LkD01.arc`, chosen by story flag 0x2D01), and playing a cutscene from the other half crashes.
-  Press Z until the line at the bottom says the right half. This is the developers' own "demo 23"
-  switch (controller 3's A in the original menu). It sets a real story flag, so put it back before you
-  save a real file.
+- **(before)** and **(after)**: the cutscene needs Link's cutscene animations from before or after the
+  Helmaroc King fight at the Forsaken Fortress, where the game switches sets. (The menu's bottom line says
+  "before rescue" and "after rescue": the flag is set at the end of Aryll's rescue, and the next scene,
+  the fight, loads the second set.) The game keeps only one set loaded (`/res/Object/LkD00.arc` or
+  `LkD01.arc`, chosen by story flag 0x2D01), and playing a cutscene from the other half crashes. Every
+  cutscene on the Cutscenes line is marked, by where it falls in the story (ZeldaSpeedRuns' "Flags and
+  Triggers" page lists which cutscenes use which set). Press Z until the line at the bottom says the right
+  half. This is the developers' own "demo 23" switch (controller 3's A in the original menu). It sets a
+  real story flag, so put it back before you save a real file.
 - **(crash)**: the place's default spawn point crashes when started cold (Wind Temple R04 and R08: the
   room's doors ask about Link before he is fully created). Pick another spawn point with R/L.
 - **(hangs)**: a developer test room that loads but never lets Link in.
