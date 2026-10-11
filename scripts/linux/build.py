@@ -1263,7 +1263,8 @@ H/F/T/G C-stick, E/R L/R, Q Z, Return START. Game controllers work too.
 Mouse: click the game and move the mouse to turn the camera; Esc releases it.
 F11 fullscreen, F10 Smooth Motion, F9 frame rate.
 
-Saves, settings and session logs: ~/.local/share/BlueWake
+Saves and session logs: ~/.local/share/BlueWake
+Settings: ~/.config/BlueWake/settings.ini
 """
 
 

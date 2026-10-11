@@ -138,9 +138,9 @@ The optional controller zoom is under **Controls** in the settings menu. Enable 
 then hold the right-stick click and move that stick up or down; tapping the click
 still enters or leaves first person. Its speed is adjustable beside the option.
 
-Your saves, settings and session logs live in `~/.local/share/BlueWake`, outside
-the build, so rebuilding never touches them. The settings menu (Esc or F1) saves to
-`~/.config/BlueWake/settings.ini`.
+Your saves and session logs live in `~/.local/share/BlueWake`, outside the
+build, so rebuilding never touches them. The settings menu (Esc or F1) saves
+preferences separately to `~/.config/BlueWake/settings.ini`.
 
 ## The app folder
 
