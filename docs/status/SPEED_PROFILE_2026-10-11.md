@@ -206,3 +206,18 @@ The trained module keeps 528 out-of-line copies of `inline_fp.h`'s helpers, so e
 Forcing them inline (`always_inline`, local branch `codex/fp-always-inline`) gave a module 11.5% larger and slower:
 Outset 22.66 s against 22.94 s (1.2%), the cavern 13.86 s against 14.20 s (2.4%), checkpoints identical. The calls
 cost less than the code they would add.
+
+## S2, fix 4 (waiting on Chris): the alias resolver's last hit (October 12)
+
+`ppc_guest_alias_resolve` (RecompCore `GXRuntime/src/core/cpu.c`) was 2.2% of the trained build's game thread: a
+binary search over about 1,900 aliases on every access to an actor module's data. It now tries the alias it found
+last first. While no two aliases overlap (the only case that takes the search), at most one can hold an access, so a
+remembered alias that holds it is the one the search would find; any other answer goes to the search as before. The
+index is a relaxed atomic, not thread-local (a thread-local in a Mach-O dylib costs a call per access); a stale one
+is only a miss.
+
+With `BLUEWAKE_LAZY_OVERLAP=1` on both, the same host and sources, alternated, three runs each after a cold first
+pair: Outset 21.89 s against 21.79 s (0.5%), Dragon Roost Cavern 13.20 s against 13.03 s (1.2%), every run faster,
+identical checkpoints. It is a RecompCore change, on for everyone once pinned, so it waits for Chris: the commit is
+`f4afb6f` on a local branch `codex/alias-last-hit` of the benchmark checkout's RecompCore, on the pinned `ddd031b`.
+Not pushed; a RecompCore pull request and a BlueWake pin follow if Chris says yes.
