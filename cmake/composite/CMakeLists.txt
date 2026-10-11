@@ -260,6 +260,28 @@ if(NOT WIN32 AND NOT APPLE)
   set_property(SOURCE ${CHUNK_C_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
       -include "${CMAKE_CURRENT_SOURCE_DIR}/hidden_externs.h")
 endif()
+
+# ELF: the module's pointer tables need about 2.2 million relative relocations,
+# 24 bytes each as RELA (about 51 MB, and as many fix-ups at every launch).
+# RELR stores runs of them as bitmaps. The loader needs glibc 2.36 for it, and
+# -z pack-relative-relocs records that requirement in the module, so an older
+# glibc refuses to load it rather than running it unrelocated. Only when the
+# glibc it is built against has it: the module is built on the machine that
+# runs it, and a release built on an older baseline (#214) leaves it off.
+if(NOT WIN32 AND NOT APPLE)
+  include(CheckCSourceCompiles)
+  include(CheckLinkerFlag)
+  check_c_source_compiles("
+#include <features.h>
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 36)
+#error no DT_RELR
+#endif
+int main(void) { return 0; }" BLUEWAKE_GLIBC_HAS_DT_RELR)
+  check_linker_flag(C "LINKER:-z,pack-relative-relocs" BLUEWAKE_LINKER_PACKS_RELR)
+  if(BLUEWAKE_GLIBC_HAS_DT_RELR AND BLUEWAKE_LINKER_PACKS_RELR)
+    target_link_options(${MODULE_NAME} PRIVATE "LINKER:-z,pack-relative-relocs")
+  endif()
+endif()
 target_compile_options(${MODULE_NAME} PRIVATE -O${COMPOSITE_OPTIMIZATION_LEVEL} -ffp-contract=off)
 
 # The builder's --tiered: chunks the optimization training never ran, one
