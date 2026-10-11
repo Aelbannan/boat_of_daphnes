@@ -28,6 +28,7 @@
  * No identifier here may be `ctx`: the chunks define it as a macro. */
 
 #include "core/cpu.h"
+#include "direct_skip.h"
 
 #define BW_DIRECT_DEPTH_MAX 32u
 
@@ -48,6 +49,16 @@ extern void* bw_host_can_skip_user;
 int bluewake_composite_direct_calls(bool, const bool*, const bool*, const u32*, const u32*);
 int bluewake_composite_direct_calls_v2(bool, const bool*, const bool*, const u32*,
                                      const u32*, BwHostCanSkipFn, void*);
+/* v2 plus the host's address-only answer (direct_skip.h) and the verify switch. */
+int bluewake_composite_direct_calls_v3(bool, const bool*, const bool*, const u32*,
+                                     const u32*, BwHostCanSkipFn, void*,
+                                     const BwHostSkipFast*, bool);
+extern const volatile BwHostSkipFast* bw_host_skip_fast;
+extern bool bw_host_skip_verify;
+void bw_host_skip_verify_check(const CPUState* cpu, u32 address, bool allowed);
+void bluewake_composite_direct_skip_counts(unsigned long long* unsafe,
+                                           unsigned long long* conservative,
+                                           unsigned long long* inline_answers);
 int bluewake_composite_edge_filter(bool);
 
 /* The host's edge service has nothing to do at an address it does not watch:
@@ -68,7 +79,20 @@ static inline bool bw_direct_call_ready(const CPUState* cpu, u32 address) {
         return false;
     if (cpu->exception != 0u || (cpu->cycle_budget > 0 && cpu->downcount <= -cpu->cycle_budget))
         return false;
-    return bw_host_quiet(cpu) && bw_host_can_skip(bw_host_can_skip_user, cpu, address);
+    if (!bw_host_quiet(cpu))
+        return false;
+    /* The host's answer read inline when only the address matters (direct_skip.h),
+     * instead of a call into the host for every direct call. */
+    const volatile BwHostSkipFast* fast = bw_host_skip_fast;
+    if (fast != NULL && fast->simple) {
+        const bool allowed = address != fast->single[0] && address != fast->single[1] &&
+                             address - fast->range_first[0] > fast->range_span[0] &&
+                             address - fast->range_first[1] > fast->range_span[1];
+        if (__builtin_expect(bw_host_skip_verify, 0))
+            bw_host_skip_verify_check(cpu, address, allowed);
+        return allowed;
+    }
+    return bw_host_can_skip(bw_host_can_skip_user, cpu, address);
 }
 
 /* The addresses the host's edge service acts at, from the builder's watch list

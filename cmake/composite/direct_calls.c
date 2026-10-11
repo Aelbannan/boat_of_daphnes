@@ -1,6 +1,8 @@
 /* The state behind direct calls between chunks (direct_calls.h). */
 #include "direct_calls.h"
 
+#include <stdio.h>
+
 #if defined(_WIN32)
 #define BW_DIRECT_EXPORT __declspec(dllexport)
 #else
@@ -21,6 +23,9 @@ const u32* bw_host_pi_cause = &k_zero;
 const u32* bw_host_pi_mask = &k_zero;
 BwHostCanSkipFn bw_host_can_skip;
 void* bw_host_can_skip_user;
+const volatile BwHostSkipFast* bw_host_skip_fast;
+bool bw_host_skip_verify;
+static unsigned long long s_skip_unsafe, s_skip_conservative, s_skip_inline;
 
 u32 bw_edge_watch_table[BW_EDGE_WATCH_SLOTS];
 bool bw_edge_watch_ready;
@@ -118,6 +123,40 @@ BW_DIRECT_EXPORT int bluewake_composite_direct_calls_v2(
     bw_host_pi_mask = pi_mask;
     bw_host_can_skip = can_skip;
     bw_host_can_skip_user = user;
+    bw_host_skip_fast = NULL;
     bw_direct_enabled = true;
     return 1;
+}
+
+BW_DIRECT_EXPORT int bluewake_composite_direct_calls_v3(
+    bool enabled, const bool* sources_dirty, const bool* decrementer_pending,
+    const u32* pi_cause, const u32* pi_mask, BwHostCanSkipFn can_skip, void* user,
+    const BwHostSkipFast* fast, bool verify) {
+    const int on = bluewake_composite_direct_calls_v2(enabled, sources_dirty, decrementer_pending,
+                                                      pi_cause, pi_mask, can_skip, user);
+    bw_host_skip_fast = on ? fast : NULL;
+    bw_host_skip_verify = on && fast != NULL && verify;
+    return on;
+}
+
+/* BLUEWAKE_DIRECT_SKIP_VERIFY: ask the host as well and count disagreements. An
+ * inline "skip" the host refuses would be a bug; an inline "no" the host would
+ * allow is the conservative side and only costs a trip through the host. */
+void bw_host_skip_verify_check(const CPUState* cpu, u32 address, bool allowed) {
+    const bool host = bw_host_can_skip(bw_host_can_skip_user, cpu, address);
+    ++s_skip_inline;
+    if (allowed && !host) {
+        if (++s_skip_unsafe <= 8u)
+            fprintf(stderr, "[direct-skip] UNSAFE: inline skip at 0x%08X the host refuses\n", address);
+    } else if (!allowed && host) {
+        ++s_skip_conservative;
+    }
+}
+
+BW_DIRECT_EXPORT void bluewake_composite_direct_skip_counts(unsigned long long* unsafe,
+                                                         unsigned long long* conservative,
+                                                         unsigned long long* inline_answers) {
+    if (unsafe != NULL) *unsafe = s_skip_unsafe;
+    if (conservative != NULL) *conservative = s_skip_conservative;
+    if (inline_answers != NULL) *inline_answers = s_skip_inline;
 }

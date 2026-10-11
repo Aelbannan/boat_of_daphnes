@@ -18,6 +18,7 @@
 #include "cache_flush_fallback.h"
 #include "StaticRecompABI.h"
 #include "../../../cmake/composite/module_cpu_contract.h"
+#include "../../../cmake/composite/direct_skip.h"
 #include <stdatomic.h>
 #include "aram_dma.h"
 #include "actor_search_budget.h"
@@ -339,6 +340,12 @@ static u64 g_opening_complete_retrace;
 static bool g_outset_room_requested;
 static u64 g_outset_room_request_retrace;
 static u32 g_overlap_last_phase = UINT32_MAX;
+// BLUEWAKE_LAZY_OVERLAP=1 (off by default): the scene overlap watch below
+// (g_overlap_last_phase, g_overlap_terminal_phase, read only by diagnostics and
+// test routes) is sampled by the edge service and once a turn, instead of being
+// tested at every direct call and block edge, where it was about 7% of the game
+// thread. The guest runs the same; only when the host notices a phase changes.
+static bool g_lazy_overlap;
 static u32 g_overlap_terminal_phase = UINT32_MAX;
 static bool g_name_character_jut_hold_reported;
 static bool g_name_character_jut_trigger_reported;
@@ -1960,7 +1967,7 @@ static void host_actor_search_native(CPUState* cpu) {
 // The scene part of the dynamic test: an overlap phase change interrupt flags
 // alone do not describe.
 static inline bool host_chassis_overlap_requires_full(void) {
-    if (g_name_scene_object >= 0x80000000u &&
+    if (!g_lazy_overlap && g_name_scene_object >= 0x80000000u &&
         (g_file_start_pulse.triggered || !g_file_start_pulse.configured)) {
         if (g_ppc_guest_alias_generation != g_overlap_cached_alias_state ||
             g_overlap_slot_ptr == NULL)
@@ -2005,6 +2012,24 @@ static inline bool host_chassis_requires_full(const CPUState* cpu, u32 address) 
 }
 
 static bool g_direct_call_trace;
+// The host's answer for the module to read inline (direct_skip.h), with the
+// lazy overlap watch, when the answer depends on the address alone.
+// Conservative by construction: `simple` is off whenever an address-independent
+// check could refuse, and the address lists always include Forest Water's and
+// the draw tags' addresses whether or not those features are on.
+static BwHostSkipFast g_skip_fast = {0u, {0u, 0u}, {0xFFFFFFFFu, 0xFFFFFFFFu}, {0u, 0u}};
+static bool g_skip_fast_on;
+static void host_skip_fast_refresh(void) {
+    if (!g_skip_fast_on)
+        return;
+    g_skip_fast.single[0] = g_module1_raw_base != 0u ? g_module1_raw_base + 0xD4u : 0u;
+    g_skip_fast.single[1] = bluewake_forest_water_tree_timer_check;
+    g_skip_fast.range_first[0] = BLUEWAKE_PARTICLE_DRAW_FIRST;
+    g_skip_fast.range_span[0] = BLUEWAKE_PARTICLE_DRAW_LAST - BLUEWAKE_PARTICLE_DRAW_FIRST;
+    g_skip_fast.range_first[1] = BLUEWAKE_WAKE_DRAW_FIRST;
+    g_skip_fast.range_span[1] = BLUEWAKE_WAKE_DRAW_LAST - BLUEWAKE_WAKE_DRAW_FIRST;
+    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed;
+}
 static u64 g_direct_call_queries, g_direct_call_allowed;
 
 /* Read-only handshake for direct calls. Use the same dynamic predicate as
@@ -5193,6 +5218,7 @@ static void host_sync_vi_cycles(CPUState* cpu) {
         bluewake_game_options_retrace(cpu);
         bluewake_mouse_camera_retrace();
         bluewake_jump_button_retrace();
+        host_skip_fast_refresh();  // the jump button may have armed
         bluewake_sprint_retrace();
         bluewake_fps_watch_retrace();
         bluewake_fast_load_retrace(bluewake_host_thread_cpu_us());
@@ -7533,6 +7559,12 @@ int main(int argc, char** argv) {
     g_deferred_dvd_enabled = deferred_dvd_set ? strcmp(deferred_dvd, "1") == 0 : deferred_dvd_default;
     fprintf(stderr, "[dvd] deferred completion=%s (%s)\n", g_deferred_dvd_enabled ? "on" : "off",
             deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
+    {
+        const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
+        g_lazy_overlap = lazy != NULL && strcmp(lazy, "1") == 0;
+        if (g_lazy_overlap)
+            fprintf(stderr, "[chassis] lazy overlap watch: on (BLUEWAKE_LAZY_OVERLAP)\n");
+    }
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
     g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
     fprintf(stderr, "[texture-cache] fallback writeback=%s\n",
@@ -7554,6 +7586,7 @@ int main(int argc, char** argv) {
     g_rel_alias_raw_min = ~0u;
     g_rel_alias_raw_max = 0u;
     g_module1_raw_base = 0u;
+    host_skip_fast_refresh();
     g_module_alias_add_shared = NULL;
     g_module336_bss_alias_installed = false;
     dol_di_init(&g_di);
@@ -7924,6 +7957,10 @@ int main(int argc, char** argv) {
                                      const u32*, CanSkipFn, void*);
         DirectCallsFn direct_calls = (DirectCallsFn)
             dlsym(lib, "bluewake_composite_direct_calls_v2");
+        typedef int (*DirectCallsV3Fn)(bool, const bool*, const bool*, const u32*,
+                                       const u32*, CanSkipFn, void*, const BwHostSkipFast*, bool);
+        DirectCallsV3Fn direct_calls_v3 = (DirectCallsV3Fn)
+            dlsym(lib, "bluewake_composite_direct_calls_v3");
         const char* direct_env = getenv("BLUEWAKE_DIRECT_CALLS");
         const char* direct_trace = getenv("BLUEWAKE_DIRECT_CALL_TRACE");
         g_direct_call_trace = direct_trace != NULL && strcmp(direct_trace, "1") == 0;
@@ -7931,16 +7968,39 @@ int main(int argc, char** argv) {
         const bool want = host_feature_wanted("BLUEWAKE_DIRECT_CALLS") &&
                           getenv("BLUEWAKE_PER_BLOCK_TURNS") == NULL &&
                           dlsym(lib, "bluewake_set_edge_service") != NULL;
-        const bool enabled = direct_calls != NULL && direct_calls(
-            want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
-            &g_interrupts.pi_cause, &g_interrupts.pi_mask,
-            bluewake_stage_select_live ? host_direct_can_skip_stage_select : host_direct_can_skip, NULL);
+        // With the lazy overlap watch the host's answer depends on the address
+        // alone, so a module that can (v3) reads it inline instead of calling
+        // the host at every direct call. Not with the stage select, which has
+        // its own checks, or with the call trace, which counts the calls.
+        const char* verify_env = getenv("BLUEWAKE_DIRECT_SKIP_VERIFY");
+        bool want_fast = g_lazy_overlap && direct_calls_v3 != NULL && !bluewake_stage_select_live &&
+                         !g_direct_call_trace;
+#if BLUEWAKE_ENABLE_DEVELOPER_TRACING || BLUEWAKE_EDGE_CENSUS
+        want_fast = false;
+#endif
+        const bool verify = verify_env != NULL && strcmp(verify_env, "1") == 0;
+        bool enabled;
+        if (want_fast) {
+            g_skip_fast_on = true;
+            host_skip_fast_refresh();
+            enabled = direct_calls_v3(
+                want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
+                &g_interrupts.pi_cause, &g_interrupts.pi_mask, host_direct_can_skip, NULL,
+                &g_skip_fast, verify);
+            g_skip_fast_on = enabled;
+        } else {
+            enabled = direct_calls != NULL && direct_calls(
+                want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
+                &g_interrupts.pi_cause, &g_interrupts.pi_mask,
+                bluewake_stage_select_live ? host_direct_can_skip_stage_select : host_direct_can_skip, NULL);
+        }
         typedef int (*EdgeFilterFn)(bool);
         EdgeFilterFn edge_filter = (EdgeFilterFn)
             dlsym(lib, "bluewake_composite_edge_filter");
         if (edge_filter != NULL)
             edge_filter(enabled);
-        fprintf(stderr, "[chassis] direct-calls=%s\n", enabled ? "on" : "off");
+        fprintf(stderr, "[chassis] direct-calls=%s inline-answer=%s%s\n", enabled ? "on" : "off",
+                g_skip_fast_on ? "on" : "off", g_skip_fast_on && verify ? " (verify)" : "");
     }
     {
         typedef int (*NativeJ3DFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
@@ -7993,6 +8053,7 @@ int main(int argc, char** argv) {
     bluewake_game_options_enable(lib, &cpu, g_options_mod);
     bluewake_forest_water_set_ftree_text(
         host_rel_section_linked_start(mod, 317u, 1u));
+    host_skip_fast_refresh();  // Forest Water's tree-timer address
     bluewake_forest_water_reload();
     bluewake_mouse_camera_attach(&cpu);
     bluewake_climb_attach(&cpu);
@@ -8361,6 +8422,7 @@ int main(int argc, char** argv) {
            (max_retraces == 0ull ||
             g_host_retrace_count < max_retraces)) {
         host_state_turn(&cpu, mod, &state_loop);
+        host_skip_fast_refresh();  // a turn's host work (state loads, input) may have changed it
         g_current_host_block = blocks;
         bluewake_cycle_domain_begin_turn(&g_cycle_domain, &cpu);
         if (dol_platform_should_quit()) { stop_reason = "quit"; break; }
@@ -9456,7 +9518,10 @@ int main(int argc, char** argv) {
                     const u32 module_id = mem_read32(&cpu, module);
                     host_zero_rel_bss(&cpu, rel_data, rel_data_count, module_id);
                     if (module_id == 1u)
+                    {
                         g_module1_raw_base = module;
+                        host_skip_fast_refresh();
+                    }
                     // This is the host-side completion of the authentic
                     // do_link contract: the static composite supplies the
                     // linked module body, so publish module 1's profile-list
@@ -15716,6 +15781,15 @@ int main(int argc, char** argv) {
 
     printf("[run] stopped: %s after %llu blocks at pc=%#010x\n",
            stop_reason ? stop_reason : "normal", blocks, cpu.pc);
+    if (g_skip_fast_on) {
+        typedef void (*SkipCountsFn)(unsigned long long*, unsigned long long*, unsigned long long*);
+        SkipCountsFn skip_counts = (SkipCountsFn)dlsym(lib, "bluewake_composite_direct_skip_counts");
+        unsigned long long unsafe = 0ull, conservative = 0ull, inline_answers = 0ull;
+        if (skip_counts != NULL)
+            skip_counts(&unsafe, &conservative, &inline_answers);
+        fprintf(stderr, "[direct-skip] verify: inline=%llu unsafe=%llu conservative=%llu\n", inline_answers,
+                unsafe, conservative);
+    }
     fprintf(stderr,
             "[collision-provenance] summary ground_cross_returns=%llu "
             "deferred_fp=%llu valid_seen=%u sentinel_seen=%u\n",
