@@ -419,6 +419,7 @@ static u8 bluewake_stage_select_kept_half; // the file's own flag 0x2D01 (bit 0x
 static bool bluewake_stage_select_going_back;
 static bool bluewake_stage_select_restore_time;
 static atomic_bool bluewake_stage_select_menu_open; // from its execute to its delete
+static bool bluewake_stage_select_used; // opened since this file started
 
 // Opening the stage select from play turns saving off, which would lose
 // whatever the player has not saved yet, so a press there asks first: the
@@ -716,9 +717,11 @@ static __attribute__((noinline)) bool bluewake_stage_select_redirect_body(CPUSta
     bluewake_stage_select_key_take();
     if (!bluewake_stage_select_in_game || !bluewake_stage_select_ram(cpu->gpr[3], 4u))
         return false; // the title screen runs on the play scene's code too
-    if (mem_read8(cpu, BLUEWAKE_STAGE_SELECT_EVENT_MODE) != 0u) {
+    if (!bluewake_stage_select_used && mem_read8(cpu, BLUEWAKE_STAGE_SELECT_EVENT_MODE) != 0u) {
         // A cutscene, a conversation or a door: leaving one halfway can mark
-        // it seen without giving what its end gives.
+        // it seen without giving what its end gives. Only from the file's own
+        // play: a cutscene warped to can end with nowhere to go (Storm Ganon
+        // part 2 waits forever), and F7 is the way out of it.
         fprintf(stderr, "[stage-select] F7: not while an event is running\n");
         return false;
     }
@@ -810,6 +813,7 @@ static __attribute__((noinline)) void bluewake_stage_select_dispatch_body(CPUSta
         return;
     if (address == BLUEWAKE_STAGE_SELECT_EXECUTE) {
         atomic_store_explicit(&bluewake_stage_select_menu_open, true, memory_order_relaxed);
+        bluewake_stage_select_used = true;
         // Warping can leave a file in a state the game never expects (a
         // flipped story flag, a cutscene seen without its reward), so nothing
         // after this is saved: restarting brings the file back as it was.
@@ -862,6 +866,7 @@ static __attribute__((noinline)) void bluewake_stage_select_dispatch_body(CPUSta
         // and the next file must not go back to this one's room.
         bluewake_stage_select_in_game = false;
         bluewake_stage_select_kept = false;
+        bluewake_stage_select_used = false;
     }
     if (cpu->lr == BLUEWAKE_STAGE_SELECT_MENU_RETURN && cpu->gpr[4] == BLUEWAKE_STAGE_SELECT_PLAY) {
         // The menu names the chosen place for the music right after this

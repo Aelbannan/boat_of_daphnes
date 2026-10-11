@@ -25,8 +25,10 @@ Then:
   opens instead of your save point. Without R the file loads as usual.
 - **F7 during play** asks first (see below), then opens it from wherever you are. **F7 in the menu** takes
   you back: to the entrance of the room you were in, with your time of day and day of the week. The game
-  does not keep Link's exact position. F7 does nothing while an event runs (a cutscene, a conversation, a
-  door): leaving one halfway can mark it seen without giving you what its end gives.
+  does not keep Link's exact position. From your file's own play, F7 does nothing while an event runs (a
+  cutscene, a conversation, a door): leaving one halfway can mark it seen without giving you what its end
+  gives. Once you've warped, it always works, so it gets you out of a cutscene that ends with nowhere to
+  go (Storm Ganon part 2 waits forever at its end).
 - **On a controller**, Back (View on Xbox, Share or Create on PlayStation, ⧉ on the Steam Deck) opens
   BlueWake's settings, and the button under the stage select's toggle does what F7 does: **Go to the stage
   select** in play, **Back to where I was** in the menu. Before a file has started it is greyed out: hold R

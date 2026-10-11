@@ -47,13 +47,21 @@ inline int bw_stage_select_question() {
     ImGui::TextUnformatted("Anything you haven't saved yet can't be saved after this.");
     ImGui::Spacing();
     int answer = 0;
-    if (ImGui::IsWindowAppearing())
+    // The menu has the keyboard while it asks, so F7 is read here, not by the
+    // hotkey; but only once the press that asked has been let go, or it would
+    // answer its own question before it is seen.
+    static bool f7_let_go;
+    if (ImGui::IsWindowAppearing()) {
         ImGui::SetKeyboardFocusHere();
+        f7_let_go = false;
+    }
+    const bool f7 = f7_let_go && ImGui::IsKeyPressed(ImGuiKey_F7, false);
+    if (!ImGui::IsKeyDown(ImGuiKey_F7))
+        f7_let_go = true;
     if (ImGui::Button("Cancel   (Esc)"))
         answer = -1;
     ImGui::SameLine();
-    // The menu has the keyboard while it asks, so F7 is read here, not by the hotkey.
-    if (ImGui::Button("Go to the stage select   (F7)") || ImGui::IsKeyPressed(ImGuiKey_F7, false))
+    if (ImGui::Button("Go to the stage select   (F7)") || f7)
         answer = 1;
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
         answer = -1;
