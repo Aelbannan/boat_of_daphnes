@@ -89,6 +89,8 @@ def fingerprint(args, compiler):
     digest.update(Path(__file__).read_bytes())
     digest.update((ROOT / "scripts/builder/module_optimizations.py").read_bytes())
     digest.update(args.module_optimizations.encode())
+    if args.instrumented_opt_level:
+        digest.update(f"\0instrumented-O{args.instrumented_opt_level}".encode())
     digest.update((ROOT / "apple/ios/src/dsp_common_shim.cpp").read_bytes())
     digest.update(subprocess.check_output(["git", "-C", str(ROOT / "ref/recompcore"), "rev-parse", "HEAD"]))
     with args.disc.open("rb") as disc:
@@ -108,6 +110,9 @@ def main():
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--save", type=Path, help="optional personal BlueWake .card container; only a copy is used")
     parser.add_argument("--module-optimizations", choices=MODES, default="none")
+    parser.add_argument("--instrumented-opt-level", type=int, choices=(0, 1), default=0,
+                        help="optimization level of the instrumented module (default 0, the fastest to compile; "
+                             "1 for a module too large for Apple's linker at 0, as lean memory makes it)")
     args = parser.parse_args()
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         parser.error("local training currently requires an Apple Silicon Mac")
@@ -157,9 +162,11 @@ def main():
          "-DAURORA_SDL3_PROVIDER=vendor", "-DAURORA_SDL3_LINKAGE=static", "-DAURORA_DAWN_LINKAGE=static"], logs / "host-configure.log")
     run(["cmake", "--build", host_build, "--target", "bluewake_host", "-j", args.jobs], logs / "host-build.log")
     # Frontend instrumentation uses the same function counters independently
-    # of optimization level. O0 shortens this disposable first compilation.
+    # of optimization level. O0 shortens this disposable first compilation; a
+    # module with lean memory is too large at O0 for Apple's linker (2.4 GB of
+    # code, branches out of range), and at O1 it is a third of that and links.
     run(["cmake", "-S", ROOT / "cmake/composite", "-B", module_build, *common,
-         "-DCMAKE_SHARED_LINKER_FLAGS=-fprofile-instr-generate -Wl,-no_compact_unwind", "-DCOMPOSITE_OPTIMIZATION_LEVEL=0",
+         "-DCMAKE_SHARED_LINKER_FLAGS=-fprofile-instr-generate -Wl,-no_compact_unwind", f"-DCOMPOSITE_OPTIMIZATION_LEVEL={args.instrumented_opt_level}",
          *cmake_flags(args.module_optimizations),
          f"-DCOMPOSITE_DIR={args.out / 'composite-src'}", f"-DGXRUNTIME_DIR={donor / 'GXRuntime'}",
          f"-DABI_DIR={donor / 'Source/Core/Core/PowerPC/StaticRecomp'}"], logs / "composite-configure.log")

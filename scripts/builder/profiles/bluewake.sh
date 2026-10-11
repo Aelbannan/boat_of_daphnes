@@ -204,6 +204,8 @@ profile_mods() {
 profile_train() {
     local args=(--disc "$iso" --out "$out" --jobs "$jobs" --module-optimizations "$module_optimizations")
     [ -z "$training_save" ] || args+=(--save "$training_save")
+    # Lean memory makes the instrumented module too large to link at -O0.
+    case " ${lean_arg:-} " in *" --lean-memory "*) args+=(--instrumented-opt-level 1) ;; esac
     run local-training python3 "$root/scripts/builder/train_local_pgo.py" "${args[@]}"
     [ -s "$out/pgo-local/composite.profdata" ] || die "local training produced no game profile"
     composite_pgo+=("$out/pgo-local/composite.profdata")
