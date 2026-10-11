@@ -2,6 +2,8 @@ FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMAKE_VERSION=3.31.10
+ARG LLVM_VERSION=22
+ARG LLVM_APT_KEY_FINGERPRINT=6084F3CF814B57C1CF12EFD515CF4D18AF4F7421
 ARG APPIMAGETOOL_VERSION=1.9.1
 ARG APPIMAGETOOL_X86_64_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 ARG TYPE2_RUNTIME_RELEASE=20251108
@@ -9,12 +11,28 @@ ARG TYPE2_RUNTIME_X86_64_SHA256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c8
 
 # This is the shared Linux build environment for GitHub Actions and
 # scripts/linux/build.py --ci-container. Keep tool and library dependencies
-# here rather than duplicating them in the workflow.
+# here rather than duplicating them in the workflow. Clang 18 remains the
+# default for both CI and playable builds. The playable builder can opt into
+# LLVM 22 with --ci-container --clang22 for performance testing without moving
+# the project's default compiler.
+# Keep Ubuntu's libc++ 18 development files for both compilers: versioned
+# libc++ development packages conflict, and this preserves CI's existing C++
+# runtime and the AppImage ABI baseline while only changing code generation.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates wget python3 python3-pip python3-venv \
+        ca-certificates wget gnupg python3 python3-pip python3-venv \
+    && wget -q https://apt.llvm.org/llvm-snapshot.gpg.key -O /tmp/apt.llvm.org.asc \
+    && test "$(gpg --batch --show-keys --with-colons /tmp/apt.llvm.org.asc \
+        | awk -F: '$1 == "fpr" { print $10; exit }')" = "${LLVM_APT_KEY_FINGERPRINT}" \
+    && gpg --batch --dearmor -o /usr/share/keyrings/apt.llvm.org.gpg /tmp/apt.llvm.org.asc \
+    && printf 'deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-%s main\n' \
+        "${LLVM_VERSION}" > /etc/apt/sources.list.d/apt.llvm.org.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         build-essential git clang-18 lld-18 llvm-18 libclang-rt-18-dev \
         libc++-18-dev libc++abi-18-dev ninja-build pkg-config binutils \
+        "clang-${LLVM_VERSION}" "lld-${LLVM_VERSION}" "llvm-${LLVM_VERSION}" \
+        "libclang-rt-${LLVM_VERSION}-dev" \
         patchelf zsync imagemagick file desktop-file-utils \
         libwayland-dev libxkbcommon-dev libx11-xcb-dev libx11-dev \
         libxrandr-dev libxext-dev libxi-dev libxcursor-dev libgl1-mesa-dev \
@@ -23,6 +41,7 @@ RUN apt-get update \
         libfmt-dev libbz2-dev libbrotli-dev libicu-dev \
     && python3 -m venv /opt/cmake \
     && /opt/cmake/bin/pip install --no-cache-dir "cmake==${CMAKE_VERSION}" \
+    && rm -f /tmp/apt.llvm.org.asc \
     && rm -rf /var/lib/apt/lists/*
 
 # Do not install Ubuntu's libabsl-dev. CI explicitly disables system Abseil,
@@ -46,7 +65,7 @@ RUN mkdir -p /opt/appimage \
         | sha256sum --check --strict - \
     && chmod 0755 /opt/appimage/appimagetool-x86_64.AppImage /opt/appimage/runtime-x86_64
 
-ENV PATH="/opt/cmake/bin:/usr/lib/llvm-18/bin:${PATH}" \
+ENV PATH="/opt/cmake/bin:/usr/lib/llvm-18/bin:/usr/lib/llvm-22/bin:${PATH}" \
     APPIMAGETOOL=/opt/appimage/appimagetool-x86_64.AppImage \
     APPIMAGE_RUNTIME_FILE=/opt/appimage/runtime-x86_64 \
     APPIMAGE_EXTRACT_AND_RUN=1

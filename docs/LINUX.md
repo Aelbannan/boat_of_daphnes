@@ -12,6 +12,10 @@ build** for a reproducible or SteamOS-targeted AppImage. Use the **native
 build** when you prefer your installed Linux toolchain and do not need a
 portable ABI baseline.
 
+Container builds use Clang 18 by default, matching Linux CI. Pass
+`--ci-container --clang22` to override that default with Clang 22; native builds
+continue to use the supported Clang selected by the host's `PATH`.
+
 | | Container build (recommended) | Native build |
 | --- | --- | --- |
 | Host | Linux, macOS, or Windows through WSL2 | x86-64 Linux |
@@ -35,12 +39,21 @@ To create the personal AppImage as part of the same build, add `--appimage`:
     python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
       --ci-container --appimage
 
+Clang 18 is the default, matching Linux CI. To evaluate Clang 22 explicitly,
+add `--clang22` and use a separate output directory from an existing Clang 18
+build:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux-clang22 \
+      --ci-container --clang22
+
 The version-controlled [`scripts/linux/Dockerfile`](../scripts/linux/Dockerfile)
-supplies Clang 18, CMake, development libraries and AppImage tools. CI uses the
-same image. Docker caches unchanged layers, mounts the disc read-only and writes
-normal outputs to `build/linux`; the disc never enters the image or CI. The
-result is always an x86-64 Linux build. Arm hosts use Docker's `linux/amd64`
-emulation, which is substantially slower.
+supplies Clang 18 and 22, CMake, development libraries and AppImage tools.
+Clang 18 remains the default and CI also selects it explicitly; `--clang22` is
+an opt-in for container builds. Ubuntu's libc++ 18 remains the shared C++
+runtime/ABI baseline for either compiler. Docker caches unchanged layers,
+mounts the disc read-only and writes normal outputs to `build/linux`; the disc
+never enters the image or CI. The result is always an x86-64 Linux build. Arm
+hosts use Docker's `linux/amd64` emulation, which is substantially slower.
 
 ## Native build
 
@@ -93,6 +106,8 @@ every path above.
 
 Useful options:
 
+    --clang22     use Clang 22 for a container build (requires --ci-container;
+                  Clang 18 remains the default)
     --source-only  stop after translating: checks tools, disc and translation
                    in minutes, before the long compile
     --no-mods      skip the widescreen and Better Wind Waker variants
@@ -180,7 +195,9 @@ CI image and avoid installing packaging tools on the host:
     python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
       --ci-container --appimage
 
-The shared Dockerfile pins appimagetool, the Type 2 runtime, CMake and Clang 18.
+The shared Dockerfile pins appimagetool, the Type 2 runtime and CMake. It uses
+Clang 18 by default, includes optional Clang 22 tools, and retains Ubuntu's
+libc++ 18 with either compiler.
 The completed AppImage is automatically audited for prohibited private files,
 accidental libstdc++ linkage and a maximum `GLIBC_2.39` requirement.
 

@@ -52,6 +52,7 @@ MODULE = "gGZLE01_recomp.so"
 GC_MAGIC = 0xC2339F3D
 CI_CONTAINER_IMAGE = "bluewake-linux-ci:local"
 CI_CONTAINER_ENV = "BLUEWAKE_CI_CONTAINER"
+LLVM22_BIN = Path("/usr/lib/llvm-22/bin")
 
 
 class BuildError(Exception):
@@ -271,6 +272,15 @@ def run_in_ci_container(args):
     return subprocess.run(command).returncode
 
 
+def select_container_toolchain(args):
+    """Opt into LLVM 22 inside the shared image; Clang 18 stays the default."""
+    if not args.clang22:
+        return
+    if not LLVM22_BIN.is_dir():
+        die(f"--clang22 requested, but {LLVM22_BIN} is missing from the container")
+    os.environ["PATH"] = f"{LLVM22_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
 class Builder:
     def __init__(self, args):
         self.args = args
@@ -410,9 +420,10 @@ int main(void) {{
 }}
 """)
         exe = probe.with_suffix("")
-        # Ubuntu 24.04's Clang 18 rejects the movbe and lzcnt spellings. Use
-        # the image's system compiler only for this feature probe; without
-        # --ci-container the existing Clang probe remains unchanged.
+        # LLVM releases differ on the accepted spellings here (Clang 18 rejects
+        # movbe and lzcnt). Keep the shared image's probe on Ubuntu's system cc;
+        # this selects only -march, while every BlueWake artifact still uses the
+        # Clang selected above. Native builds retain their existing Clang probe.
         probe_compiler = shutil.which("cc") if in_ci_container else self.clang
         subprocess.run([probe_compiler, "-O1", str(probe), "-o", str(exe)],
                        check=True, capture_output=True)
@@ -1355,15 +1366,24 @@ def main():
     parser.add_argument("--check-only", action="store_true", help="check tools, dependencies and the disc only")
     parser.add_argument("--ci-container", action="store_true",
                         help="run this same build inside the Ubuntu 24.04 Linux CI container")
+    parser.add_argument("--clang22", action="store_true",
+                        help="use Clang 22 instead of Clang 18 (requires --ci-container)")
     parser.add_argument("--appimage", action="store_true",
                         help="after the normal app-folder build, package it as an AppImage")
     args = parser.parse_args()
+    if args.clang22 and not args.ci_container:
+        parser.error("--clang22 requires --ci-container")
     if args.ci_container and os.environ.get(CI_CONTAINER_ENV) != "1":
         try:
             sys.exit(run_in_ci_container(args))
         except BuildError as error:
             print(f"\nbuilder: {error}", file=sys.stderr)
             sys.exit(1)
+    try:
+        select_container_toolchain(args)
+    except BuildError as error:
+        print(f"\nbuilder: {error}", file=sys.stderr)
+        sys.exit(1)
     # Wind Waker Recomp's Windows builds prepare all of these every time; BlueWake
     # matches that by default. --conservative builds the plain translation.
     if not args.conservative:

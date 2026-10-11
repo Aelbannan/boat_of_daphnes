@@ -16,6 +16,49 @@ BUILD = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(BUILD)
 
 
+class ToolchainPolicyTest(unittest.TestCase):
+    """Protect the deliberate compiler split in the shared environment.
+
+    Clang 18 remains the reproducible default. Developers can explicitly test
+    the LLVM version used for current performance work without silently moving
+    CI or ordinary container builds to a new compiler.
+    """
+
+    def test_clang_18_is_the_default_while_the_image_also_supplies_llvm_22(self):
+        """PATH selects LLVM 18 unless the builder handles --clang22."""
+        dockerfile = (BUILD.ROOT / "scripts/linux/Dockerfile").read_text()
+        workflow = (BUILD.ROOT / ".github/workflows/linux-host.yml").read_text()
+
+        self.assertIn("ARG LLVM_VERSION=22", dockerfile)
+        self.assertLess(dockerfile.index("/usr/lib/llvm-18/bin"),
+                        dockerfile.index("/usr/lib/llvm-22/bin"))
+        self.assertIn("-DCMAKE_C_COMPILER=clang-18", workflow)
+        self.assertIn("-DCMAKE_CXX_COMPILER=clang++-18", workflow)
+
+    def test_clang_22_opt_in_prepends_its_tool_directory(self):
+        """The opt-in changes lookup only inside that builder process."""
+        args = argparse.Namespace(clang22=True)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(BUILD, "LLVM22_BIN", Path(temporary)), \
+                patch.dict(BUILD.os.environ, {"PATH": "/default/bin"}, clear=True):
+            BUILD.select_container_toolchain(args)
+            self.assertEqual(BUILD.os.environ["PATH"], f"{temporary}:/default/bin")
+
+    def test_default_does_not_modify_the_tool_path(self):
+        """Omitting --clang22 preserves the image's Clang 18 selection."""
+        with patch.dict(BUILD.os.environ, {"PATH": "/default/bin"}, clear=True):
+            BUILD.select_container_toolchain(argparse.Namespace(clang22=False))
+            self.assertEqual(BUILD.os.environ["PATH"], "/default/bin")
+
+    def test_clang_22_requires_the_container(self):
+        """The host toolchain cannot be changed implicitly by this option."""
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "/nonexistent/disc.iso", "--clang22"],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--clang22 requires --ci-container", result.stderr)
+
+
 class LinuxContainerMountTest(unittest.TestCase):
     """The wrapper exposes only the paths the unchanged builder needs.
 
@@ -68,7 +111,8 @@ class LinuxContainerRunTest(unittest.TestCase):
             context.mkdir(parents=True)
             disc.touch()
             args = argparse.Namespace(disc=disc, out=out)
-            original = [str(SCRIPT), str(disc), "--out", str(out), "--ci-container", "--appimage", "--no-train"]
+            original = [str(SCRIPT), str(disc), "--out", str(out), "--ci-container", "--clang22",
+                        "--appimage", "--no-train"]
             completed = [subprocess.CompletedProcess(["docker", "info"], 0),
                          subprocess.CompletedProcess(["docker", "build"], 0),
                          subprocess.CompletedProcess(["docker", "run"], 17)]
@@ -102,9 +146,9 @@ class LinuxContainerRunTest(unittest.TestCase):
 class CpuProbeContractTest(unittest.TestCase):
     """Keep compiler selection changes isolated to the container invocation.
 
-    Ubuntu 24.04's Clang 18 rejects two feature names used by the existing
-    probe, while its system C compiler accepts them. The probe only selects
-    -march; every actual BlueWake artifact must continue to use Clang.
+    LLVM releases differ on two feature names used by the existing probe, while
+    Ubuntu's system C compiler accepts them. The probe only selects -march;
+    every actual BlueWake artifact must continue to use Clang.
     """
 
     REPORT = "sse4.2=1 popcnt=1 movbe=1 fma=1 avx=1 avx2=1 bmi=1 bmi2=1 lzcnt=1\n"
