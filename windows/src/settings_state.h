@@ -21,7 +21,7 @@ struct Settings {
     bool mouse_camera = true;
     double mouse_sensitivity = 1.0;
     bool mouse_invert_y = false;
-    bool controller_swap_ab = false, controller_swap_xy = false;
+    bool controller_swap_ab = false, controller_swap_xy = false, controller_swap_lr = false;
     // A custom controller button layout (button_remap.h); "" is the controller's own.
     std::string button_map;
     // What the mouse buttons press and the GameCube buttons' keys
@@ -60,6 +60,7 @@ struct Settings {
     bool movement_extras = false;
     bool fast_transitions = false;
     bool quick_doors = false;
+    bool stage_select = false;   // the developers' stage select (F7)
 };
 
 inline bool bw_settings_option_value(const Settings& settings, const std::string& name, bool default_on) {
@@ -108,8 +109,10 @@ inline void bw_settings_keep_edits(Settings& saved, const Settings& before, cons
     if (before.movement_extras != session.movement_extras) saved.movement_extras = session.movement_extras;
     if (before.fast_transitions != session.fast_transitions) saved.fast_transitions = session.fast_transitions;
     if (before.quick_doors != session.quick_doors) saved.quick_doors = session.quick_doors;
+    if (before.stage_select != session.stage_select) saved.stage_select = session.stage_select;
     if (before.controller_swap_ab != session.controller_swap_ab) saved.controller_swap_ab = session.controller_swap_ab;
     if (before.controller_swap_xy != session.controller_swap_xy) saved.controller_swap_xy = session.controller_swap_xy;
+    if (before.controller_swap_lr != session.controller_swap_lr) saved.controller_swap_lr = session.controller_swap_lr;
     if (before.button_map != session.button_map) saved.button_map = session.button_map;
     if (before.mouse_buttons != session.mouse_buttons) saved.mouse_buttons = session.mouse_buttons;
     if (before.key_map != session.key_map) saved.key_map = session.key_map;

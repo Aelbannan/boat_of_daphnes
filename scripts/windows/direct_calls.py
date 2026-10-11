@@ -36,6 +36,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import chunk_pool  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 MARK = "/* bluewake: direct calls between chunks (cmake/composite/direct_calls.h) */\n"
 INCLUDE = '#include "../generated.h"\n'
@@ -80,12 +83,16 @@ def watched_addresses():
     """Guest addresses the host names: its edge service may act at any of them.
     Both mirror forms of each: the service tests a boundary's address with the
     0x40000000 bit cleared (host_canonical_linked_pc), so a REL chunk's
-    0xC1E01B88 is its 0x81E01B88."""
+    0xC1E01B88 is its 0x81E01B88. Text between `bluewake-unwatched-begin` and
+    `bluewake-unwatched-end` is left out: addresses only a diagnostic reads, in
+    builds that never skip the chassis for a direct call (Elliott Tate's 5edeacc)."""
     found = set()
     for folder in ("runtime/host/src", "windows/src"):
         for path in (ROOT / folder).rglob("*"):
             if path.suffix in (".c", ".h", ".cpp", ".mm", ".m"):
-                for m in re.finditer(r"0x([8C][0-9A-Fa-f]{7})u?\b", path.read_text(errors="replace")):
+                text = re.sub(r"bluewake-unwatched-begin.*?bluewake-unwatched-end", "",
+                              path.read_text(errors="replace"), flags=re.S)
+                for m in re.finditer(r"0x([8C][0-9A-Fa-f]{7})u?\b", text):
                     address = int(m.group(1), 16)
                     found.update((address, address | 0x40000000, address & ~0x40000000))
     return found
@@ -327,6 +334,28 @@ def write_watch_list(root, watched):
     return len(canonical)
 
 
+_SHARED = None
+
+
+def _start(starts, index_of, watched, natives):
+    global _SHARED
+    _SHARED = (starts, index_of, watched, natives)
+
+
+def _transform_chunk(text, path):
+    starts, index_of, watched, natives = _SHARED
+    m = re.search(r"_([0-9A-F]{8})\.c$", path.name)
+    own_start = int(m.group(1), 16) if m else None
+    converted, count = transform(text, own_start, starts, index_of, watched, natives)
+    converted, count_indirect = transform_indirect(converted, watched)
+    converted, count_fallback = transform_fallback(converted, watched)
+    return converted, (count, count_indirect, count_fallback)
+
+
+def _one(path):
+    return chunk_pool.rewrite(path, lambda text: _transform_chunk(text, path), changed=any)
+
+
 def main():
     root = Path(sys.argv[1])
     chunks = sorted(root.glob("chunks_*/*.c"))
@@ -340,24 +369,9 @@ def main():
     if matrix_manifest != matrix_header:
         sys.exit("incomplete native matrix preparation")
     natives = DISPATCHER_NATIVE if matrix_manifest else set()
-    sites = files = indirect = fallback = 0
-    for path in chunks:
-        m = re.search(r"_([0-9A-F]{8})\.c$", path.name)
-        own_start = int(m.group(1), 16) if m else None
-        with open(path, encoding="utf-8", newline="") as file:
-            original = file.read()
-        converted, count = transform(original, own_start, starts, index_of, watched, natives)
-        converted, count_indirect = transform_indirect(converted, watched)
-        converted, count_fallback = transform_fallback(converted, watched)
-        if count or count_indirect or count_fallback:
-            temporary = path.with_suffix(".c.tmp")
-            with open(temporary, "w", encoding="utf-8", newline="") as file:
-                file.write(converted)
-            temporary.replace(path)
-            sites += count
-            indirect += count_indirect
-            fallback += count_fallback
-            files += 1
+    counts = chunk_pool.map_chunks(_one, chunks, _start, (starts, index_of, watched, natives))
+    sites, indirect, fallback = (sum(c[i] for c in counts) for i in range(3))
+    files = sum(1 for c in counts if any(c))
     listed = write_watch_list(root, watched)
     header = root / "generated.h"
     marker = "#define BLUEWAKE_DIRECT_CALLS_PREPARED 2\n"
