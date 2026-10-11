@@ -14,10 +14,12 @@ one, this one wins.
   to measure a change.
 - `docs/DIRECTION.md`: where BlueWake is going: releases without game code, the same app on every platform
   (Android matches the iPhone app), fast contributor reviews, measured performance.
-- `docs/MIGRATION_STATUS.md`: what is done and what is open.
-- `docs/BUILD_YOUR_OWN.md`, `docs/BUILDER.md`, `docs/WINDOWS.md`, `docs/MODS.md`, `docs/WWHD_TEXTURES.md`:
-  how things work.
-- `docs/WINDOWS_TASKS.md`: Windows work waiting on a Windows PC, in priority order.
+- `docs/MIGRATION_STATUS.md`: how Wind Waker Recomp became BlueWake, and what is left of that move.
+- `docs/BUILD_YOUR_OWN.md`, `docs/BUILDER.md`, `docs/WINDOWS.md`, `docs/LINUX.md`, `docs/MODS.md`,
+  `docs/WWHD_TEXTURES.md`, `docs/STAGE_SELECT.md`: how things work. `docs/PROFILING.md` (measuring on the
+  Steam Deck), `docs/PERFORMANCE_OPTIMIZATIONS.md` (Smooth Motion and renderer changes, with their switches) and
+  `docs/PADMINT_HANDOFF.md` (the PadMint adapter contract) are references.
+- `docs/WINDOWS_TASKS.md`: what each Windows build was checked for, and what still needs a Windows PC.
 - `docs/status/*_YYYY-MM-DD.md`: dated records of past work. They are evidence, not instructions.
 - `docs/archive/`: old plans, goal prompts and handoffs. Never act on them.
 
@@ -57,7 +59,7 @@ just by building from `main`:
   `windows/src/win_settings.cpp` (Windows). Share a header between them when you can, as
   `runtime/host/src/button_remap.h` does.
 - The Windows CI ("host" job) must pass before merging.
-- If the change still needs a check on a Windows PC, add it to "In `main`, waiting for a Windows build"
+- If the change still needs a check on a Windows PC, add it to "In `main`, for the next Windows build"
   in [docs/WINDOWS_TASKS.md](docs/WINDOWS_TASKS.md) in the same pull request.
 
 ## Talking to people on GitHub

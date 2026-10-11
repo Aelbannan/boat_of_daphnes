@@ -1,7 +1,7 @@
 ## 2026-10-06 Triage checkpoint
 
 Start with [the October 6 handoff](HANDOFF_2026-10-06.md) and
-[the maintained issue queue](../TECH_DEBT.md). Intro audio and Pictobox candidates are opt-in;
+[the maintained issue queue](TECH_DEBT_2026-10-07.md). Intro audio and Pictobox candidates are opt-in;
 iPad/Windows acceptance and release gates remain distinct. The older entries below are historical.
 
 ## 2026-10-01 BlueWake source-fork integration

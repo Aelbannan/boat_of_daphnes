@@ -1,8 +1,10 @@
 # Wind Waker Recomp migration log
 
+> Dated record, moved from `docs/` on October 11, 2026. The migration is done; what remains is in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md).
+
 This page records how Elliott's [Wind-Waker-Recomp](https://github.com/elliotttate/Wind-Waker-Recomp)
 is being folded into BlueWake: what was decided, what has changed and where, and what is still open.
-Current status in one table: [migration status](MIGRATION_STATUS.md).
+Current status in one table: [migration status](../MIGRATION_STATUS.md).
 
 ## Why
 
@@ -57,7 +59,7 @@ Elliott's own (GitHub's push events show the pushing account).
 GitHub cannot transfer issues between repositories owned by different accounts, so they are recreated:
 
 1. Check each open issue against BlueWake: some are already fixed or answered there (the
-   [stability plan](status/STABILITY_PLAN_2026-10-03.md) sorts them).
+   [stability plan](STABILITY_PLAN_2026-10-03.md) sorts them).
 2. Open it in BlueWake with its title and text, "Originally reported by @user in
    elliotttate/Wind-Waker-Recomp#N", and the label `from-wind-waker-recomp`. Tagging the reporter
    notifies them.
@@ -74,9 +76,9 @@ was already BlueWake #13. The three pull request authors have been asked to reop
 
 - **Releases.** Decided October 4: BlueWake publishes the ready-made Windows build on its
   [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest), the same as Wind-Waker-Recomp 0.4.0. Mac, iPhone and iPad stay on PadMint
-  ([rights](../RIGHTS_AND_LICENSES.md)). Wind-Waker-Recomp's releases were unpublished on
+  ([rights](../../RIGHTS_AND_LICENSES.md)). Wind-Waker-Recomp's releases were unpublished on
   October 4 (see above).
-- **Windows testing** of BlueWake from a player's own disc: [checklist](WINDOWS_ACCEPTANCE.md).
+- **Windows testing** of BlueWake from a player's own disc: [checklist](WINDOWS_ACCEPTANCE_2026-10-04.md).
 - **Remaining code:** Elliott's second set of native functions, his `lean_memory` step, and his
   newest Wind-Waker-Recomp commits on October 3 (WWHD texture import, Mac rendering fixes, smooth HUD
   interpolation).
