@@ -235,10 +235,19 @@ profile_compile() {
         flags="$flags $(pgo_flags "$profile_path")"
         echo "with the composite profile(s): ${composite_pgo[*]}"
     fi
+    # Tiered, as on Windows and Linux: the chunks the profile never ran (504 of 813
+    # for 0.7.0, a third of the compile) at -O1, the rest at -O2. Empty clears it.
+    local cold_file=""
+    if [ "$tiered" -eq 1 ] && [ "$opt_level" = 2 ] && [ ${#composite_pgo[@]} -gt 0 ]; then
+        cold_file=$out/composite-cold-sources.txt
+        run composite-cold-sources python3 "$root/scripts/builder/cold_sources.py" \
+            "$out/composite.profdata" "$out/composite-src" "$cold_file"
+        tail -1 "$logs/composite-cold-sources.log"
+    fi
     run "composite-configure-$platform" cmake -S cmake/composite -B "$build_dir" -G Ninja \
         "-DCMAKE_SYSTEM_NAME=$cmake_system" "-DCMAKE_OSX_SYSROOT=$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 \
         "-DCMAKE_OSX_DEPLOYMENT_TARGET=$deployment" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS=$flags" \
-        -DCOMPOSITE_OPTIMIZATION_LEVEL="$opt_level" "${optimization_flags[@]}" \
+        -DCOMPOSITE_OPTIMIZATION_LEVEL="$opt_level" "-DCOMPOSITE_COLD_SOURCES_FILE=$cold_file" "${optimization_flags[@]}" \
         -DCOMPOSITE_DIR="$out/composite-src" -DGXRUNTIME_DIR="$recompcore/GXRuntime" \
         -DABI_DIR="$recompcore/Source/Core/Core/PowerPC/StaticRecomp"
     run "composite-build-$platform" cmake --build "$build_dir" -j "$jobs"
