@@ -92,6 +92,13 @@ iPad Pro (M2) at the Outset Island pier it averaged 26.1 FPS with the CPU at 99 
 samples, none at 29 FPS or above), where the owner's build holds 30. It was dropped: it saves about half an
 hour and loses the game's frame rate.
 
+Since October 11 the build is **tiered**, as the Windows and Linux builders have been since October 2: only
+the chunks the optimization profile never ran (504 of 813) compile at `-O1`; everything training ran stays
+at `-O2`. On the same M3 Max the game module compiled in 61 minutes instead of 79. On an iPad Pro (M2), with
+scripted 100-second runs from copied cards, Dragon Roost Cavern (code the training never runs) and the sea
+by Outset both kept full speed, and the game thread was as busy as before: 52.1 and 52.2% against 51.9
+and 51.8% in the cavern, 80.9% against 81.3% at Outset. `--no-tiered` compiles every chunk at `-O2`.
+
 ## Optimization profiles
 
 The game module and the app are compiled with LLVM profile-guided optimization (PGO) when profiles are
