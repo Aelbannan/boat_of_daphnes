@@ -244,3 +244,6 @@ and the inline answer); the memory and register helpers 6.5%; the dispatcher 3.3
 6% together; the host's per-call checks down to 2.6% from 9.7%. The next cut in the per-call check is the host
 keeping one "interrupt pending" byte current, which needs a RecompCore change (`interrupts.c` writes the PI
 registers), so it waits with the alias change for Chris.
+Another RecompCore one: `bw_inline_gpr_memory_ready` (1.5%, `inline_gpr.h`) checks each of up to 18 saved
+registers' words with `get_ram_ptr`, so each inline register save or restore asks the alias resolver up to 18
+times; one "does any alias overlap this span" query from `cpu.c`'s sorted index would answer for the whole frame.
