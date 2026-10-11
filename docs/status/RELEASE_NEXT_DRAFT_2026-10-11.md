@@ -30,5 +30,5 @@ fallback on by default for #263 and #13 (no measurable cost on the game thread; 
 | Windows build from the candidate on Chris's PC, with the play checks in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) sections 1 and 2 | Chris's PC | not yet |
 | Linux AppImage from a contributor's own disc; `check_appimage_abi.py` at 2.39; the release check | cforain or jkoehler11 | not yet |
 | The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | not yet |
-| The 468-place warp sweep with the stage select | pdale-boop or Codex | not yet |
+| The 468-place warp sweep with the stage select (`scripts/stage_select_sweep.py`) | pdale-boop or Codex | On `main` `d73ac95` (not the candidate), a Mac, an early file: 446 of 468 arrive, the card unchanged after all 468; the rest are the noted test rooms and crash rooms and late-game cutscenes the file can't reach ([STAGE_SELECT.md](../STAGE_SELECT.md)). Still to do on the candidate, with a late-game file |
 | The benchmark at Outset and Dragon Roost Cavern against 0.7.0 | Codex | not yet |

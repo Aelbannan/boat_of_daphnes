@@ -112,6 +112,14 @@ arrive. The rest are the places with notes above, plus a few that crash at `pc=0
 bug in how a finished disc read calls back into the game. A given build crashes the same way every time,
 but which places it hits moves when the host code changes; it needs its own fix.
 
+`scripts/stage_select_sweep.py APP CARD OUT` runs that sweep (one headless run a place, 120 frames after Link
+arrives, several at once) and checks that the card is unchanged after each. On a Mac (M3 Max, `main` at `d73ac95`,
+October 12) from an early file at Outset, 446 of 468 arrive in about 8 minutes, and the card is unchanged after all
+468. The other 22: the four test rooms marked (hangs) and Wind Temple R04 and R08 marked (crash), as above; and 16
+late-game cutscenes the early file has no story progress for (9 crash right after arriving, calling `0x80000000`
+from `0x80109608`, a missing object; 7 wait), with the Ganon room cutscene and the Ending. None crashed at
+`0x8180FFF0`.
+
 ## Names files
 
 `config/stage_select/` holds three, loaded in order; a later file replaces the names of the rooms it
