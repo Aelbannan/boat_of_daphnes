@@ -221,3 +221,26 @@ pair: Outset 21.89 s against 21.79 s (0.5%), Dragon Roost Cavern 13.20 s against
 identical checkpoints. It is a RecompCore change, on for everyone once pinned, so it waits for Chris: the commit is
 `f4afb6f` on a local branch `codex/alias-last-hit` of the benchmark checkout's RecompCore, on the pinned `ddd031b`.
 Not pushed; a RecompCore pull request and a BlueWake pin follow if Chris says yes.
+
+## Everything together (October 12)
+
+The lean blocks build (what 0.7.0 ships to PCs) against lean memory, lean deadlines, the lazy overlap watch
+(`BLUEWAKE_LAZY_OVERLAP=1`) and the alias resolver's last hit, all four on. Untrained modules from the same prepared
+sources, the same host, alternated, three runs each after the first pair:
+
+| | Lean blocks | All four | Time | Retraces a second |
+| --- | --- | --- | --- | --- |
+| The sea by Outset | 25.15, 25.04, 25.00 s | 21.87, 21.73, 21.68 s | 13.2% less | 15% more |
+| Dragon Roost Cavern | 15.71, 15.56, 15.64 s | 13.13, 12.99, 13.06 s | 16.5% less | 20% more |
+
+Same blocks, and the same memory, cycles and aliases at every checkpoint (the CPU differs only in
+`cycle_observation_suffix`, as with each step). On a CPU where the game thread sets the frame rate (the Steam Deck,
+the Fold 7, a 2-core laptop), that is the size of the change to expect if it carries over from ARM on a Mac, which
+only those machines can show.
+
+What the game thread spends after these (the same Outset sample, all four on): the module's per-call check
+`bw_direct_call_ready` 6.1% (two per direct call: the interrupt sources through four host pointers, the cycle budget
+and the inline answer); the memory and register helpers 6.5%; the dispatcher 3.3%; the floating-point helpers about
+6% together; the host's per-call checks down to 2.6% from 9.7%. The next cut in the per-call check is the host
+keeping one "interrupt pending" byte current, which needs a RecompCore change (`interrupts.c` writes the PI
+registers), so it waits with the alias change for Chris.
