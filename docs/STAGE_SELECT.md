@@ -57,7 +57,7 @@ loaded. The settings menu's stage select section says the same, and says when sa
 If you'd rather keep saving and take the risk, start BlueWake with `--stage-select-saves` (or set
 `BLUEWAKE_STAGE_SELECT_SAVES=1`, as on a Mac). Saving then stays on, F7 doesn't ask, and the settings
 menu says so. Back up your card first: a save made after warping can leave your file somewhere the story
-can't go on from.
+can't go on from. Save states taken with it on can be saved from later, even without it.
 
 The stage select is in the desktop apps (Mac, Linux, Windows and the Steam Deck). The iPhone and iPad app
 doesn't have it.
