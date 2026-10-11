@@ -16,9 +16,10 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | Rebuilding after an app change takes about a minute (pdale-boop, #243) | none | Windows, Linux builders | Windows and Linux; Mac mods step byte-identical | none |
 | Swap L and R (the triggers) under Controls (#248) | #244 | Windows, Mac, Linux | CI test | A controller |
 | The developers' stage select, off by default (pdale-boop, #210, #250) | none | Windows, Mac, Linux | Played on Windows and Linux; no cost when off | The 468-place sweep on the candidate |
+| The Mac builder takes `--lean-blocks` and `--lean-memory`, the Windows builder's preparations, off by default (Elliott Tate's `lean_memory.py`, #257) | #59 | Mac builder | M3 Max: lean memory 5.5% faster at Outset and 6% in Dragon Roost Cavern, same blocks ([record](SPEED_PROFILE_2026-10-11.md)) | Turning it on is Chris's call, after x86, Steam Deck and phone numbers |
 
-Not in it yet: Android (#93, waits on speed and Chris's bar), the speed sprint's changes (S1 to S3), the Linux
-container (#254).
+Not in it yet: Android (#93, waits on speed and Chris's bar), the speed sprint's later changes (S2 fix 2 onward), the
+Linux container (#254).
 
 ## Checks before publishing
 
