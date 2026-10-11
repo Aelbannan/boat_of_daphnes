@@ -533,6 +533,8 @@ static void usage(void) {
             "  --safe-mode        Recover startup with HLE audio and mods off\n"
             "  --hle-audio        Fast audio for this session\n"
             "  --lle-audio        run the DSP's own microcode instead of the HLE ucode\n"
+            "  --stage-select-saves  keep saving on after using the stage select (it can\n"
+            "                     leave your file in a state the story never reaches)\n"
             "  --mods LIST        mods compiled into the module, by name\n"
             "  --disc FILE        the disc image to read (default game\\GZLE01.iso)\n"
             "  --module FILE      the translated game module (default gGZLE01_recomp.dll)\n"
@@ -611,6 +613,8 @@ int main(int argc, char** argv) {
             _putenv_s("BLUEWAKE_MOUSE_CAMERA", "0");
         } else if (strcmp(a, "--safe-mode") == 0) {
             _putenv_s("BLUEWAKE_SAFE_MODE", "1");
+        } else if (strcmp(a, "--stage-select-saves") == 0) {
+            _putenv_s("BLUEWAKE_STAGE_SELECT_SAVES", "1");
         } else if (strcmp(a, "--hle-audio") == 0) {
             _putenv_s("BLUEWAKE_DSP_MODE", "hle");
         } else if (strcmp(a, "--lle-audio") == 0) {

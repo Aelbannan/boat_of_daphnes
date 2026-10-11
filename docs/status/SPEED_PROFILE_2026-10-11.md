@@ -87,9 +87,31 @@ printed the fields: same program counter, the rest of the CPU state and all memo
 `cycle_observation_suffix` differs (1 against 2), the bookkeeping value lean memory leaves stale on the RAM path,
 which nothing reads there. Every checkpoint after it matches again.
 
-**On Apple builds it doesn't link with training yet.** The instrumented module for local training is too large for
-Apple's linker: `B/BL out of range (max is +/-128MB)` after "branch islands: maximum cluster count reached". The
-module without instrumentation links. Windows and Linux (x86) aren't affected; Android uses a different linker.
+**On Apple builds it didn't link with training** (fixed October 12, below). The instrumented module for local
+training was too large for Apple's linker: `B/BL out of range (max is +/-128MB)` after "branch islands: maximum
+cluster count reached". The module without instrumentation links. Windows and Linux (x86) aren't affected; Android
+uses a different linker.
+
+**The fix: train at `-O1` with lean memory.** Training compiles its instrumented module at `-O0`, the quickest
+compile; the counters are the same at any level. With lean memory that module has 2.4 GB of code, out of reach of
+the linker's branch islands. At `-O1` it has 822 MB and links with no warning. The Mac builder now asks for `-O1`
+when `--lean-memory` is on (`train_local_pgo.py --instrumented-opt-level 1`). Training takes about as long: on this
+Mac (16 cores) the instrumented compile grows from about 4 to about 28 minutes, and the training runs shrink from
+about 31 to 3.5 minutes, because the instrumented game runs faster (31.5 minutes in all, against 35 for the lean
+build at `-O0`). A Mac with fewer cores pays more for the compile, so the other builds keep `-O0`.
+
+A complete build with `--combined-optimizations --lean-blocks --lean-memory --lean-deadlines` took 57 minutes and
+compared with the trained lean build (`--lean-blocks` alone), both trained, alternated, three runs each after a
+cold first pair:
+
+| | Lean blocks, trained | + lean memory + lean deadlines, trained | |
+| --- | --- | --- | --- |
+| The sea by Outset | 22.36, 22.35, 22.27 s | 20.93, 20.98, 20.88 s | 6.3% faster |
+| Dragon Roost Cavern | 14.12, 14.22, 14.12 s | 13.11, 13.14, 13.08 s | 7.4% faster |
+| Module | 433.0 MB | 450.5 MB | +4% |
+
+Same blocks, and the same memory, cycles and aliases at every checkpoint. The trained gain is smaller than the two
+steps' untrained gains added up (about 9 to 11%), as the training already speeds up some of what they remove.
 
 ## S2, fix 2: lean deadlines (October 12)
 

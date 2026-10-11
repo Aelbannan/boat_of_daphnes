@@ -78,6 +78,7 @@ const char* const kKeys[] = {
 std::string g_path;                          // the settings file ("" when none)
 std::map<std::string, std::string> g_other;  // its other keys, kept as they were
 bool g_open = false;
+bool g_stage_select_question = false; // the menu shows only the stage select's question
 bool g_dirty = false;
 bool g_nav_set = false;
 
@@ -237,6 +238,10 @@ void close_menu() {
     if (!g_open)
         return;
     g_open = false;
+    if (g_stage_select_question) {
+        g_stage_select_question = false;
+        bluewake_stage_select_answer(false); // closed without an answer: cancel
+    }
     bluewake_haptics_block(false);
     save();
     std::fprintf(stderr, "[settings] menu closed\n");
@@ -388,6 +393,7 @@ void gameplay_tab() {
     ImGui::TextWrapped("F7 during play opens the menu the developers used to jump to any room, from your own "
                        "file; F7 in the menu goes back. On a controller, Back (View on Xbox, Share or Create on "
                        "PlayStation) opens these settings and the button below does the same. Off by default.");
+    bw_stage_select_save_warning();
     if (bw_stage_select_button())
         close_menu();
 
@@ -805,6 +811,10 @@ void draw(void*) {
     test_hook();
     draw_climb_wheel();
     draw_renderer_notice(now);
+    if (bluewake_stage_select_take_question()) {
+        open_menu();
+        g_stage_select_question = g_open;
+    }
     if (!g_open)
         return;
     ImGuiIO& io = ImGui::GetIO();
@@ -813,6 +823,25 @@ void draw(void*) {
         g_nav_set = true;
     }
     const ImVec2 display = io.DisplaySize;
+    if (g_stage_select_question) {
+        ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowBgAlpha(0.94f);
+        bluewake_ui::begin_theme();
+        if (g_menu_font != nullptr) ImGui::PushFont(g_menu_font);
+        int answer = 0;
+        if (ImGui::Begin("Developers' stage select", nullptr,
+                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::SetWindowFontScale(1.f / g_font_dpi);
+            answer = bw_stage_select_question();
+        }
+        ImGui::End();
+        if (g_menu_font != nullptr) ImGui::PopFont();
+        bluewake_ui::end_theme();
+        if (answer != 0)
+            close_menu();
+        return;
+    }
     ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(std::min(display.x - 24.f, 860.f), display.y * 0.78f), ImGuiCond_Appearing);
     ImGui::SetNextWindowBgAlpha(0.94f);

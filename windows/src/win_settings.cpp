@@ -93,6 +93,7 @@ std::vector<wchar_t> g_environment;  // as BlueWake was started, for Restart
 RestartRequest g_restart;
 bool g_safe_mode;
 bool g_menu_open;
+bool g_stage_select_question; // the menu shows only the stage select's question
 bool g_toggle_menu, g_toggle_fullscreen;  // from the hotkeys, done in the frame
 bool g_dirty;
 Uint64 g_dirty_at, g_first_frame_at;
@@ -462,6 +463,10 @@ void set_menu_open(bool open) {
     if (open == g_menu_open)
         return;
     g_menu_open = open;
+    if (!open && g_stage_select_question) {
+        g_stage_select_question = false;
+        bluewake_stage_select_answer(false); // closed without an answer: cancel
+    }
     PADBlockInput(open);
     // The menu's keys and clicks are not the game's.
     PADSetKeyboardActive(0, open ? FALSE : TRUE);
@@ -837,6 +842,7 @@ void tab_enhancements() {
     ImGui::TextDisabled("    F7 during play opens the menu the developers used to jump to any room, from your");
     ImGui::TextDisabled("    own file; F7 in the menu goes back. On a controller, Back (View on Xbox, Share or");
     ImGui::TextDisabled("    Create on PlayStation) opens these settings and the button below does the same.");
+    bw_stage_select_save_warning();
     if (bw_stage_select_button())
         set_menu_open(false);
 }
@@ -943,6 +949,21 @@ void draw_menu(SDL_Window* w) {
     bluewake_ui::begin_theme(scale);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
                             ImVec2(0.5f, 0.5f));
+    if (g_stage_select_question) {
+        ImGui::SetNextWindowBgAlpha(0.94f);
+        int answer = 0;
+        if (ImGui::Begin("Developers' stage select", nullptr,
+                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::SetWindowFontScale(scale / g_font_scale);
+            answer = bw_stage_select_question();
+        }
+        ImGui::End();
+        bluewake_ui::end_theme();
+        if (answer != 0)
+            set_menu_open(false);
+        return;
+    }
     ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(io.DisplaySize.x * 0.95f, io.DisplaySize.y * 0.9f));
     ImGui::SetNextWindowBgAlpha(0.94f);
     bool open = true;
@@ -1189,6 +1210,10 @@ void frame(void*) {
     }
     draw_climb_wheel();
     draw_shader_wait(w);
+    if (bluewake_stage_select_take_question()) {
+        set_menu_open(true);
+        g_stage_select_question = true;
+    }
     if (g_menu_open)
         draw_menu(w);
     draw_hint(w);
