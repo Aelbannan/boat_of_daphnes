@@ -18,9 +18,11 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | The developers' stage select, off by default (pdale-boop, #210, #250); once it's used, saving is off until a restart, F7 asks first, and picked cutscenes get their story flag (#266) | #251 | Windows, Mac, Linux | Played on Windows and Linux; no cost when off; #266 played on Windows, Mac build and card test | The 468-place sweep on the candidate; #266 on a Mac or Linux by hand |
 | The Mac builder takes `--lean-blocks` and `--lean-memory`, the Windows builder's preparations, off by default (Elliott Tate's `lean_memory.py`, #257) | #59 | Mac builder | M3 Max: lean memory 5.5% faster at Outset and 6% in Dragon Roost Cavern, same blocks ([record](SPEED_PROFILE_2026-10-11.md)) | Turning it on is Chris's call, after x86, Steam Deck and phone numbers |
 | `--lean-deadlines` in the Mac, Windows and Linux builders, off by default (#264), and Mac training at `-O1` with lean memory so the trained module links (#270) | #59, #215 | Every builder | M3 Max: 3.7 to 4.9% on top of lean memory untrained; trained, lean memory and lean deadlines 6.3 to 7.4% faster than lean blocks alone; same game state | The defaults, Chris's call after x86, Steam Deck and phone numbers |
+| `BLUEWAKE_LAZY_OVERLAP=1`, off by default: the host stops reading the scene's overlap phase at every direct call, and the game module answers the per-call question itself (#274) | #59, #215, #93 | Every platform | M3 Max: 3.9 to 4.7% faster on top of lean memory and lean deadlines; identical checkpoints, also through four scene changes; every one of 708 M inline answers agreed with the host | A Windows PC, a Deck and the Fold 7; the default is Chris's call |
+| CI actions brought up to date (Mrlinkwii, #273) | none | CI | Every check passes with them | none |
 
 Not in it yet: Android (#93, waits on speed and Chris's bar). A decision for Chris before the freeze: the cache-flush
-fallback on by default for #263 and #13 (no measurable cost on the game thread; waiting on the reporter's Windows test).
+fallback on by default for #263 and #13 (no measurable cost on the game thread; the reporter confirmed on Windows that it fixes the maps, with the frame rate and the Pictobox unchanged).
 
 ## Checks before publishing
 
