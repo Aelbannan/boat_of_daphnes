@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Add BlueWake's code mods (widescreen 16:9 and 16:10, Better Wind Waker's options,
+# Add BlueWake's code mods (widescreen 16:9, 16:10 and 21:9, Better Wind Waker's options,
 # and each widescreen with them) to a device build's composite source, after
 # scripts/ios/build_device.sh has built it.
 #
@@ -51,6 +51,16 @@ widescreen1610() {
     composite "$M/widescreen1610/translated/dol/generated" "$B/translated/rels/generated/rels" "$B/game/rels"         "$M/widescreen1610/main.dol" "$M/widescreen1610/composite-src"
 }
 
+widescreen219() {
+    echo "==> widescreen 21:9"
+    mkdir -p "$M/widescreen219"
+    python3 "$root/scripts/mods/gecko_apply.py" "$root/mods/widescreen/GZLE01-21x9.gecko" "$B/game/main.dol" \
+        "$M/widescreen219/main.dol" "$M/widescreen219/runtime.json"
+    translate "$M/widescreen219/main.dol" "$M/widescreen219/translated"
+    composite "$M/widescreen219/translated/dol/generated" "$B/translated/rels/generated/rels" "$B/game/rels" \
+        "$M/widescreen219/main.dol" "$M/widescreen219/composite-src"
+}
+
 betterww() {
     echo "==> Better Wind Waker options"
     # The game's own executable and modules translated with the option sites;
@@ -85,8 +95,8 @@ together() {  # COMMAND...: each command at once; stop when any of them fails
         exit 1
     fi
 }
-together widescreen widescreen1610 betterww base
-together "combo combo widescreen" "combo combo1610 widescreen1610"
+together widescreen widescreen1610 widescreen219 betterww base
+together "combo combo widescreen" "combo combo1610 widescreen1610" "combo combo219 widescreen219"
 
 echo "==> variants into $B/composite-src"
 python3 "$root/scripts/mods/build_mod_variants.py" --composite-src "$M/composite-src.base" --base-dol "$B/game/main.dol" \
@@ -94,8 +104,10 @@ python3 "$root/scripts/mods/build_mod_variants.py" --composite-src "$M/composite
     --mod "betterww:$M/betterww/composite-src:$B/game/main.dol" \
     --mod "widescreen1610:$M/widescreen1610/composite-src:$M/widescreen1610/main.dol:$M/widescreen1610/runtime.json" \
     --combo "widescreen+betterww:$M/combo/composite-src" \
+    --mod "widescreen219:$M/widescreen219/composite-src:$M/widescreen219/main.dol:$M/widescreen219/runtime.json" \
     --combo "widescreen1610+betterww:$M/combo1610/composite-src" \
-    --exclusive widescreen,widescreen1610 \
+    --combo "widescreen219+betterww:$M/combo219/composite-src" \
+    --exclusive widescreen,widescreen1610,widescreen219 \
     --options "$options" --rels-bin-dir "$B/game/rels"
 if ! cmp -s "$M/composite-src.base/generated.h" "$B/composite-src/generated.h"; then
     echo "build_mods: $B/composite-src was generated from other inputs; rebuild it first" >&2

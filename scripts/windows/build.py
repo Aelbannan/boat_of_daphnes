@@ -18,7 +18,7 @@ Steps, each logged under OUT/logs:
   4 extract      main.dol and the 415 RELs from the disc (the disc is verified)
   5 translate    the game's PowerPC code to C (DolRecomp)
   6 generate     the composite source, compared with the verified digest
-  7 mods         widescreen 16:9 and 16:10 and Better Wind Waker's options (--no-mods skips)
+  7 mods         widescreen 16:9, 16:10 and 21:9 and Better Wind Waker's options (--no-mods skips)
   8 compile      the game module, gGZLE01_recomp.dll (the long step), after training a
                  local optimization profile (--no-train skips; --host-only keeps the last build's)
   9 app          BlueWake.exe, Aurora (Direct3D 12 through Dawn), SDL3 and the DSP
@@ -672,7 +672,7 @@ int main(void) {
 
     # --- 7 mods --------------------------------------------------------------
     def build_mods(self):
-        """Widescreen 16:9 and 16:10, Better Wind Waker's options, and each
+        """Widescreen 16:9, 16:10 and 21:9, Better Wind Waker's options, and each
         widescreen with them, as variants compiled into the same module: the
         steps of scripts/mods/build_mods.sh (docs/MODS.md)."""
         o, m = self.out, self.out / "mods"
@@ -725,8 +725,10 @@ int main(void) {
         # The trees are independent but for the combos, which need their
         # widescreen's main.dol and Better Wind Waker's RELs: two rounds at once.
         self.together(lambda: widescreen("widescreen", "GZLE01.gecko"),
-                      lambda: widescreen("widescreen1610", "GZLE01-16x10.gecko"), betterww, base_tree)
-        self.together(lambda: combo("combo", "widescreen"), lambda: combo("combo1610", "widescreen1610"))
+                      lambda: widescreen("widescreen1610", "GZLE01-16x10.gecko"),
+                      lambda: widescreen("widescreen219", "GZLE01-21x9.gecko"), betterww, base_tree)
+        self.together(lambda: combo("combo", "widescreen"), lambda: combo("combo1610", "widescreen1610"),
+                      lambda: combo("combo219", "widescreen219"))
 
         print("variants into the composite source")
         # The --mod and --combo specs are colon-separated, and a Windows path
@@ -740,9 +742,12 @@ int main(void) {
             "--mod", "betterww:mods/betterww/composite-src:game/main.dol",
             "--mod", "widescreen1610:mods/widescreen1610/composite-src:mods/widescreen1610/main.dol:"
                      "mods/widescreen1610/runtime.json",
+            "--mod", "widescreen219:mods/widescreen219/composite-src:mods/widescreen219/main.dol:"
+                     "mods/widescreen219/runtime.json",
             "--combo", "widescreen+betterww:mods/combo/composite-src",
             "--combo", "widescreen1610+betterww:mods/combo1610/composite-src",
-            "--exclusive", "widescreen,widescreen1610",
+            "--combo", "widescreen219+betterww:mods/combo219/composite-src",
+            "--exclusive", "widescreen,widescreen1610,widescreen219",
             "--options", options, "--rels-bin-dir", o / "game/rels"], cwd=o)
         dst = o / "composite-src"
         if (base / "generated.h").read_bytes() != (dst / "generated.h").read_bytes():
@@ -1375,7 +1380,7 @@ This folder is a personal build: gGZLE01_recomp.dll is code translated from
 your disc and game\\ holds your disc image. Never share or upload it.
 
 Run BlueWake.exe. Options (BlueWake.exe --help lists them all):
-  --widescreen    16:9 (--aspect 16:10 for 16:10)
+  --widescreen    16:9 (--aspect 16:10 or --aspect 21:9 for those)
   --smooth        Smooth Motion: 60 FPS with in-between frames
   --betterww      Better Wind Waker's settings (--options to change them)
   --fullscreen    start in fullscreen

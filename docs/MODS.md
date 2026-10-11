@@ -7,6 +7,7 @@ BlueWake starts, and none of them changes your saves.
 | --- | --- | --- |
 | Widescreen 16:9 | The community 16:9 code (Dolphin's GZLE01 Gecko code): a wider field of view with the HUD placed for 16:9, letterboxed on a 4:3 iPad | Nothing; it is built in |
 | Widescreen 16:10 | The same code with its aspect-dependent values recomputed for 16:10 (Mac displays, most iPads' shape is closer to it); one widescreen mod at a time | Nothing; it is built in |
+| Widescreen 21:9 | The same code recomputed for 21:9 ultrawide desktop displays (Windows, Linux, Mac) | Nothing; it is built in |
 | HD Texture Pack | Replaces the game's textures with a Dolphin-format pack, such as [Hypatia's HD pack](https://forums.dolphin-emu.org/Thread-hypatia-s-tloz-the-wind-waker-hd-pack-v2-0001a) | The pack's `tex1_…` images in `Documents/BlueWake/Load/Textures/GZLE01` |
 | Better Wind Waker | [Better Wind Waker](https://github.com/WideBoner/betterww)'s quality-of-life changes from Wind Waker HD, each its own setting: Swift or Brisk Sail, instant text, faster rolling, grappling, block pushing, climbing and crawling, Tingle Chests without the Tuner, an unrestricted boat, no song replays, turning while swinging, a faster Ballad of Gales, skipping the opening movie, an inverted camera, a revealed sea chart | Nothing; it is built in |
 
@@ -18,8 +19,13 @@ On the iPad, `Documents/BlueWake` is **On My iPad › BlueWake › BlueWake** in
 restart BlueWake. The 16:10 code is generated from the 16:9 one by `scripts/mods/widescreen_aspect.py`:
 each value it changes (the camera aspect, which also widens the game's view culling, the 2D bounds, HUD
 and map positions, a few instruction immediates) is interpolated between the game's 4:3 value and the
-16:9 value, and the three HUD constants it loads from the game's pool take the nearest pool value. On the
-Mac host, `BLUEWAKE_ASPECT=16:10` or `16:9` selects the mod and the frame buffer shape together. At the default 3× render resolution 16:9
+16:9 value, and the three HUD constants it loads from the game's pool take the nearest pool value. The 21:9
+code is generated the same way, with the 16:9 change carried on 2.25 times as far (its pool constants land
+within half a pixel); the HUD elements the 16:9 code leaves in place stay where the 4:3 game puts them, so
+at 21:9 they sit further in from the edges. On the desktop hosts, `BLUEWAKE_ASPECT=16:10`, `16:9` or
+`21:9` (the menu's aspect setting, or `--aspect`) selects the mod and the frame buffer shape together.
+At 21:9 the picture is no taller than 4:3's, so the follow camera starts one wheel notch further back
+(`BLUEWAKE_CAMERA_DISTANCE`, 1.12 there and 1 otherwise; the wheel still moves it from there). At the default 3× render resolution 16:9
 renders 2560×1440 and 16:10 2304×1440 (the 4:3 picture's height, widened), so the game's letterbox bars line up with the scene;
 if an older device struggles, 2× renders 1707×960.
 
