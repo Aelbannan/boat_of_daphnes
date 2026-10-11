@@ -165,3 +165,44 @@ Outset 23.94 s against 23.90 s, the cavern 14.90 s against 14.96 s (four runs ea
 question itself (the overlap watch's reads and the address tests), not the trip into the host. Making it cheaper
 means asking less often: for example, a host that reads the overlap phase once per turn, which changes when the host
 reacts, so it is Chris's call.
+
+## S2, fix 3: the lazy overlap watch (October 12)
+
+A profile of the trained build with lean memory and lean deadlines put `host_direct_can_skip` at 7% of the game
+thread's busy samples, and LiquidAzir's on the Fold 7 at 10.7 M instructions a retrace, with the module's
+`bw_direct_call_ready` at 7 M (#93). Answering the same question inside the module saved nothing (above): the cost
+is the question itself, mostly the scene overlap watch, which reads the overlap object at `0x803F6160` and its
+phase from guest memory at every direct call and block edge.
+
+That watch only records the phase in `g_overlap_last_phase` and `g_overlap_terminal_phase`, which nothing but the
+diagnostics and the test routes read (frame captures, player traces, scripted pad pulses, the route probes). The
+game never sees it. `BLUEWAKE_LAZY_OVERLAP=1` (off by default) leaves it to the edge service and the per-turn
+sample, which already read it, and drops it from the per-call checks. With that, the host's answer depends on the
+address alone, so a module that has `bluewake_composite_direct_calls_v3` (new) reads it inline: the jump button and
+the diagnostics as one flag the host keeps current, plus the four addresses and ranges the host watches whatever
+their features' switches. `BLUEWAKE_DIRECT_SKIP_VERIFY=1` asks the host as well and counts disagreements.
+
+Lean blocks, lean memory and lean deadlines, no training profile, the same host, alternated, three runs each after
+the first pair:
+
+| | Off | `BLUEWAKE_LAZY_OVERLAP=1` | |
+| --- | --- | --- | --- |
+| The sea by Outset | 22.96, 22.85, 22.95 s | 21.98, 22.01, 22.07 s | 3.9% faster |
+| Dragon Roost Cavern | 13.89, 13.92, 14.02 s | 13.32, 13.33, 13.23 s | 4.7% faster |
+
+**It plays the same.** The module answered every direct call inline (440,598,355 at Outset, 267,599,471 in the
+cavern), and the verify mode found no disagreement with the host either way. Checkpoints are identical, and
+identical with the switch off to the lean deadlines module's. Since the watch matters only while scenes change
+over, four boots from the title through the file select and a scene handover into Outset, Windfall, Dragon Roost
+Cavern and the Tower of the Gods, with a checkpoint every 100 retraces, are identical off and on (the inline answer
+is off with the stage select, so those runs check the lazy watch alone).
+
+The first version answered inline only before the name scene and so never in play; a second read the overlap
+watch through pointers to the host's variables and agreed on every call but was no faster.
+
+## Measured, not proposed: the floating-point helpers inline (October 12)
+
+The trained module keeps 528 out-of-line copies of `inline_fp.h`'s helpers, so every `fmuls` or `fadds` pays a call.
+Forcing them inline (`always_inline`, local branch `codex/fp-always-inline`) gave a module 11.5% larger and slower:
+Outset 22.66 s against 22.94 s (1.2%), the cavern 13.86 s against 14.20 s (2.4%), checkpoints identical. The calls
+cost less than the code they would add.
