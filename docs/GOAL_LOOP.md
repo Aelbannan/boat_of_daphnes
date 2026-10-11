@@ -112,4 +112,3 @@ benchmark, name the hot functions with the decompilation's `symbols.txt`, list t
 and pick the next natives from them: replayed from the translation where exactness matters, compiled from source
 where step 6 showed it pays. When the actor modules pass about 90% of code matched, revisit porting scenes from
 source.
-
