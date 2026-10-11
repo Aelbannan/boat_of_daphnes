@@ -2019,6 +2019,7 @@ static bool g_direct_call_trace;
 // the draw tags' addresses whether or not those features are on.
 static BwHostSkipFast g_skip_fast = {0u, {0u, 0u}, {0xFFFFFFFFu, 0xFFFFFFFFu}, {0u, 0u}};
 static bool g_skip_fast_on;
+static bool g_skip_verify; // BLUEWAKE_DIRECT_SKIP_VERIFY=1: the counts at exit
 static void host_skip_fast_refresh(void) {
     if (!g_skip_fast_on)
         return;
@@ -7979,6 +7980,7 @@ int main(int argc, char** argv) {
         want_fast = false;
 #endif
         const bool verify = verify_env != NULL && strcmp(verify_env, "1") == 0;
+        g_skip_verify = verify;
         bool enabled;
         if (want_fast) {
             g_skip_fast_on = true;
@@ -15781,7 +15783,7 @@ int main(int argc, char** argv) {
 
     printf("[run] stopped: %s after %llu blocks at pc=%#010x\n",
            stop_reason ? stop_reason : "normal", blocks, cpu.pc);
-    if (g_skip_fast_on) {
+    if (g_skip_fast_on && g_skip_verify) {
         typedef void (*SkipCountsFn)(unsigned long long*, unsigned long long*, unsigned long long*);
         SkipCountsFn skip_counts = (SkipCountsFn)dlsym(lib, "bluewake_composite_direct_skip_counts");
         unsigned long long unsafe = 0ull, conservative = 0ull, inline_answers = 0ull;
