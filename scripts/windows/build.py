@@ -1395,7 +1395,7 @@ Saves, settings and session logs: %APPDATA%\\BlueWake
 # app enables each one only where the module it loads was prepared with it.
 WINDOWS_DEFAULT_OPTIMIZATIONS = ("fixed_cpu", "fixed_mem1", "inline_fp", "gather_pipe", "inline_gpr",
                                  "prepared_blocks", "direct_calls", "native_j3d", "native_vec", "native_math",
-                                 "native_skin", "native_game_math", "lean_blocks")
+                                 "native_skin", "native_game_math", "lean_blocks", "lean_memory", "lean_deadlines")
 
 
 def main():
@@ -1459,11 +1459,16 @@ def main():
                         help="BlueWake's conservative prepaid block copies instead: a smaller module and a shorter "
                              "compile, about 5 to 12%% slower")
     parser.add_argument("--lean-memory", action="store_true",
-                        help="Wind Waker Recomp's lean loads and stores in prepaid copies (off by default; "
-                             "needs --prepared-blocks)")
+                        help="Wind Waker Recomp's lean loads and stores in prepaid copies (on by default since "
+                             "October 12; needs --prepared-blocks)")
+    parser.add_argument("--no-lean-memory", action="store_true",
+                        help="loads and stores in the prepaid copies as before lean memory (and so without "
+                             "--lean-deadlines): about 5%% slower")
     parser.add_argument("--lean-deadlines", action="store_true",
                         help="the prepaid copies' deadline test after a lean access only on its way out of "
-                             "line, where the deadline can move (off by default; needs --lean-memory)")
+                             "line, where the deadline can move (on by default since October 12; needs --lean-memory)")
+    parser.add_argument("--no-lean-deadlines", action="store_true",
+                        help="keep the deadline test after every lean load and store: about 4%% slower")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")
@@ -1486,6 +1491,10 @@ def main():
             setattr(args, name, True)
     if args.no_lean_blocks:
         args.lean_blocks = False
+    if args.no_lean_memory:
+        args.lean_memory = False
+    if args.no_lean_memory or args.no_lean_deadlines:
+        args.lean_deadlines = False
     if args.host_only and (args.retrain or args.no_train or args.no_pgo):
         parser.error("--host-only keeps the last build's profile; it cannot be combined with --retrain or --no-train")
     if args.inline_gpr and not args.direct_calls:

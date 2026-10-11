@@ -340,7 +340,7 @@ static u64 g_opening_complete_retrace;
 static bool g_outset_room_requested;
 static u64 g_outset_room_request_retrace;
 static u32 g_overlap_last_phase = UINT32_MAX;
-// BLUEWAKE_LAZY_OVERLAP=1 (off by default): the scene overlap watch below
+// The lazy overlap watch (on by default since October 12; BLUEWAKE_LAZY_OVERLAP=0 turns it off): the scene overlap watch below
 // (g_overlap_last_phase, g_overlap_terminal_phase, read only by diagnostics and
 // test routes) is sampled by the edge service and once a turn, instead of being
 // tested at every direct call and block edge, where it was about 7% of the game
@@ -7561,9 +7561,9 @@ int main(int argc, char** argv) {
             deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
-        g_lazy_overlap = lazy != NULL && strcmp(lazy, "1") == 0;
-        if (g_lazy_overlap)
-            fprintf(stderr, "[chassis] lazy overlap watch: on (BLUEWAKE_LAZY_OVERLAP)\n");
+        g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
+        fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
+                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
     }
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
     g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
