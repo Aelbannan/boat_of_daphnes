@@ -56,6 +56,6 @@ controller axes; touch C-stick behavior cannot establish that hardware result.
 - Existing simulator files were backed up and compared after testing. No private input or raw evidence
   is committed. The physical iPad and Windows machine were not used.
 - No new reporter evidence changed the prioritized rendering/audio/performance investigations during
-  this pass. Follow [TECH_DEBT.md](../TECH_DEBT.md) for those remaining gates.
+  this pass. Follow [TECH_DEBT.md](TECH_DEBT_2026-10-07.md) for those remaining gates.
 - Next Apple acceptance: on-device touch hold → menu/panel → resume, plus physical remapping and camera
   checks. Windows requires its separate controller tests; this Apple-only change needs no Windows fix.

@@ -51,7 +51,7 @@ maintains BlueWake together with Chris, and his work is part of BlueWake with hi
 - **Bugs and requests** go to [BlueWake's issues](https://github.com/chrissotraidis/bluewake/issues).
   Say which build you use and attach your session log.
 
-What is done and what is still open: [migration status](docs/MIGRATION_STATUS.md).
+How the move happened and what's left of it: [migration status](docs/MIGRATION_STATUS.md).
 
 ## Install
 
@@ -265,6 +265,16 @@ following [the Linux guide](docs/LINUX.md). A ready-made Linux download has not 
 </details>
 
 <details>
+<summary><strong>Is there an Android version?</strong></summary>
+
+Not yet. LiquidAzir's Android port ([#93](https://github.com/chrissotraidis/bluewake/pull/93)) builds the game
+from your own disc and plays, with the iPhone app's menu, touch controls, controllers and saves. It will be
+merged as an experimental build-it-yourself option once it holds full speed on a phone; on a Galaxy Z Fold 7 it
+runs Outset at about 70 to 80% today. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
+
+</details>
+
+<details>
 <summary><strong>Do controllers work?</strong></summary>
 
 Yes. On iPhone and iPad, any controller iOS supports works, with rumble, camera inversion and button
@@ -351,10 +361,13 @@ Don't delete `%APPDATA%\BlueWake` to troubleshoot: it holds your saves and setti
 
 - [Build your own BlueWake](docs/BUILD_YOUR_OWN.md): the player's guide for iPhone, iPad and Mac
 - [BlueWake on Windows](docs/WINDOWS.md): playing and building on Windows
+- [BlueWake on Linux](docs/LINUX.md): building and playing on Linux and the Steam Deck
 - [Apple TV build](docs/status/TVOS_BUILD.md) and [device build options](docs/status/DEVICE_BUILD.md)
-- [Mods](docs/MODS.md) and [Wind Waker HD textures](docs/WWHD_TEXTURES.md)
+- [Mods](docs/MODS.md), [Wind Waker HD textures](docs/WWHD_TEXTURES.md) and the
+  [developers' stage select](docs/STAGE_SELECT.md)
 - [The Builder](docs/BUILDER.md): how the build works, and reusing it for other ports
-- [Migration status](docs/MIGRATION_STATUS.md) and the [engineering log](docs/status/CURRENT.md)
+- What's being worked on: [the plan](docs/GOAL_LOOP.md) and [the priorities](docs/PRIORITIES.md); how Wind Waker
+  Recomp became BlueWake: [migration status](docs/MIGRATION_STATUS.md)
 - [History](docs/archive/HISTORY.md), [porting history](docs/archive/PORTING_HISTORY.md) and
   [legal and provenance](docs/research/LEGAL_AND_PROVENANCE.md)
 

@@ -32,15 +32,16 @@ the player's machine the first time it starts, no terminal.**
 
 | Platform | Today | To get there |
 | --- | --- | --- |
-| Windows | A ready-made build with the translated game (the October 4 exception) | Run `scripts/windows/build.py` from the app on first launch, with a progress screen; bundle or download its toolchain; no PowerShell |
-| Linux | Not released; #107 builds from the player's disc | The same first-launch build, as an AppImage or a zip |
+| Windows | A ready-made build with the translated game (the October 4 exception) | Run `scripts/windows/build.py` from the app on first launch, with a progress screen; bundle or download its toolchain ([the compiler options researched on October 4](status/PROPOSAL_SOURCE_ONLY_WINDOWS_2026-10-04.md)); no PowerShell |
+| Linux | Built from the player's disc (since 0.7.0); a ready-made AppImage is allowed and waits for a contributor's build | The same first-launch build, as an AppImage or a zip |
 | Mac | Build from source in a terminal | An app that builds on first launch |
 | iPhone and iPad | PadMint on a Mac adds the game to the app | PadMint stays: iOS can't compile on the device |
 | Android | #93 builds an APK from the player's disc | A build tool on the computer, like PadMint, until a phone can build it |
 
-The obstacle is build time. A full build takes 17 to 45 minutes on a Windows desktop, 90 to 105 minutes on an
-M3 Max and three hours on a MacBook Air, much of it the local training run. Shipping a reviewed optimization
-profile, so players skip training (PRIORITIES Tier 2, rank 4), comes first.
+The obstacle is build time. A full build takes 17 to 45 minutes on a Windows desktop, about 90 minutes on an
+M3 Max (61 of them compiling since #252) and three hours on a MacBook Air, much of it the local training run.
+Shipping a reviewed optimization profile, so players skip training ([PRIORITIES.md](PRIORITIES.md), "Releases
+without game code"), comes first.
 
 The October 4 exceptions in [AGENTS.md](../AGENTS.md) (ready-made Windows and Linux builds) stay until the
 first-launch build works on that platform. Then the ready-made build is retired.
