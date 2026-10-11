@@ -608,7 +608,8 @@ int main(void) {
         inputs.update((f"{digest}\n{int(self.mods)}\n{int(self.args.prepared_blocks)}\n"
                        f"{int(self.args.fixed_cpu)}\n{int(self.args.fixed_mem1)}\n{int(self.args.inline_fp)}\n{int(self.args.gather_pipe)}\n{int(self.args.direct_calls)}\n{int(self.args.inline_gpr)}\n{int(self.args.native_j3d)}\n{int(self.args.native_vec)}\n{int(self.args.native_math)}\n{int(self.args.native_skin)}\n{int(self.args.native_game_math)}\n"
                        f"{int(self.args.lean_memory)}\n{int(self.args.native_entries)}\n"
-                       + ("lean_blocks\n" if getattr(self.args, "lean_blocks", False) else "")).encode())
+                       + ("lean_blocks\n" if getattr(self.args, "lean_blocks", False) else "")
+                       + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")).encode())
         for f in (sorted((ROOT / "scripts/mods").glob("*")) + sorted((ROOT / "mods/widescreen").glob("*.gecko"))
                   + [ROOT / "mods/betterww/options.txt", ROOT / "scripts/windows/fast_blocks.py",
                      ROOT / "scripts/windows/return_ranges.py",
@@ -636,6 +637,8 @@ int main(void) {
                      ROOT / "scripts/windows/lean_memory.py", Path(__file__)]):
             if f.is_file():
                 inputs.update(f.read_bytes())
+        if getattr(self.args, "lean_deadlines", False):
+            inputs.update((ROOT / "scripts/windows/lean_deadlines.py").read_bytes())
         if self.args.direct_calls or self.args.native_game_math or getattr(self.args, "native_entries", False):
             # The source-derived watch lists are part of the prepared module.
             inputs.update(watched_inputs())
@@ -802,6 +805,11 @@ int main(void) {
         if self.args.lean_memory:
             self.run("lean-memory", [sys.executable, ROOT / "scripts/windows/lean_memory.py",
                                       o / "composite-src"])
+        # The deadline test after a lean access only on its way out of line, where the
+        # deadline can move (lean_deadlines.py; off by default, needs --lean-memory).
+        if getattr(self.args, "lean_deadlines", False):
+            self.run("lean-deadlines", [sys.executable, ROOT / "scripts/windows/lean_deadlines.py",
+                                         o / "composite-src"])
         # A return into another chunk leaves the return dispatch before its switch
         # (Elliott Tate's 7aca42a): with direct calls, as both shape how a chunk is
         # left. Only the dispatch after the last label, which no native hash covers.
@@ -825,6 +833,7 @@ int main(void) {
                    "native_skin": self.args.native_skin,
                    "native_game_math": self.args.native_game_math,
                    "lean_memory": self.args.lean_memory,
+                   "lean_deadlines": getattr(self.args, "lean_deadlines", False),
                    "lean_blocks": getattr(self.args, "lean_blocks", False),
                    "native_entries": self.args.native_entries,
                    "gather_sha256": {name: sha256_file(ROOT / "cmake/composite" / name)
@@ -1005,6 +1014,7 @@ int main(void) {
                                             "gather_pipe", "direct_calls", "inline_gpr", "native_j3d",
                                             "native_vec", "native_math", "native_skin", "native_game_math",
                                             "lean_memory", "native_entries", "lean_blocks")},
+                               **({"lean_deadlines": True} if getattr(self.args, "lean_deadlines", False) else {}),
                                "runtime": self.git("-C", str(self.recompcore), "rev-parse", "HEAD"),
                                "source": tree_digest(self.out / "composite-src")},
                               sort_keys=True).encode())
@@ -1451,6 +1461,9 @@ def main():
     parser.add_argument("--lean-memory", action="store_true",
                         help="Wind Waker Recomp's lean loads and stores in prepaid copies (off by default; "
                              "needs --prepared-blocks)")
+    parser.add_argument("--lean-deadlines", action="store_true",
+                        help="the prepaid copies' deadline test after a lean access only on its way out of "
+                             "line, where the deadline can move (off by default; needs --lean-memory)")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")
@@ -1485,6 +1498,8 @@ def main():
         parser.error("--lean-memory requires --prepared-blocks")
     if args.lean_memory and not args.gather_pipe:
         parser.error("--lean-memory requires --gather-pipe (its accesses call gather_pipe.h's helpers)")
+    if args.lean_deadlines and not args.lean_memory:
+        parser.error("--lean-deadlines requires --lean-memory")
     if args.native_entries and not (args.direct_calls and args.gather_pipe and args.native_vec):
         parser.error("--native-entries requires --direct-calls, --gather-pipe and --native-vec")
     if args.jobs is None:
