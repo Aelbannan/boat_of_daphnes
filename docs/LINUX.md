@@ -5,61 +5,72 @@ from your own disc and play it on Linux. This is the same game as the Windows
 build: a native host, the translated game module, and the DSP, packaged as a
 folder you run with `./bluewake`.
 
-## What you need
+## Choose a build method
 
-- Your own GZLE01 revision 0 disc image, as an uncompressed `.iso` or `.gcm`.
-  (A Dolphin-compressed image like `.rvz`/`.wia` is not converted here; convert
-  it in Dolphin: right-click the game, Convert File, format ISO.)
-- For the reproducible container build: Python 3.10+, Git and Docker configured
-  for Linux containers. The host may run Linux, macOS, or Windows through WSL2.
-- For a native build instead: an x86-64 Linux PC, CMake 3.25+, Ninja, Git,
-  `pkg-config`, Clang/Clang++ 17 or newer, LLD, `llvm-profdata`, libc++ and the
-  graphics/audio development libraries below. Ubuntu 24.04 package names are:
+BlueWake offers two ways to produce the same Linux app. Use the **container
+build** for a reproducible or SteamOS-targeted AppImage. Use the **native
+build** when you prefer your installed Linux toolchain and do not need a
+portable ABI baseline.
 
-      sudo apt install clang lld llvm libc++-dev libc++abi-dev cmake ninja-build \
-        git build-essential pkg-config libwayland-dev libxkbcommon-dev \
-        libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
-        libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev \
-        libxss-dev libxtst-dev zlib1g-dev libpng-dev libfreetype6-dev \
-        libsqlite3-dev libzstd-dev libfmt-dev libbz2-dev libbrotli-dev libicu-dev
+| | Container build (recommended) | Native build |
+| --- | --- | --- |
+| Host | Linux, macOS, or Windows through WSL2 | x86-64 Linux |
+| Requirements | Python 3.10+, Git, Docker with Linux containers | The complete compiler and development package list below |
+| Advantages | Same Ubuntu 24.04 environment as CI; no host compiler setup; AppImage targets CI's SteamOS-compatible `GLIBC_2.39` ceiling | No Docker or container image; fastest on a configured x86-64 Linux workstation |
+| Tradeoffs | Downloads and stores a Docker image; slower under `linux/amd64` emulation on Arm hosts | Depends on host package versions; an AppImage built on a newer distribution may exceed SteamOS's glibc ABI and fail its audit |
 
-  Use your distribution's equivalent packages. The builder checks command-line
-  tools before reading the disc; CMake reports a missing development library by
-  name during `app-configure`. Vulkan drivers are needed to run the result.
+Both methods use the same builder, options, optimizations, PGO training and
+output paths. They require your own GZLE01 revision 0 disc as an uncompressed
+`.iso` or `.gcm`. Convert Dolphin `.rvz`/`.wia` images to ISO in Dolphin first.
 
-## Build
+## Container build (recommended)
 
-    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux
+Install and start Docker, then run:
 
-The first build clones the pinned RecompCore and DolRecomp sources into
-`ref/recompcore`, translates your disc, and compiles the game module (the long
-step). Rerun the same command to continue or reuse an existing build. Your
-disc, the extracted files and the translated module stay in `build/linux`,
-which git ignores.
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container
 
-For the same build in the Ubuntu 24.04 environment used by Linux CI, install
-and start Docker, then add `--ci-container`:
-
-    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux --ci-container
-
-This changes only the build environment. The builder uses the same options,
-optimizations, training, output directory and personal disc as the command
-without the flag. It builds the version-controlled
-[`scripts/linux/Dockerfile`](../scripts/linux/Dockerfile) on each invocation;
-Docker reuses unchanged layers. CI builds that same file. The disc is mounted
-read-only into the running container and never enters the image or CI.
-
-To build the personal AppImage in that same environment, request the existing
-packaging step explicitly:
+To create the personal AppImage as part of the same build, add `--appimage`:
 
     python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
       --ci-container --appimage
 
-Beyond Python and Git, this needs only Docker on the host; the shared image
-supplies the Linux compiler, development libraries and AppImage tools. It works
-from Linux, macOS, or Windows through WSL2 with Docker configured for Linux
-containers. The output is always an x86-64 Linux AppImage; non-x86 hosts use
-Docker's `linux/amd64` emulation and will take substantially longer to compile.
+The version-controlled [`scripts/linux/Dockerfile`](../scripts/linux/Dockerfile)
+supplies Clang 18, CMake, development libraries and AppImage tools. CI uses the
+same image. Docker caches unchanged layers, mounts the disc read-only and writes
+normal outputs to `build/linux`; the disc never enters the image or CI. The
+result is always an x86-64 Linux build. Arm hosts use Docker's `linux/amd64`
+emulation, which is substantially slower.
+
+## Native build
+
+Install CMake 3.25+, Ninja, Git, `pkg-config`, Clang/Clang++ 17 or newer, LLD,
+`llvm-profdata`, libc++ and the graphics/audio development libraries. Ubuntu
+24.04 package names are:
+
+    sudo apt install clang lld llvm libc++-dev libc++abi-dev cmake ninja-build \
+      git build-essential pkg-config libwayland-dev libxkbcommon-dev \
+      libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
+      libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev \
+      libxss-dev libxtst-dev zlib1g-dev libpng-dev libfreetype6-dev \
+      libsqlite3-dev libzstd-dev libfmt-dev libbz2-dev libbrotli-dev libicu-dev
+
+Use your distribution's equivalent packages, then run:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux
+
+The builder checks command-line tools before reading the disc; CMake identifies
+missing development libraries during `app-configure`. Vulkan drivers are needed
+to run the result. Native `--appimage` additionally requires the packaging tools
+listed under [Build the AppImage](#build-the-appimage).
+
+## Build behavior
+
+The first build clones the pinned RecompCore and DolRecomp sources into
+`ref/recompcore`, translates your disc, and compiles the game module (the long
+step). Rerun the same command to continue or reuse an existing build. Your
+disc, extracted files and translated module stay in `build/linux`, which Git
+ignores.
 
 Useful options:
 
