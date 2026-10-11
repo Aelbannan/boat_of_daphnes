@@ -396,6 +396,8 @@ class AndroidBuilder(wb.Builder):
             "composite_digest": (self.out / "composite-src.digest").read_text().strip(),
             "mods": bool(self.mods),
             "lean_blocks": getattr(self.args, "lean_blocks", False),
+            "lean_memory": self.args.lean_memory,
+            "lean_deadlines": self.args.lean_deadlines,
             "cpu": self.args.cpu,
             "local_training": self.profile is not None,
             "compiler": self.clang_version,
@@ -728,7 +730,7 @@ def main():
     parser.add_argument("--conservative", action="store_true",
                         help="build the plain translation, without the Windows builder's default source "
                              "optimizations (its --fixed-cpu, --direct-calls, ... options then add them one at a time)")
-    for name in (*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "native_entries"):
+    for name in (*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines", "native_entries"):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true",
                             help="as in scripts/windows/build.py")
     parser.add_argument("--no-lean-blocks", action="store_true",
@@ -771,6 +773,8 @@ def main():
         parser.error("--lean-memory requires --prepared-blocks")
     if args.lean_memory and not args.gather_pipe:
         parser.error("--lean-memory requires --gather-pipe (its accesses call gather_pipe.h's helpers)")
+    if args.lean_deadlines and not args.lean_memory:
+        parser.error("--lean-deadlines requires --lean-memory")
     if args.native_entries and not (args.direct_calls and args.gather_pipe and args.native_vec):
         parser.error("--native-entries requires --direct-calls, --gather-pipe and --native-vec")
     args.jobs_auto = args.jobs is None
