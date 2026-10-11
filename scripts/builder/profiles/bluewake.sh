@@ -161,7 +161,7 @@ profile_generate() {
     # Reuse only a verified tree made by the same generators and mod selection.
     # Checking the base digest alone used to retain mod variants after --no-mods.
     local inputs current saved optimization_recipe
-    optimization_recipe=$(python3 "$root/scripts/builder/module_optimizations.py" fingerprint "$module_optimizations")
+    optimization_recipe=$(python3 "$root/scripts/builder/module_optimizations.py" fingerprint "$module_optimizations" ${lean_arg:-})
     inputs=$( { printf '%s\n' "$digest" "$mods" "$optimization_recipe"; shasum -a 256 \
         "$root/scripts/mods/"*.py "$root/scripts/mods/"*.sh \
         "$root/mods/widescreen/"*.gecko "$root/mods/betterww/options.txt"; } | shasum -a 256 | awk '{print $1}')
