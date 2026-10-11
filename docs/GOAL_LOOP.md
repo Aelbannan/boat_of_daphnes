@@ -56,7 +56,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 1 | **Merge** #222, #223, #224 (after RecompCore #21 is fast-forwarded onto `bluewake-next`), #225 (after #22), #226 and #228 (Elliott's `lfs` fast path), each with green CI. | Codex | **Done October 10** |
 | 2 | **Freeze.** `version.json` to 0.7.0 build 6; the commit in the release record. | Codex | **Done October 10** (the commit is in the release record) |
 | 3 | **Done October 10:** 92 minutes; zip on the draft, gate passed on the Mac (#237). **Windows build** on Chris's PC: tell its agent "Pull the latest chrissotraidis/bluewake and follow docs/status/WINDOWS_BUILD_0.7.0.md as a goal loop until its hand-off is done." 2 to 3 hours of building on the Ryzen 7 5700U (with `--jobs 6`; 0.6.0 took 4 hours on one job), then about 30 minutes of Chris playing and looking. | Chris's PC | The zip on the v0.7.0 draft, results in a pull request |
-| 4 | **Linux AppImage** from a contributor's own disc: `python3 scripts/linux/build.py DISC`, then `scripts/linux/make_appimage.sh` and `check_appimage_abi.py`. Asked on #56 of pdale-boop, cforain or jkoehler11. | A contributor; Chris receives it privately | The AppImage passes `check_public_assets.sh` |
+| 4 | **Linux AppImage** from a contributor's own disc: `python3 scripts/linux/build.py DISC --ci-container --appimage`. The shared Ubuntu 24.04 image packages and audits it without placing game data in CI. Asked on #56 of pdale-boop, cforain or jkoehler11. | A contributor; Chris receives it privately | The AppImage passes `check_public_assets.sh` |
 | 5 | **Apple assets done October 10** (IPA, source, recipe after the #239 fix); Mac play not done. **Mac and Apple.** Ten minutes of Mac play with a controller connected at launch; the app-only IPA, PadMint's `audit`, the release check. | Codex, on this Mac | Every check passes |
 | 6 | **Draft ready October 10** with four assets, `SHA256SUMS` and the notes, targeting `66b33be`; the AppImage is added when it arrives. **Release.** Draft with all assets, `SHA256SUMS` and the notes; Chris publishes; each issue in the release record is told to try it. | Codex prepares, Chris publishes | Release live, issues told |
 
@@ -94,4 +94,3 @@ benchmark, name the hot functions with the decompilation's `symbols.txt`, list t
 and pick the next natives from them: replayed from the translation where exactness matters, compiled from source
 where step 6 showed it pays. When the actor modules pass about 90% of code matched, revisit porting scenes from
 source.
-

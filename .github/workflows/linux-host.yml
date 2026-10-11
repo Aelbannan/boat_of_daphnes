@@ -19,113 +19,84 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Install build and packaging tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ca-certificates wget python3-pip python3-venv \
-            build-essential git clang-18 libc++-18-dev libc++abi-18-dev \
-            ninja-build pkg-config binutils patchelf zsync imagemagick \
-            desktop-file-utils libwayland-dev libxkbcommon-dev \
-            libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
-            libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev \
-            libpulse-dev libxss-dev libxtst-dev zlib1g-dev libpng-dev \
-            libfreetype6-dev libsqlite3-dev libzstd-dev libabsl-dev \
-            libfmt-dev libbz2-dev libbrotli-dev libicu-dev
-          python3 -m venv "$RUNNER_TEMP/cmake-venv"
-          "$RUNNER_TEMP/cmake-venv/bin/pip" install cmake==3.31.10
-          echo "$RUNNER_TEMP/cmake-venv/bin" >> "$GITHUB_PATH"
-      - name: Install pinned AppImage tools
-        env:
-          # Update each release and its SHA-256 together. The digests are listed
-          # on the corresponding immutable GitHub release asset:
-          # https://github.com/AppImage/appimagetool/releases/tag/1.9.1
-          # https://github.com/AppImage/type2-runtime/releases/tag/20251108
-          APPIMAGETOOL_VERSION: "1.9.1"
-          APPIMAGETOOL_X86_64_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
-          TYPE2_RUNTIME_RELEASE: "20251108"
-          TYPE2_RUNTIME_X86_64_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
-        run: |
-          set -euo pipefail
-          tools="$RUNNER_TEMP/appimage-tools"
-          appimagetool="$tools/appimagetool-x86_64.AppImage"
-          runtime="$tools/runtime-x86_64"
-          mkdir -p "$tools"
-          # Use an immutable release instead of AppImage's mutable `continuous`
-          # asset. Verify the downloaded executable against the release digest;
-          # even a one-byte difference makes sha256sum fail the CI job.
-          wget -q \
-            "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage" \
-            -O "$appimagetool"
-          printf '%s  %s\n' "$APPIMAGETOOL_X86_64_SHA256" "$appimagetool" \
-            | sha256sum --check --strict -
-          # appimagetool otherwise downloads the mutable current runtime while
-          # packaging. Pin and verify that executable stub for reproducibility.
-          wget -q \
-            "https://github.com/AppImage/type2-runtime/releases/download/$TYPE2_RUNTIME_RELEASE/runtime-x86_64" \
-            -O "$runtime"
-          printf '%s  %s\n' "$TYPE2_RUNTIME_X86_64_SHA256" "$runtime" \
-            | sha256sum --check --strict -
-          chmod 0755 "$appimagetool" "$runtime"
-          echo "APPIMAGETOOL=$appimagetool" >> "$GITHUB_ENV"
-          echo "APPIMAGE_RUNTIME_FILE=$runtime" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the shared Linux environment
+        uses: docker/build-push-action@v6
+        with:
+          context: scripts/linux
+          file: scripts/linux/Dockerfile
+          load: true
+          tags: bluewake-linux-ci:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Keep these commands identical to the former runner-native job. The
+      # Dockerfile replaces only dependency installation, not what CI builds,
+      # tests, packages, or audits.
       - name: Fetch the pinned public runtime
         run: |
           set -euo pipefail
-          lock=config/dependencies.lock.json
-          url=$(python3 -c "import json;print([d['url'] for d in json.load(open('$lock'))['dependencies'] if d['id']=='recompcore'][0])")
-          sha=$(python3 -c "import json;print([d['sha'] for d in json.load(open('$lock'))['dependencies'] if d['id']=='recompcore'][0])")
-          git init ref/recompcore
-          git -C ref/recompcore fetch --depth 1 --no-tags --recurse-submodules=no "$url" "$sha"
-          git -C ref/recompcore checkout --detach FETCH_HEAD
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
+            --volume "$GITHUB_WORKSPACE:/src" --workdir /src \
+            bluewake-linux-ci:${{ github.sha }} bash -euxo pipefail -c '
+              lock=config/dependencies.lock.json
+              url=$(python3 -c "import json;print([d[\"url\"] for d in json.load(open(\"$lock\"))[\"dependencies\"] if d[\"id\"]==\"recompcore\"][0])")
+              sha=$(python3 -c "import json;print([d[\"sha\"] for d in json.load(open(\"$lock\"))[\"dependencies\"] if d[\"id\"]==\"recompcore\"][0])")
+              git init ref/recompcore
+              git -C ref/recompcore fetch --depth 1 --no-tags --recurse-submodules=no "$url" "$sha"
+              git -C ref/recompcore checkout --detach FETCH_HEAD
+            '
       - name: Compile and test the host without game data
         run: |
           set -euo pipefail
-          cmake -S linux -B build/linux-host -G Ninja \
-            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DCMAKE_C_FLAGS=-D_GNU_SOURCE \
-            -DCMAKE_CXX_FLAGS=-stdlib=libc++ \
-            -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ \
-            -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ \
-            -DCMAKE_CXX_STANDARD_LIBRARIES= \
-            -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE \
-            -DCMAKE_DISABLE_FIND_PACKAGE_absl=TRUE \
-            -DDAWN_USE_GLFW=OFF \
-            -DBLUEWAKE_LINUX_REGRESSION_TESTS=ON \
-            -DAURORA_DAWN_PROVIDER=vendor -DAURORA_DAWN_LINKAGE=static \
-            -DAURORA_SDL3_PROVIDER=vendor -DAURORA_SDL3_LINKAGE=static
-          cmake --build build/linux-host --target bluewake bluewake_disc_extract \
-            bluewake_fast_blocks_test bluewake_cycle_domain_test \
-            bluewake_interrupt_sources_test bluewake_delivery_digest_test \
-            bluewake_composite_dispatch_loop_test bluewake_edge_intercepts_test \
-            bluewake_linux_disc_test bluewake_crash_text_test \
-            bluewake_launch_marker_test bluewake_settings_state_test \
-            bluewake_save_state_test bluewake_restart_request_test \
-            bluewake_dvd_completion_test bluewake_cache_flush_fallback_test --parallel 2
-          test -f build/linux-host/bluewake
-          if find build/linux-host -name 'gGZLE01_recomp*' | grep -q .; then
-            echo 'Unexpected personal game module'; exit 1
-          fi
-          ctest --test-dir build/linux-host --output-on-failure -R '^bluewake_'
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
+            --volume "$GITHUB_WORKSPACE:/src" --workdir /src \
+            bluewake-linux-ci:${{ github.sha }} bash -euxo pipefail -c '
+              cmake -S linux -B build/linux-host -G Ninja \
+                -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+                -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+                -DCMAKE_C_FLAGS=-D_GNU_SOURCE \
+                -DCMAKE_CXX_FLAGS=-stdlib=libc++ \
+                -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ \
+                -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ \
+                -DCMAKE_CXX_STANDARD_LIBRARIES= \
+                -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE \
+                -DCMAKE_DISABLE_FIND_PACKAGE_absl=TRUE \
+                -DDAWN_USE_GLFW=OFF \
+                -DBLUEWAKE_LINUX_REGRESSION_TESTS=ON \
+                -DAURORA_DAWN_PROVIDER=vendor -DAURORA_DAWN_LINKAGE=static \
+                -DAURORA_SDL3_PROVIDER=vendor -DAURORA_SDL3_LINKAGE=static
+              cmake --build build/linux-host --target bluewake bluewake_disc_extract \
+                bluewake_fast_blocks_test bluewake_cycle_domain_test \
+                bluewake_interrupt_sources_test bluewake_delivery_digest_test \
+                bluewake_composite_dispatch_loop_test bluewake_edge_intercepts_test \
+                bluewake_linux_disc_test bluewake_crash_text_test \
+                bluewake_launch_marker_test bluewake_settings_state_test \
+                bluewake_save_state_test bluewake_restart_request_test \
+                bluewake_dvd_completion_test bluewake_cache_flush_fallback_test --parallel 2
+              test -f build/linux-host/bluewake
+              if find build/linux-host -name "gGZLE01_recomp*" | grep -q .; then
+                echo "Unexpected personal game module"; exit 1
+              fi
+              ctest --test-dir build/linux-host --output-on-failure -R "^bluewake_"
+            '
       - name: Package and validate a disc-free AppImage fixture
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           set -euo pipefail
-          fixture=build/appimage-ci/BlueWake
-          mkdir -p "$fixture/dsp"
-          cp build/linux-host/bluewake "$fixture/bluewake"
-          clang-18 -shared -fPIC -x c /dev/null -o "$fixture/gGZLE01_recomp.so"
-          printf "CI packaging fixture; not a console DSP ROM.\n" > "$fixture/dsp/dsp_rom.bin"
-          printf "CI packaging fixture; not console DSP coefficients.\n" > "$fixture/dsp/dsp_coef.bin"
-
-          scripts/linux/make_appimage.sh build/appimage-ci \
-            build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage
-          python3 scripts/linux/check_appimage_abi.py \
-            build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage 2.39
-          build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage --help
-          test -s build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage.zsync
+          docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
+            --volume "$GITHUB_WORKSPACE:/src" --workdir /src \
+            bluewake-linux-ci:${{ github.sha }} bash -euxo pipefail -c '
+              fixture=build/appimage-ci/BlueWake
+              mkdir -p "$fixture/dsp"
+              cp build/linux-host/bluewake "$fixture/bluewake"
+              clang-18 -shared -fPIC -x c /dev/null -o "$fixture/gGZLE01_recomp.so"
+              printf "CI packaging fixture; not a console DSP ROM.\n" > "$fixture/dsp/dsp_rom.bin"
+              printf "CI packaging fixture; not console DSP coefficients.\n" > "$fixture/dsp/dsp_coef.bin"
+              scripts/linux/make_appimage.sh build/appimage-ci \
+                build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage
+              python3 scripts/linux/check_appimage_abi.py \
+                build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage 2.39
+              build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage --help
+              test -s build/appimage-ci/BlueWake-CI-Fixture-x86_64.AppImage.zsync
+            '
           # The synthetic module only proves that packaging and ABI checks work.
           # This non-playable fixture is deliberately not uploaded as an artifact.

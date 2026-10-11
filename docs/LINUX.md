@@ -7,25 +7,25 @@ folder you run with `./bluewake`.
 
 ## What you need
 
-- An x86-64 Linux PC.
 - Your own GZLE01 revision 0 disc image, as an uncompressed `.iso` or `.gcm`.
   (A Dolphin-compressed image like `.rvz`/`.wia` is not converted here; convert
   it in Dolphin: right-click the game, Convert File, format ISO.)
-- clang (with lld and llvm-profdata), CMake 3.25+, Ninja, Python 3.10+, git,
-  and the development files SDL3 and the host build against (X11, Wayland,
-  Vulkan, ALSA, PulseAudio). On Debian and Ubuntu, the same packages the Linux
-  CI installs:
+- For the reproducible container build: Python 3.10+, Git and Docker configured
+  for Linux containers. The host may run Linux, macOS, or Windows through WSL2.
+- For a native build instead: an x86-64 Linux PC, CMake 3.25+, Ninja, Git,
+  `pkg-config`, Clang/Clang++ 17 or newer, LLD, `llvm-profdata`, libc++ and the
+  graphics/audio development libraries below. Ubuntu 24.04 package names are:
 
-      sudo apt install clang lld llvm cmake ninja-build git build-essential \
-        libwayland-dev libxkbcommon-dev libx11-xcb-dev libx11-dev libxrandr-dev \
-        libxext-dev libxi-dev libxcursor-dev libgl1-mesa-dev libvulkan-dev \
-        libasound2-dev libpulse-dev libxss-dev libxtst-dev
+      sudo apt install clang lld llvm libc++-dev libc++abi-dev cmake ninja-build \
+        git build-essential pkg-config libwayland-dev libxkbcommon-dev \
+        libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
+        libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev \
+        libxss-dev libxtst-dev zlib1g-dev libpng-dev libfreetype6-dev \
+        libsqlite3-dev libzstd-dev libfmt-dev libbz2-dev libbrotli-dev libicu-dev
 
-  (or your distro's equivalent). Without them the build stops at
-  `app-configure` with SDL's "Couldn't find dependency package for …", which
-  names the one missing. Vulkan drivers for your GPU. The host and the game
-  module both build with clang, matching the Windows build's optimization
-  pipeline.
+  Use your distribution's equivalent packages. The builder checks command-line
+  tools before reading the disc; CMake reports a missing development library by
+  name during `app-configure`. Vulkan drivers are needed to run the result.
 
 ## Build
 
@@ -36,6 +36,30 @@ The first build clones the pinned RecompCore and DolRecomp sources into
 step). Rerun the same command to continue or reuse an existing build. Your
 disc, the extracted files and the translated module stay in `build/linux`,
 which git ignores.
+
+For the same build in the Ubuntu 24.04 environment used by Linux CI, install
+and start Docker, then add `--ci-container`:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux --ci-container
+
+This changes only the build environment. The builder uses the same options,
+optimizations, training, output directory and personal disc as the command
+without the flag. It builds the version-controlled
+[`scripts/linux/Dockerfile`](../scripts/linux/Dockerfile) on each invocation;
+Docker reuses unchanged layers. CI builds that same file. The disc is mounted
+read-only into the running container and never enters the image or CI.
+
+To build the personal AppImage in that same environment, request the existing
+packaging step explicitly:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container --appimage
+
+Beyond Python and Git, this needs only Docker on the host; the shared image
+supplies the Linux compiler, development libraries and AppImage tools. It works
+from Linux, macOS, or Windows through WSL2 with Docker configured for Linux
+containers. The output is always an x86-64 Linux AppImage; non-x86 hosts use
+Docker's `linux/amd64` emulation and will take substantially longer to compile.
 
 Useful options:
 
@@ -96,15 +120,27 @@ extracted from it are never distributed).
 
 ### Build the AppImage
 
-These are packaging-only dependencies; end users do not need them. The build
-machine needs the [current `appimagetool`](https://github.com/AppImage/appimagetool/releases),
-`desktop-file-validate` (usually from `desktop-file-utils`), `zsyncmake`
-(usually from `zsync` or `zsync-curl`) and ImageMagick on `PATH`. Do not use
-the obsolete tool from the old AppImageKit release page; it embeds a legacy
-runtime that requires FUSE 2. After creating the Linux build from your disc as
-described above, run:
+These are packaging-only dependencies; end users do not need them. A native
+package build needs the [current `appimagetool`](https://github.com/AppImage/appimagetool/releases),
+`desktop-file-validate` (`desktop-file-utils`), `zsyncmake` (`zsync` or
+`zsync-curl`), `readelf` (`binutils`) and ImageMagick (`magick` or `convert`)
+on `PATH`. The builder checks all of them before starting when `--appimage` is
+present. Do not use the obsolete tool from the old AppImageKit release page;
+it embeds a legacy runtime that requires FUSE 2. After creating the Linux build
+from your disc as described above, run:
 
     scripts/linux/make_appimage.sh
+
+Alternatively, `--appimage` keeps packaging explicit while performing it after
+the normal app-folder build. Combine it with `--ci-container` to use the shared
+CI image and avoid installing packaging tools on the host:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container --appimage
+
+The shared Dockerfile pins appimagetool, the Type 2 runtime, CMake and Clang 18.
+The completed AppImage is automatically audited for prohibited private files,
+accidental libstdc++ linkage and a maximum `GLIBC_2.39` requirement.
 
 The outputs are:
 

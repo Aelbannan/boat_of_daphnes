@@ -25,6 +25,7 @@ Steps, each logged under OUT/logs:
  10 compile      the game module, gGZLE01_recomp.so (the long step)
  11 app          bluewake, Aurora (Vulkan/OpenGL through Dawn), SDL3 and the DSP
  12 package      the app folder OUT/BlueWake, ready to run
+ 13 AppImage     optional with --appimage; package and audit the personal image
 
 The app folder contains code translated from YOUR disc and a copy of the disc:
 it is yours alone. Never share or upload it. Your saves live in
@@ -48,6 +49,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "scripts/builder/profiles/bluewake.sh"
 MODULE = "gGZLE01_recomp.so"
 GC_MAGIC = 0xC2339F3D
+CI_CONTAINER_IMAGE = "bluewake-linux-ci:local"
+CI_CONTAINER_ENV = "BLUEWAKE_CI_CONTAINER"
 
 
 class BuildError(Exception):
@@ -130,6 +133,79 @@ def tree_digest(root):
     return out.split()[0]
 
 
+def _inside(path, parent):
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _git_metadata_paths():
+    """Git worktrees keep their metadata outside ROOT; expose it read-only."""
+    paths = []
+    for query in ("--git-dir", "--git-common-dir"):
+        value = subprocess.check_output(["git", "rev-parse", query], cwd=ROOT, text=True).strip()
+        path = Path(value)
+        if not path.is_absolute():
+            path = (ROOT / path).resolve()
+        if not _inside(path, ROOT) and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def container_mounts(disc, out):
+    """Ordered bind mounts; later mounts narrow access granted by parents."""
+    disc = disc.resolve()
+    out = out.resolve()
+    mounts = [(ROOT, "rw")]
+    mounts.extend((path, "ro") for path in _git_metadata_paths())
+    if not _inside(out, ROOT):
+        mounts.append((out, "rw"))
+    # The exact file is over-mounted read-only even if its parent is writable.
+    mounts.append((disc, "ro"))
+    return mounts
+
+
+def run_in_ci_container(args):
+    """Re-run this exact builder invocation in the Linux CI environment."""
+    if shutil.which("git") is None:
+        die("--ci-container requires Git on the host so worktree paths can be mounted")
+    docker = shutil.which("docker")
+    if docker is None:
+        die("--ci-container requires Docker; install it and start the Docker daemon")
+    if not args.disc.resolve().is_file():
+        die(f"disc image not found: {args.disc.resolve()}")
+
+    daemon = subprocess.run([docker, "info"], capture_output=True, text=True)
+    if daemon.returncode:
+        detail = (daemon.stderr or daemon.stdout).strip().splitlines()
+        die("Docker is installed but its daemon is unavailable"
+            + (f": {detail[-1]}" if detail else ""))
+
+    step("build the Linux CI container")
+    dockerfile = ROOT / "scripts/linux/Dockerfile"
+    context = dockerfile.parent
+    # BlueWake and its AppImage are x86-64 artifacts. Declaring the platform
+    # also lets Docker Desktop emulate this same image on an Arm host instead
+    # of silently building an incompatible Arm image.
+    image = subprocess.run([docker, "build", "--platform", "linux/amd64", "--file", dockerfile,
+                            "--tag", CI_CONTAINER_IMAGE, context])
+    if image.returncode:
+        die(f"Docker could not build {CI_CONTAINER_IMAGE} (exit {image.returncode})")
+
+    args.out.resolve().mkdir(parents=True, exist_ok=True)
+    command = [docker, "run", "--rm", "--init", "--platform", "linux/amd64",
+               "--user", f"{os.getuid()}:{os.getgid()}",
+               "--env", "HOME=/tmp", "--env", f"{CI_CONTAINER_ENV}=1"]
+    for path, mode in container_mounts(args.disc, args.out):
+        command.extend(["--volume", f"{path}:{path}:{mode}"])
+    command.extend(["--workdir", str(Path.cwd().resolve()), CI_CONTAINER_IMAGE,
+                    "python3", str(Path(__file__).resolve()), *sys.argv[1:]])
+    step("run the Linux build in the CI container")
+    return subprocess.run(command).returncode
+
+
 class Builder:
     def __init__(self, args):
         self.args = args
@@ -201,10 +277,10 @@ class Builder:
             die(f"an x86-64 Linux PC is required (this is {platform.machine()})")
         if sys.version_info < (3, 10):
             die("Python 3.10 or newer is required")
-        for tool in ("git", "cmake", "ninja"):
+        for tool in ("git", "cmake", "ninja", "pkg-config", "clang++", "ld.lld"):
             if shutil.which(tool) is None:
-                die(f"missing {tool}: install Git, CMake 3.25+ and Ninja "
-                    "(sudo apt install git cmake ninja-build)")
+                die(f"missing {tool}: install the Linux build dependencies listed in docs/LINUX.md "
+                    "or rerun with --ci-container")
         version = subprocess.check_output(["cmake", "--version"], text=True).split()[2]
         if tuple(int(x) for x in version.split(".")[:2]) < (3, 25):
             die(f"CMake 3.25 or newer is required (found {version})")
@@ -225,12 +301,27 @@ class Builder:
         if self.llvm_profdata is None and Path(beside).is_file():
             self.llvm_profdata = beside
         if self.llvm_profdata is None:
-            die("llvm-profdata is missing; install it (sudo apt install llvm) "
-                "or explicitly use --no-train for an untrained build")
+            die("llvm-profdata is missing; install it (sudo apt install llvm)")
+        if self.args.appimage:
+            self.check_appimage_tools()
         self.check_march()
         print(f"{clang_version}; cmake {version}; ninja "
               f"{subprocess.check_output(['ninja', '--version'], text=True).strip()}; "
               f"{self.args.jobs} jobs; -march={self.args.march}")
+
+    def check_appimage_tools(self):
+        """Fail before the long build when optional packaging tools are absent."""
+        appimagetool = os.environ.get("APPIMAGETOOL", "appimagetool")
+        required = (appimagetool, "desktop-file-validate", "zsyncmake", "readelf")
+        missing = [tool for tool in required if shutil.which(tool) is None]
+        if shutil.which("magick") is None and shutil.which("convert") is None:
+            missing.append("ImageMagick (magick or convert)")
+        runtime = os.environ.get("APPIMAGE_RUNTIME_FILE")
+        if runtime and not Path(runtime).is_file():
+            die(f"APPIMAGE_RUNTIME_FILE is not a file: {runtime}")
+        if missing:
+            die("--appimage is missing packaging tools: " + ", ".join(missing)
+                + "; install the packages listed in docs/LINUX.md or use --ci-container")
 
     def check_march(self):
         """The game module is compiled for --march; refuse a level this CPU lacks."""
@@ -240,19 +331,26 @@ class Builder:
             return
         probe = self.out / "tools/march_probe.c"
         probe.parent.mkdir(parents=True, exist_ok=True)
-        probe.write_text(r"""#include <stdio.h>
-int main(void) {
-    printf("sse4.2=%d popcnt=%d movbe=%d fma=%d avx=%d avx2=%d bmi=%d bmi2=%d lzcnt=%d\n",
-           __builtin_cpu_supports("sse4.2"), __builtin_cpu_supports("popcnt"),
-           __builtin_cpu_supports("movbe"), __builtin_cpu_supports("fma"),
-           __builtin_cpu_supports("avx"), __builtin_cpu_supports("avx2"),
-           __builtin_cpu_supports("bmi"), __builtin_cpu_supports("bmi2"),
-           __builtin_cpu_supports("lzcnt"));
+        in_ci_container = self.args.ci_container and os.environ.get(CI_CONTAINER_ENV) == "1"
+        boolean = "!!" if in_ci_container else ""
+        probe.write_text(f"""#include <stdio.h>
+int main(void) {{
+    printf("sse4.2=%d popcnt=%d movbe=%d fma=%d avx=%d avx2=%d bmi=%d bmi2=%d lzcnt=%d\\n",
+           {boolean}__builtin_cpu_supports("sse4.2"), {boolean}__builtin_cpu_supports("popcnt"),
+           {boolean}__builtin_cpu_supports("movbe"), {boolean}__builtin_cpu_supports("fma"),
+           {boolean}__builtin_cpu_supports("avx"), {boolean}__builtin_cpu_supports("avx2"),
+           {boolean}__builtin_cpu_supports("bmi"), {boolean}__builtin_cpu_supports("bmi2"),
+           {boolean}__builtin_cpu_supports("lzcnt"));
     return 0;
-}
+}}
 """)
         exe = probe.with_suffix("")
-        subprocess.run([self.clang, "-O1", str(probe), "-o", str(exe)], check=True, capture_output=True)
+        # Ubuntu 24.04's Clang 18 rejects the movbe and lzcnt spellings. Use
+        # the image's system compiler only for this feature probe; without
+        # --ci-container the existing Clang probe remains unchanged.
+        probe_compiler = shutil.which("cc") if in_ci_container else self.clang
+        subprocess.run([probe_compiler, "-O1", str(probe), "-o", str(exe)],
+                       check=True, capture_output=True)
         report = subprocess.check_output([str(exe)], text=True).split()
         have = {name for name, bit in (item.split("=") for item in report) if bit == "1"}
         if not levels[self.args.march] <= have:
@@ -942,6 +1040,17 @@ int main(void) {
         (app / "README.txt").write_text(README)
         return app
 
+    def package_appimage(self):
+        """Run the existing opt-in AppImage packager after the app folder exists."""
+        image = self.out / "BlueWake-x86_64.AppImage"
+        zsync = Path(f"{image}.zsync")
+        self.run("appimage", [ROOT / "scripts/linux/make_appimage.sh", self.out, image])
+        missing = [path for path in (image, zsync) if not path.is_file()]
+        if missing:
+            die("AppImage packaging did not produce " + ", ".join(str(path) for path in missing))
+        self.run("appimage-abi", [sys.executable, ROOT / "scripts/linux/check_appimage_abi.py", image, "2.39"])
+        return image, zsync
+
     @staticmethod
     def place(source, target):
         """The disc goes beside the game: a hard link when it can, else a copy."""
@@ -1022,6 +1131,11 @@ int main(void) {
         print(f"  run {app / 'bluewake'}")
         print("  It contains game code translated from your disc and a copy of the disc: keep it for yourself.")
         print("  Saves: ~/.local/share/BlueWake (outside the build).")
+        if args.appimage:
+            step("AppImage (explicit packaging step)")
+            image, zsync = self.package_appimage()
+            print(f"AppImage: {image}")
+            print(f"zsync: {zsync}")
 
 
 README = """BlueWake for Linux: The Legend of Zelda: The Wind Waker (GameCube USA),
@@ -1126,7 +1240,17 @@ def main():
     parser.add_argument("--source-only", action="store_true",
                         help="stop after generating the source: checks tools, disc and translation in minutes")
     parser.add_argument("--check-only", action="store_true", help="check tools, dependencies and the disc only")
+    parser.add_argument("--ci-container", action="store_true",
+                        help="run this same build inside the Ubuntu 24.04 Linux CI container")
+    parser.add_argument("--appimage", action="store_true",
+                        help="after the normal app-folder build, package it as an AppImage")
     args = parser.parse_args()
+    if args.ci_container and os.environ.get(CI_CONTAINER_ENV) != "1":
+        try:
+            sys.exit(run_in_ci_container(args))
+        except BuildError as error:
+            print(f"\nbuilder: {error}", file=sys.stderr)
+            sys.exit(1)
     # Wind Waker Recomp's Windows builds prepare all of these every time; BlueWake
     # matches that by default. --conservative builds the plain translation.
     if not args.conservative:
