@@ -102,6 +102,7 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | Oct 9 | Hidden symbols on ELF, `perf stat` | i5-6500, Debian 13 | Outset, 2,400 retraces | 275.3 G instructions, 133.9 G cycles | 251.4 G (−8.7%), 124.2 G (−7.3%) | |
 | Oct 9 | Hidden symbols on ELF, the build | i5-6500, clang 19 | Module compile; full build | 90:05; 2 h 14 min; 440.5 MB | 54:21 (−40%); 1 h 37 min; 415.2 MB | |
 | Oct 10 | Profile of the game thread, lean 0.7.0 vs Wind Waker Recomp's port (LiquidAzir, #93) | Galaxy Z Fold 7 | Outset pier | BlueWake: translated module 120 M, host and runtime 40 M instr./retrace (`host_direct_can_skip` 23 M, edge service 8 M, GX writes 8 M, `bw_direct_call_ready` 7 M) | WWR: module 102 M, host 7 M | Different builds. Hidden symbols cost about 9 M on ARM64 (module 121 M without, 129 M with) while halving the compile; fusion halves draws there (3,059 to 1,338) without changing the game thread |
+| Oct 11 | Speed sprint baseline and profile, no change ([record](status/SPEED_PROFILE_2026-10-11.md)) | M3 Max, macOS, `--combined-optimizations --lean-blocks` | Outset / Dragon Roost Cavern, headless, 2,400 retraces from states | 23.4 s / 15.0 s (103 / 160 retraces a second) | | Three runs each: identical checkpoints, within 0.5% |
 
 The `--lean-blocks` rows: both builds from `acfaf32` with the parallel training (#202), each in a fresh `--out`
 folder, built and measured from the desktop session. Unpaced, Smooth Motion off, medians of three runs, builds
