@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 11, 2026.
+Updated October 11, 2026 (night).
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -42,6 +42,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   runs the interrupt test in `bw_host_quiet`, and the Mac and iPhone builder uses the same `direct_calls.py` watch list.
 - **Also merged today:** draw fusion on for Linux (#247, from jkoehler11's Steam Deck run on #215) and Swap L and R (#248, #244).
 - **Afternoon:** pdale-boop's #243 (`--host-only` rebuilds in about a minute; I checked its mods step on the Mac with macOS's bash 3.2: byte-identical source, 32 s instead of 42) and #250 (every cutscene in the stage select marked before or after the Helmaroc King fight) merged. #251: the stage select should set the flag a cutscene needs and block saving for the rest of that session. #252 makes Mac, iPhone and iPad builds tiered like the PC builds: 61 minutes of compile instead of 79, and on an iPad Pro the same game-thread load in a trained and an untrained place. Apple builds still compile without the PC builds' preparations (PRIORITIES row 6).
+- **Evening:** the docs consolidated: WINDOWS_TASKS.md rewritten around what is in `main`, shipped but unchecked, and checked; the migration log, the Windows checklist, the proposal and the October 7 notes (TECH_DEBT.md) moved to `docs/status/`; MIGRATION_STATUS.md and WINDOWS.md's status made current; README has the Linux guide and an Android answer. #254 (cforain's shared Linux build container) works on a Mac and waits for clang 22 in its image. #255 folded into #59.
 - **Android (#93):** every item on its merge checklist is done; speed is the gate (Outset 67 to 80% on the Fold 7 against
   "holds 30"). LiquidAzir has been asked to merge `main` with #242, turn hidden symbols off for Android and measure.
 - **New reports:** a 2-core A6 laptop that can't hold 30 at sea, game thread (#246); D-pad in the item screens (#245);
@@ -49,9 +50,31 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 - **A new release gate (Chris):** before announcing a release PadMint builds on a Mac, PadMint's
   `scripts/player-check.sh` passes, on the clean checkout before tagging and again after publishing.
 
-## Next: the next release
+## Now: the speed sprint (from October 11)
 
-Not dated yet. It carries #242, #210, #243, #247, #248 and #250 (and #252 once merged), plus whatever of row 0 below is ready. Before the freeze: the
+**Goal:** BlueWake measurably faster where the CPU is the limit: the Steam Deck, Android phones, two- and four-core
+PCs. Every slow report this week says the same thing (`cause=game-thread`, the game thread 97 to 98% busy, the GPU
+idle). The translated code does a lot of bookkeeping for each game instruction: it writes the program counter,
+charges and checks cycles, records a cycle "observation" around memory instructions, and goes through an inline
+check on every memory access; the game's registers live in memory, and every direct call asks the host. The plain
+translation that Mac, iPhone and iPad builds compile does more of it than the prepared one the PC builds use.
+
+**The rules for this sprint:** measure before changing anything; one change per pull request, behind a switch,
+off by default; a change counts when the guest checkpoints match at the save states and the benchmark is faster.
+Chris decides every default change, any merge that changes how the game runs, the release, and the Android bar.
+
+| # | Step | Who | Done when |
+| --- | --- | --- | --- |
+| S1 | **Done October 11 ([record](status/SPEED_PROFILE_2026-10-11.md)): about a quarter of the CPU time is the game's own work; the rest is the program counter and cycle observation around memory instructions, the dispatcher, exact floating point and the host's per-call checks.** Measure where the game thread's time goes, on this Mac's ARM build with the PC builds' preparations and lean blocks (`--combined-optimizations --lean-blocks`, #257): headless, unpaced, from save states at Outset, the bird scene and Dragon Roost Cavern; a CPU profile split into game work, per-instruction bookkeeping, memory access, the host's per-call checks and the renderer's writes. | Codex | A table in [PERFORMANCE.md](PERFORMANCE.md#results) that ranks the shares |
+| S2 | **Fix 1 measured October 12: `--lean-memory` (already in the Windows and Linux builders) is about 5.5 to 6% faster on this Mac and plays the same; contributors asked for x86, Deck and phone numbers; turning it on by default is Chris's decision. On Apple it needs the training link fixed first. Fix 2, October 12: `--lean-deadlines` (new, opt-in in all three builders) is 3.7 to 4.9% faster again, with the same game state; the module is 8.5% larger. The host's per-call checks answered inline in the module: no gain, so not proposed ([record](status/SPEED_PROFILE_2026-10-11.md)).** Remove the biggest share first, from S1's ranking: (1) the program counter, the cycle observation and the deadline check only on the path that leaves RAM; (2) the host's per-call checks as one inline flag; (3) MSR[FP] checked once per block; (4) fewer dispatches; (5) a last-hit cache for alias lookups. Earlier list: the host's per-call checks become one flag the module reads inline (row 0 below); the memory fast path checks one "slow memory" flag instead of aliases, reservation and write journal separately (RecompCore `cpu.h`); the lean copies write the program counter and the observation value only where an instruction can observe them; the game's registers stay in locals inside a block. | Codex | Each: a switch, matching checkpoints at three states, a "Results" row on the Mac and one from a contributor's PC or phone |
+| S3 | **Apple builds with the PC preparations** (PRIORITIES row 6): the same states on a plain Mac build and a prepared one. | Codex | Numbers recorded; Chris decides the default |
+| S4 | **Prepare the next release in parallel,** without deciding it: what is in `main` since 0.7.0, its checks, and the Linux AppImage as the headline. **Draft: [RELEASE_NEXT_DRAFT_2026-10-11.md](status/RELEASE_NEXT_DRAFT_2026-10-11.md).** | Codex prepares; Chris decides | A release record ready for Chris |
+
+Waiting on Chris: whether Android (#93) merges as experimental below full speed, and when to freeze the release.
+
+## Next: the next release (S4)
+
+Not dated yet. It carries #242, #210, #243, #247, #248, #250, #252 and #257, plus whatever of row 0 below is ready ([the draft record](status/RELEASE_NEXT_DRAFT_2026-10-11.md)). Before the freeze: the
 468-place sweep on the candidate (row 8), Forest Haven played with fusion on Linux, the Linux AppImage from a
 contributor's own disc, and `player-check.sh`. Chris decides when to freeze.
 
@@ -72,7 +95,7 @@ result in PERFORMANCE.md's "Results". Elliott's `windows-release` is cloned at
 | 6 | **A native from the decompilation's source:** `__ieee754_fmod` from `e_fmod.c` against his replayed one, on the benchmark ([PERFORMANCE.md](PERFORMANCE.md#the-plan)). | Codex | A "Results" row; a yes or no for doing more |
 | 7 | **Android:** every merge-checklist item is done (October 10). LiquidAzir merges `main` (#242), turns hidden symbols off for Android (`NOT ANDROID`, 9 M a retrace on ARM64) and measures the pier from a cool start against the 110 M of Wind Waker Recomp's build. | LiquidAzir | Outset holds 30 when cool: merged as "build it yourself, experimental" |
 | 8 | **Crash sweep and benchmark tour:** **#210 merged October 11** (no cost when off). Warp to all 468 places on every release candidate; `bench_tour.py` on `BLUEWAKE_WARP`. | pdale-boop, Codex | A sweep in the next release record |
-| 9 | **Flicker** (#136): the two earlier switches are ruled out on 0.7.0 (Muyfa666). Next, `DOL_AURORA_UBERSHADER=0` and a 120 FPS log, then 0.4.0's Smooth Motion against 0.5.0's. | Reporters, then Codex | Cause named |
+| 9 | **Flicker** (#136): ruled out on 0.7.0 by the reporters: patches 0152 and 0155, the ubershader, the HD texture pack and G-Sync. Next, a look on Chris's PC (AMD) at 120, then the capture in [WINDOWS_TASKS.md](WINDOWS_TASKS.md) section 4 on an NVIDIA PC, against 0.4.0. | A Windows PC, then Codex | Cause named |
 | 10 | **Linux video** for social media, shot list on #56, once the 0.7.0 AppImage exists. | cforain or jkoehler11; Chris posts | A clip in hand |
 
 ## Late October and November: 0.8
@@ -89,4 +112,3 @@ benchmark, name the hot functions with the decompilation's `symbols.txt`, list t
 and pick the next natives from them: replayed from the translation where exactness matters, compiled from source
 where step 6 showed it pays. When the actor modules pass about 90% of code matched, revisit porting scenes from
 source.
-

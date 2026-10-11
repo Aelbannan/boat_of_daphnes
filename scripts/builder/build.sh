@@ -29,6 +29,12 @@
 #   --game NAME               profile to use (default bluewake)
 #   --platform ios|tvos|macos Apple target (default ios)
 #   --combined-optimizations opt into the measured Mac optimization candidate
+#   --lean-blocks             with --combined-optimizations: Elliott Tate's lean block copies,
+#                             as the Windows and Linux builders use by default
+#   --lean-memory             with --lean-blocks: memory instructions store their pc and cycle
+#                             suffix only on the way out of RAM (Elliott Tate's lean_memory.py)
+#   --lean-deadlines          with --lean-memory: the deadline test after a load or store only on
+#                             its way out of RAM, where the deadline can move (lean_deadlines.py)
 #   --identity NAME           codesign identity, e.g. "Apple Development: You (TEAMID)"
 #   --profile FILE            device provisioning profile (with --identity)
 #   --install DEVICE          install with devicectl after signing (needs --identity)
@@ -63,7 +69,7 @@ module_optimizations=none
 composite_pgo=()
 # -O2 always: -O1 compiled in 47 min instead of 80 but held only 26 FPS
 # on an iPad Pro (M2) at Outset (docs/BUILDER.md), so there is no quick option.
-device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1 tiered=1
+device_cpu=apple-a13 opt_level=2 mods=1 accept_new=0 source_only=0 use_pgo=1 tiered=1 lean_arg="" lean_memory=0 lean_deadlines=0
 
 die() { echo "builder: $*" >&2; exit 1; }
 step() { echo; echo "==> $*"; }
@@ -83,6 +89,9 @@ while [ $# -gt 0 ]; do
         --game) game=$2; shift 2 ;;
         --platform) platform=$2; shift 2 ;;
         --combined-optimizations) module_optimizations=combined-v1; shift ;;
+        --lean-blocks) lean_arg=--lean; shift ;;
+        --lean-memory) lean_memory=1; shift ;;
+        --lean-deadlines) lean_deadlines=1; shift ;;
         --identity) identity=$2; shift 2 ;;
         --profile) profile=$2; shift 2 ;;
         --install) install_device=$2; shift 2 ;;
@@ -106,6 +115,15 @@ done
 [[ "$platform" = ios || "$platform" = tvos || "$platform" = macos ]] || die "--platform must be ios, tvos or macos"
 if [ "$module_optimizations" != none ]; then
     [ "$platform" = macos ] && [ "$app_only" -eq 0 ] || die "--combined-optimizations needs a personal --platform macos build"
+fi
+[ -z "$lean_arg" ] || [ "$module_optimizations" != none ] || die "--lean-blocks needs --combined-optimizations"
+if [ "$lean_memory" -eq 1 ]; then
+    [ -n "$lean_arg" ] || die "--lean-memory needs --lean-blocks"
+    lean_arg="$lean_arg --lean-memory"
+fi
+if [ "$lean_deadlines" -eq 1 ]; then
+    [ "$lean_memory" -eq 1 ] || die "--lean-deadlines needs --lean-memory"
+    lean_arg="$lean_arg --lean-deadlines"
 fi
 if [ "$platform" = macos ]; then
     [ -z "$ipa$published_app$profile$install_device" ] || die "macOS produces a local .app; --ipa, --app, --profile and --install are device-only"
@@ -241,7 +259,7 @@ fi
 step "6/9 mods"
 if [ "$mods" -eq 1 ]; then profile_mods; else echo "skipped"; fi
 if [ "$module_optimizations" != none ]; then
-    run module-prepare python3 "$root/scripts/builder/module_optimizations.py" prepare "$module_optimizations" --out "$out"
+    run module-prepare python3 "$root/scripts/builder/module_optimizations.py" prepare "$module_optimizations" $lean_arg --out "$out"
 fi
 
 if [ "$train_pgo" -eq 1 ]; then

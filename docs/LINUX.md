@@ -5,40 +5,109 @@ from your own disc and play it on Linux. This is the same game as the Windows
 build: a native host, the translated game module, and the DSP, packaged as a
 folder you run with `./bluewake`.
 
-## What you need
+## Choose a build method
 
-- An x86-64 Linux PC.
-- Your own GZLE01 revision 0 disc image, as an uncompressed `.iso` or `.gcm`.
-  (A Dolphin-compressed image like `.rvz`/`.wia` is not converted here; convert
-  it in Dolphin: right-click the game, Convert File, format ISO.)
-- clang (with lld and llvm-profdata), CMake 3.25+, Ninja, Python 3.10+, git,
-  and the development files SDL3 and the host build against (X11, Wayland,
-  Vulkan, ALSA, PulseAudio). On Debian and Ubuntu, the same packages the Linux
-  CI installs:
+BlueWake offers two ways to produce the same Linux app. Use the **container
+build** for a reproducible or SteamOS-targeted AppImage. Use the **native
+build** when you prefer your installed Linux toolchain and do not need a
+portable ABI baseline.
 
-      sudo apt install clang lld llvm cmake ninja-build git build-essential \
-        libwayland-dev libxkbcommon-dev libx11-xcb-dev libx11-dev libxrandr-dev \
-        libxext-dev libxi-dev libxcursor-dev libgl1-mesa-dev libvulkan-dev \
-        libasound2-dev libpulse-dev libxss-dev libxtst-dev
+Container builds use Clang 18 by default, matching Linux CI. Pass
+`--ci-container --clang22` to override that default with Clang 22; native builds
+continue to use the supported Clang selected by the host's `PATH`.
 
-  (or your distro's equivalent). Without them the build stops at
-  `app-configure` with SDL's "Couldn't find dependency package for …", which
-  names the one missing. Vulkan drivers for your GPU. The host and the game
-  module both build with clang, matching the Windows build's optimization
-  pipeline.
+| | Container build (recommended) | Native build |
+| --- | --- | --- |
+| Host | Linux, macOS, or Windows through WSL2 | x86-64 Linux |
+| Requirements | Python 3.10+, Git, Docker with Linux containers | The complete compiler and development package list below |
+| Advantages | Same Ubuntu 24.04 environment as CI; no host compiler setup; AppImage targets CI's SteamOS-compatible `GLIBC_2.39` ceiling | No Docker or container image; fastest on a configured x86-64 Linux workstation |
+| Tradeoffs | Downloads and stores a Docker image; slower under `linux/amd64` emulation on Arm hosts | Depends on host package versions; an AppImage built on a newer distribution may exceed SteamOS's glibc ABI and fail its audit |
 
-## Build
+Both methods use the same builder, options, optimizations, PGO training and
+output paths. They require your own GZLE01 revision 0 disc as an uncompressed
+`.iso` or `.gcm`. Convert Dolphin `.rvz`/`.wia` images to ISO in Dolphin first.
+
+## Container build (recommended)
+
+Install and start Docker, then run:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container
+
+To create the personal AppImage as part of the same build, add `--appimage`:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container --appimage
+
+Clang 18 is the default, matching Linux CI. To evaluate Clang 22 explicitly,
+add `--clang22` and use a separate output directory from an existing Clang 18
+build:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux-clang22 \
+      --ci-container --clang22
+
+The version-controlled [`scripts/linux/Dockerfile`](../scripts/linux/Dockerfile)
+supplies Clang 18 and 22, CMake, development libraries and AppImage tools.
+Clang 18 remains the default and CI also selects it explicitly; `--clang22` is
+an opt-in for container builds. Ubuntu's libc++ 18 remains the shared C++
+runtime/ABI baseline for either compiler. Docker caches unchanged layers,
+mounts the disc read-only and writes normal outputs to `build/linux`; the disc
+never enters the image or CI. The result is always an x86-64 Linux build. Arm
+hosts use Docker's `linux/amd64` emulation, which is substantially slower.
+
+## Native build
+
+Install CMake 3.25+, Ninja, Git, `pkg-config`, Clang/Clang++ 17 or newer, LLD,
+`llvm-profdata`, libc++ and the graphics/audio development libraries. Ubuntu
+24.04 package names are:
+
+    sudo apt install clang lld llvm libc++-dev libc++abi-dev cmake ninja-build \
+      git build-essential pkg-config libwayland-dev libxkbcommon-dev \
+      libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
+      libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev \
+      libxss-dev libxtst-dev zlib1g-dev libpng-dev libfreetype6-dev \
+      libsqlite3-dev libzstd-dev libfmt-dev libbz2-dev libbrotli-dev libicu-dev
+
+Use your distribution's equivalent packages, then run:
 
     python scripts/linux/build.py path/to/GZLE01.iso --out build/linux
+
+The builder checks command-line tools before reading the disc; CMake identifies
+missing development libraries during `app-configure`. Vulkan drivers are needed
+to run the result. Native `--appimage` additionally requires the packaging tools
+listed under [Build the AppImage](#build-the-appimage).
+
+## Build behavior
 
 The first build clones the pinned RecompCore and DolRecomp sources into
 `ref/recompcore`, translates your disc, and compiles the game module (the long
 step). Rerun the same command to continue or reuse an existing build. Your
-disc, the extracted files and the translated module stay in `build/linux`,
-which git ignores.
+disc, extracted files and translated module stay in `build/linux`, which Git
+ignores.
+
+## Outputs
+
+Both build methods write to the host directory selected by `--out`; container
+artifacts are not left inside Docker. With the default `--out build/linux`, the
+final outputs are:
+
+| Output | Created by | Host path | Contents |
+| --- | --- | --- | --- |
+| Playable app folder | Every complete build | `build/linux/BlueWake/` | `bluewake`, the translated module, DSP files and your disc under `game/` |
+| AppImage | A build with `--appimage` | `build/linux/BlueWake-x86_64.AppImage` | Portable Linux app and translated module; the disc itself is excluded |
+| Update metadata | A build with `--appimage` | `build/linux/BlueWake-x86_64.AppImage.zsync` | Delta-update metadata for that AppImage |
+| Build logs | Every build step | `build/linux/logs/` | Compiler, training, packaging and ABI-audit logs |
+
+Run the folder build with `build/linux/BlueWake/bluewake`, or copy the
+AppImage and make it executable. Both the folder and AppImage are personal
+artifacts because they contain code translated from your disc; do not commit
+or publish them. A different `--out PATH` replaces the `build/linux` prefix in
+every path above.
 
 Useful options:
 
+    --clang22     use Clang 22 for a container build (requires --ci-container;
+                  Clang 18 remains the default)
     --source-only  stop after translating: checks tools, disc and translation
                    in minutes, before the long compile
     --no-mods      skip the widescreen and Better Wind Waker variants
@@ -84,9 +153,9 @@ The optional controller zoom is under **Controls** in the settings menu. Enable 
 then hold the right-stick click and move that stick up or down; tapping the click
 still enters or leaves first person. Its speed is adjustable beside the option.
 
-Your saves, settings and session logs live in `~/.local/share/BlueWake`, outside
-the build, so rebuilding never touches them. The settings menu (Esc or F1) saves to
-`~/.config/BlueWake/settings.ini`.
+Your saves and session logs live in `~/.local/share/BlueWake`, outside the
+build, so rebuilding never touches them. The settings menu (Esc or F1) saves
+preferences separately to `~/.config/BlueWake/settings.ini`.
 
 ## The app folder
 
@@ -108,15 +177,29 @@ extracted from it are never distributed).
 
 ### Build the AppImage
 
-These are packaging-only dependencies; end users do not need them. The build
-machine needs the [current `appimagetool`](https://github.com/AppImage/appimagetool/releases),
-`desktop-file-validate` (usually from `desktop-file-utils`), `zsyncmake`
-(usually from `zsync` or `zsync-curl`) and ImageMagick on `PATH`. Do not use
-the obsolete tool from the old AppImageKit release page; it embeds a legacy
-runtime that requires FUSE 2. After creating the Linux build from your disc as
-described above, run:
+These are packaging-only dependencies; end users do not need them. A native
+package build needs the [current `appimagetool`](https://github.com/AppImage/appimagetool/releases),
+`desktop-file-validate` (`desktop-file-utils`), `zsyncmake` (`zsync` or
+`zsync-curl`), `readelf` (`binutils`) and ImageMagick (`magick` or `convert`)
+on `PATH`. The builder checks all of them before starting when `--appimage` is
+present. Do not use the obsolete tool from the old AppImageKit release page;
+it embeds a legacy runtime that requires FUSE 2. After creating the Linux build
+from your disc as described above, run:
 
     scripts/linux/make_appimage.sh
+
+Alternatively, `--appimage` keeps packaging explicit while performing it after
+the normal app-folder build. Combine it with `--ci-container` to use the shared
+CI image and avoid installing packaging tools on the host:
+
+    python scripts/linux/build.py path/to/GZLE01.iso --out build/linux \
+      --ci-container --appimage
+
+The shared Dockerfile pins appimagetool, the Type 2 runtime and CMake. It uses
+Clang 18 by default, includes optional Clang 22 tools, and retains Ubuntu's
+libc++ 18 with either compiler.
+The completed AppImage is automatically audited for prohibited private files,
+accidental libstdc++ linkage and a maximum `GLIBC_2.39` requirement.
 
 The outputs are:
 
@@ -157,10 +240,26 @@ it under the Linux release exception, after it passes the release asset check:
      the choices, install the requested launchers, and start the game. The
      launchers point to this AppImage, so keep it at the same path afterward.
 
-4. On later launches, BlueWake remembers these choices. Start it normally from
-   either installed launcher, by double-clicking the AppImage, or by running:
+4. **Start BlueWake later.** Selecting **Start BlueWake** records the original
+   disc path in `$XDG_DATA_HOME/BlueWake/disc.txt` (normally
+   `~/.local/share/BlueWake/disc.txt`) and keeps the prepared game files under
+   that same BlueWake data directory. The optional texture-pack path is saved
+   in `$XDG_CONFIG_HOME/BlueWake/settings.ini` (normally
+   `~/.config/BlueWake/settings.ini`). The disc is not copied, so keep the ISO
+   or GCM at the selected path.
+
+   Every normal launch reads those saved paths. If the disc still exists and
+   its prepared files are usable, BlueWake skips setup and starts the game.
+   This works identically when using the application-menu launcher, Desktop
+   shortcut, double-clicking the AppImage, or running:
 
        ./BlueWake-x86_64.AppImage
+
+   Installed shortcuts contain the AppImage's absolute path. If you move or
+   rename the AppImage, launch it from its new location with `--setup`, leave
+   shortcut installation enabled, and select **Start BlueWake** to update them.
+   If the disc or texture pack moves, use the same setup window to select its
+   new location. A missing remembered disc automatically returns you to setup.
 
 To change the saved setup later, reopen the same window; its disc and texture
 fields are filled with the current remembered values:

@@ -1,17 +1,19 @@
 # Proposals
 
+> Dated record, moved from `docs/PROPOSALS.md` on October 11, 2026. The goal it serves is [DIRECTION.md](../DIRECTION.md) section 1.
+
 Ideas for BlueWake that need agreement between the maintainers (Elliott and Chris) before any work
 starts. A proposal here is not a decision or a plan.
 
 ## Easier Windows builds without publishing game code
 
 **Status:** proposal, not agreed. Since October 4, BlueWake publishes a ready-made Windows build
-([AGENTS.md](../AGENTS.md)), so this is now about a possible later replacement for it, not a blocker.
+([AGENTS.md](../../AGENTS.md)), so this is now about a possible later replacement for it, not a blocker.
 
 **Problem.** Wind Waker Recomp's ready-made Windows apps are what most players use. BlueWake does not
 publish builds that contain code translated from the game, so a Windows player builds their own from their
 disc. Today that means installing Visual Studio with its clang compiler, Python, CMake and Ninja, then a
-build of about 15 to 40 minutes on a fast PC ([BlueWake on Windows](WINDOWS.md)). Installing Visual Studio is the
+build of about 15 to 40 minutes on a fast PC ([BlueWake on Windows](../WINDOWS.md)). Installing Visual Studio is the
 biggest hurdle.
 
 **Idea.** Publish only the parts that contain no game code, and let the player's PC compile the rest:

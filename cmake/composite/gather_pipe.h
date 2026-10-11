@@ -264,6 +264,37 @@ BW_ACCESS_AT(32, u32)
 BW_ACCESS_AT(64, u64)
 #undef BW_ACCESS_AT
 
+/* The same for scripts/windows/lean_deadlines.py, which keeps an access's
+ * deadline test only for the way out of line: *ool is set there, where an MMIO
+ * handler, the decrementer or the timebase may move the deadline. A plain RAM
+ * access leaves it as it was, and the compiler drops the test on that path. */
+#define BW_ACCESS_ATO(bits, type) \
+    static inline __attribute__((always_inline)) type bw_read##bits##_ato(bool* ool, CPUState* cpu, u32 pc, \
+                                                                       u32 suffix, u32 addr) { \
+        if (__builtin_expect(BW_RAM_FAST(cpu, addr, bits / 8u), 1)) \
+            return bw_mem_read##bits(cpu, addr); \
+        *ool = true; \
+        cpu->pc = pc; \
+        cpu->cycle_observation_suffix = suffix; \
+        return bw_mem_read##bits##_slow(cpu, addr); \
+    } \
+    static inline __attribute__((always_inline)) void bw_write##bits##_ato(bool* ool, CPUState* cpu, u32 pc, \
+                                                                        u32 suffix, u32 addr, type value) { \
+        if (__builtin_expect(BW_RAM_FAST_STORE(cpu, addr, bits / 8u), 1)) { \
+            bw_mem_write##bits(cpu, addr, value); \
+            return; \
+        } \
+        *ool = true; \
+        cpu->pc = pc; \
+        cpu->cycle_observation_suffix = suffix; \
+        bw_mem_write##bits##_slow(cpu, addr, value); \
+    }
+BW_ACCESS_ATO(8, u8)
+BW_ACCESS_ATO(16, u16)
+BW_ACCESS_ATO(32, u32)
+BW_ACCESS_ATO(64, u64)
+#undef BW_ACCESS_ATO
+
 /* What the interpreter runs for the chunks makes its own accesses, outside
  * these wrappers: an instruction the translation hands it, the quantised
  * paired-single types (the generated inline forms take only type 0) and the
