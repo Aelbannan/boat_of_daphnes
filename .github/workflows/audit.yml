@@ -4,7 +4,7 @@ jobs:
   audit:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run repository safety audit
         run: bash scripts/audit_repo.sh
       - name: Validate dependency lock
