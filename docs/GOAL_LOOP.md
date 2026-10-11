@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 11, 2026.
+Updated October 11, 2026 (night).
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -50,7 +50,29 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 - **A new release gate (Chris):** before announcing a release PadMint builds on a Mac, PadMint's
   `scripts/player-check.sh` passes, on the clean checkout before tagging and again after publishing.
 
-## Next: the next release
+## Now: the speed sprint (from October 11)
+
+**Goal:** BlueWake measurably faster where the CPU is the limit: the Steam Deck, Android phones, two- and four-core
+PCs. Every slow report this week says the same thing (`cause=game-thread`, the game thread 97 to 98% busy, the GPU
+idle). The translated code does a lot of bookkeeping for each game instruction: it writes the program counter,
+charges and checks cycles, records a cycle "observation" around memory instructions, and goes through an inline
+check on every memory access; the game's registers live in memory, and every direct call asks the host. The plain
+translation that Mac, iPhone and iPad builds compile does more of it than the prepared one the PC builds use.
+
+**The rules for this sprint:** measure before changing anything; one change per pull request, behind a switch,
+off by default; a change counts when the guest checkpoints match at the save states and the benchmark is faster.
+Chris decides every default change, any merge that changes how the game runs, the release, and the Android bar.
+
+| # | Step | Who | Done when |
+| --- | --- | --- | --- |
+| S1 | **Measure where the game thread's time goes**, on this Mac's ARM build with the PC builds' preparations and lean blocks (`--combined-optimizations --lean-blocks`, #257): headless, unpaced, from save states at Outset, the bird scene and Dragon Roost Cavern; a CPU profile split into game work, per-instruction bookkeeping, memory access, the host's per-call checks and the renderer's writes. | Codex | A table in [PERFORMANCE.md](PERFORMANCE.md#results) that ranks the shares |
+| S2 | **Remove the biggest share first,** from S1's ranking. Known candidates: the host's per-call checks become one flag the module reads inline (row 0 below); the memory fast path checks one "slow memory" flag instead of aliases, reservation and write journal separately (RecompCore `cpu.h`); the lean copies write the program counter and the observation value only where an instruction can observe them; the game's registers stay in locals inside a block. | Codex | Each: a switch, matching checkpoints at three states, a "Results" row on the Mac and one from a contributor's PC or phone |
+| S3 | **Apple builds with the PC preparations** (PRIORITIES row 6): the same states on a plain Mac build and a prepared one. | Codex | Numbers recorded; Chris decides the default |
+| S4 | **Prepare the next release in parallel,** without deciding it: what is in `main` since 0.7.0, its checks, and the Linux AppImage as the headline. | Codex prepares; Chris decides | A release record ready for Chris |
+
+Waiting on Chris: whether Android (#93) merges as experimental below full speed, and when to freeze the release.
+
+## Next: the next release (S4)
 
 Not dated yet. It carries #242, #210, #243, #247, #248, #250 and #252, plus whatever of row 0 below is ready. Before the freeze: the
 468-place sweep on the candidate (row 8), Forest Haven played with fusion on Linux, the Linux AppImage from a
