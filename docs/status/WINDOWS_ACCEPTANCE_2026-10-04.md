@@ -1,6 +1,8 @@
 # Windows testing handoff for Elliott
 
-The current list of Windows work is [WINDOWS_TASKS.md](WINDOWS_TASKS.md); this checklist is its task 1.
+> Dated record, moved from `docs/` on October 11, 2026. The checks for each Windows build are now in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md).
+
+The current list of Windows work is [WINDOWS_TASKS.md](../WINDOWS_TASKS.md); this checklist is its task 1.
 
 The source consolidation is merged into BlueWake `main` in [#37](https://github.com/chrissotraidis/bluewake/pull/37),
 with the Windows local-training follow-up in [#38](https://github.com/chrissotraidis/bluewake/pull/38).
@@ -13,7 +15,7 @@ before installation. Source changes are pushed; personal builds and backups stay
 Windows CI builds the host and passes 58 runtime and 24 builder checks.
 Native Windows gameplay and performance still need testing. Broader sustained
 Apple gameplay/performance coverage remains separately tracked in the
-[reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md).
+[reconciliation ledger](FORK_RECONCILIATION_2026-10-02.md).
 
 ## Hardware and checkout
 
@@ -22,7 +24,7 @@ checks below. Chris has no Windows PC. If you do not have one either, report tha
 so a tester can be found. A headless server or ARM64 VM does not establish native
 graphics, controller, audio and performance acceptance.
 
-Follow [Windows prerequisites and build instructions](WINDOWS.md#what-you-need).
+Follow [Windows prerequisites and build instructions](../WINDOWS.md#what-you-need).
 For a new checkout:
 
 ```powershell
@@ -101,5 +103,5 @@ GPU/driver, compiler, settings and app/module hashes. Use a short table:
 
 Return sanitized textual findings and focused source fix PRs. Keep personal apps,
 modules, generated game source, profiles, discs and saves local; do not attach them
-to GitHub. Releases follow [AGENTS.md](../AGENTS.md). Repository redirects, issue/PR migration
+to GitHub. Releases follow [AGENTS.md](../../AGENTS.md). Repository redirects, issue/PR migration
 and archival wait for the migration decision; this handoff is for Windows testing.

@@ -139,7 +139,7 @@ parallel; its remaining gate is Elliott's Windows testing.
 | 2. Baseline measurements | Mac and iPad, original 30 Hz and Smooth Motion 60, fixed routes or states: Outset, opening bird, Aryll's abduction, Forsaken Fortress exterior, open sea. Done when each scene has game speed, dips by cause, frame-time tails and audio recorded with exact app/module identities. |
 | 3. Import Elliott's post-0.4.0 batch | Merged: detector (#40), runtime 0143-0150 and app/builder commits (#43), Windows optimization defaults matching his builds (#45). Remaining: his second set of nine natives and `lean_memory.py`, which need adapting to BlueWake's opt-in native handshakes; Metal timing of the device lock and live D3D12 checks come from Elliott's Windows run. |
 | 4. Reported bugs | Reproduce before changing: scripted/intro music (#1, #12), camera flip in water (#24), dungeon map (#25), flag texture (#20), Moblin soft lock (#27). Each closes only with a before/after reproduction on the affected platform. |
-| 5. Windows confirmation | Extend Elliott's [checklist](../WINDOWS_ACCEPTANCE.md) with the imported batch and the slow scenes; his results close the Windows rows. |
+| 5. Windows confirmation | Extend Elliott's [checklist](../status/WINDOWS_ACCEPTANCE_2026-10-04.md) with the imported batch and the slow scenes; his results close the Windows rows. |
 
 ### Iteration contract
 
@@ -2332,7 +2332,7 @@ same time: it owns the Windows build, packaging and the release draft. This loop
 doesn't repeat its work.
 
 The reports this loop works from are catalogued in
-[OPEN_ISSUES_2026-10-05.md](status/OPEN_ISSUES_2026-10-05.md).
+[OPEN_ISSUES_2026-10-05.md](../status/OPEN_ISSUES_2026-10-05.md).
 
 ### How to work
 
@@ -2344,7 +2344,7 @@ The reports this loop works from are catalogued in
   export). A desktop setting goes in both menus, `runtime/host/src/settings_menu.cpp` and
   `windows/src/win_settings.cpp`, sharing a header where possible as `button_remap.h` does. Host tests
   pass and the Windows CI is green before merging, and the change gets a row under "In `main`, waiting
-  for a Windows build" in [WINDOWS_TASKS.md](WINDOWS_TASKS.md) in the same pull request.
+  for a Windows build" in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) in the same pull request.
 - Anything that changes gameplay, timing or rendering is off by default.
 - One concern per pull request, on a `codex/<topic>` branch from `origin/main`. Never push to `main`.
 - The Windows agent's files are left alone: `codex/win-*` branches, `scripts/windows/package_release.py`
@@ -2391,6 +2391,6 @@ it is written up in WINDOWS_TASKS.md; finishing doesn't depend on the Windows PC
 - **9. Forsaken Fortress map and compass:** done. No BlueWake patch hands them out; most likely the original game.
 - **10. Hand-off:** done. "The second Windows run" in WINDOWS_TASKS.md lists the five rows to check.
 
-Details: [OPEN_ISSUES_2026-10-05.md](status/OPEN_ISSUES_2026-10-05.md#what-the-october-5-loop-found).
+Details: [OPEN_ISSUES_2026-10-05.md](../status/OPEN_ISSUES_2026-10-05.md#what-the-october-5-loop-found).
 
-Earlier loops are in [the archive](archive/GOAL_LOOP_HISTORY.md).
+Earlier loops are in [the archive](GOAL_LOOP_HISTORY.md).

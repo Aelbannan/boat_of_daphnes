@@ -100,7 +100,7 @@ Missing or misleading:
    only after its own captures). Each: regression tests, Mac capture comparison, Windows CI, a note
    on whether old modules still work, and the step-2 scenes again.
 4. **Specific bugs** from the table, each reproduced before it is changed.
-5. **Windows confirmation** through Elliott's [checklist](../WINDOWS_ACCEPTANCE.md), extended with the
+5. **Windows confirmation** through Elliott's [checklist](WINDOWS_ACCEPTANCE_2026-10-04.md), extended with the
    new batch and the slow scenes.
 
 Defaults stay: original 30 Hz logic, Smooth Motion off, experimental 60 Hz off.
