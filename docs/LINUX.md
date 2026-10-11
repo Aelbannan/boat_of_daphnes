@@ -72,6 +72,25 @@ step). Rerun the same command to continue or reuse an existing build. Your
 disc, extracted files and translated module stay in `build/linux`, which Git
 ignores.
 
+## Outputs
+
+Both build methods write to the host directory selected by `--out`; container
+artifacts are not left inside Docker. With the default `--out build/linux`, the
+final outputs are:
+
+| Output | Created by | Host path | Contents |
+| --- | --- | --- | --- |
+| Playable app folder | Every complete build | `build/linux/BlueWake/` | `bluewake`, the translated module, DSP files and your disc under `game/` |
+| AppImage | A build with `--appimage` | `build/linux/BlueWake-x86_64.AppImage` | Portable Linux app and translated module; the disc itself is excluded |
+| Update metadata | A build with `--appimage` | `build/linux/BlueWake-x86_64.AppImage.zsync` | Delta-update metadata for that AppImage |
+| Build logs | Every build step | `build/linux/logs/` | Compiler, training, packaging and ABI-audit logs |
+
+Run the folder build with `build/linux/BlueWake/bluewake`, or copy the
+AppImage and make it executable. Both the folder and AppImage are personal
+artifacts because they contain code translated from your disc; do not commit
+or publish them. A different `--out PATH` replaces the `build/linux` prefix in
+every path above.
+
 Useful options:
 
     --source-only  stop after translating: checks tools, disc and translation
