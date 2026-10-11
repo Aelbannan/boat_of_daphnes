@@ -211,10 +211,26 @@ it under the Linux release exception, after it passes the release asset check:
      the choices, install the requested launchers, and start the game. The
      launchers point to this AppImage, so keep it at the same path afterward.
 
-4. On later launches, BlueWake remembers these choices. Start it normally from
-   either installed launcher, by double-clicking the AppImage, or by running:
+4. **Start BlueWake later.** Selecting **Start BlueWake** records the original
+   disc path in `$XDG_DATA_HOME/BlueWake/disc.txt` (normally
+   `~/.local/share/BlueWake/disc.txt`) and keeps the prepared game files under
+   that same BlueWake data directory. The optional texture-pack path is saved
+   in `$XDG_CONFIG_HOME/BlueWake/settings.ini` (normally
+   `~/.config/BlueWake/settings.ini`). The disc is not copied, so keep the ISO
+   or GCM at the selected path.
+
+   Every normal launch reads those saved paths. If the disc still exists and
+   its prepared files are usable, BlueWake skips setup and starts the game.
+   This works identically when using the application-menu launcher, Desktop
+   shortcut, double-clicking the AppImage, or running:
 
        ./BlueWake-x86_64.AppImage
+
+   Installed shortcuts contain the AppImage's absolute path. If you move or
+   rename the AppImage, launch it from its new location with `--setup`, leave
+   shortcut installation enabled, and select **Start BlueWake** to update them.
+   If the disc or texture pack moves, use the same setup window to select its
+   new location. A missing remembered disc automatically returns you to setup.
 
 To change the saved setup later, reopen the same window; its disc and texture
 fields are filled with the current remembered values:
