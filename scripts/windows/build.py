@@ -609,7 +609,8 @@ int main(void) {
                        f"{int(self.args.fixed_cpu)}\n{int(self.args.fixed_mem1)}\n{int(self.args.inline_fp)}\n{int(self.args.gather_pipe)}\n{int(self.args.direct_calls)}\n{int(self.args.inline_gpr)}\n{int(self.args.native_j3d)}\n{int(self.args.native_vec)}\n{int(self.args.native_math)}\n{int(self.args.native_skin)}\n{int(self.args.native_game_math)}\n"
                        f"{int(self.args.lean_memory)}\n{int(self.args.native_entries)}\n"
                        + ("lean_blocks\n" if getattr(self.args, "lean_blocks", False) else "")
-                       + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")).encode())
+                       + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")
+                       + ("behaviour_timing\n" if getattr(self.args, "behaviour_timing", False) else "")).encode())
         for f in (sorted((ROOT / "scripts/mods").glob("*")) + sorted((ROOT / "mods/widescreen").glob("*.gecko"))
                   + [ROOT / "mods/betterww/options.txt", ROOT / "scripts/windows/fast_blocks.py",
                      ROOT / "scripts/windows/return_ranges.py",
@@ -639,6 +640,8 @@ int main(void) {
                 inputs.update(f.read_bytes())
         if getattr(self.args, "lean_deadlines", False):
             inputs.update((ROOT / "scripts/windows/lean_deadlines.py").read_bytes())
+        if getattr(self.args, "behaviour_timing", False):
+            inputs.update((ROOT / "scripts/windows/behaviour_timing.py").read_bytes())
         if self.args.direct_calls or self.args.native_game_math or getattr(self.args, "native_entries", False):
             # The source-derived watch lists are part of the prepared module.
             inputs.update(watched_inputs())
@@ -824,6 +827,12 @@ int main(void) {
         if self.args.native_entries:
             self.run("native-entries", [sys.executable, ROOT / "scripts/windows/native_entries.py",
                                          o / "composite-src"])
+        # Game-behaviour timing (behaviour_timing.py; a prototype, off by default):
+        # every block runs its prepaid copy, so a device event lands at the next
+        # block's start instead of on its exact instruction. Last, on the final source.
+        if getattr(self.args, "behaviour_timing", False):
+            self.run("behaviour-timing", [sys.executable, ROOT / "scripts/windows/behaviour_timing.py",
+                                           o / "composite-src"])
         digest = tree_digest(o / "composite-src")
         receipt = {"enabled": self.args.prepared_blocks,
                    "fixed_cpu": self.args.fixed_cpu,
@@ -839,6 +848,7 @@ int main(void) {
                    "native_game_math": self.args.native_game_math,
                    "lean_memory": self.args.lean_memory,
                    "lean_deadlines": getattr(self.args, "lean_deadlines", False),
+                   "behaviour_timing": getattr(self.args, "behaviour_timing", False),
                    "lean_blocks": getattr(self.args, "lean_blocks", False),
                    "native_entries": self.args.native_entries,
                    "gather_sha256": {name: sha256_file(ROOT / "cmake/composite" / name)
@@ -1020,6 +1030,7 @@ int main(void) {
                                             "native_vec", "native_math", "native_skin", "native_game_math",
                                             "lean_memory", "native_entries", "lean_blocks")},
                                **({"lean_deadlines": True} if getattr(self.args, "lean_deadlines", False) else {}),
+                               **({"behaviour_timing": True} if getattr(self.args, "behaviour_timing", False) else {}),
                                "runtime": self.git("-C", str(self.recompcore), "rev-parse", "HEAD"),
                                "source": tree_digest(self.out / "composite-src")},
                               sort_keys=True).encode())
@@ -1475,6 +1486,10 @@ def main():
                              "line, where the deadline can move (on by default since October 12; needs --lean-memory)")
     parser.add_argument("--no-lean-deadlines", action="store_true",
                         help="keep the deadline test after every lean load and store: about 4%% slower")
+    parser.add_argument("--behaviour-timing", action="store_true",
+                        help="game-behaviour timing, a prototype: every block runs its prepaid copy, so a timer or "
+                             "interrupt lands at the next block's start rather than its exact instruction. About 6 "
+                             "to 7%% faster on an M3 Max and a smaller module; off by default (needs --prepared-blocks)")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")
@@ -1513,6 +1528,8 @@ def main():
         parser.error("--lean-memory requires --prepared-blocks")
     if args.lean_memory and not args.gather_pipe:
         parser.error("--lean-memory requires --gather-pipe (its accesses call gather_pipe.h's helpers)")
+    if getattr(args, "behaviour_timing", False) and not args.prepared_blocks:
+        parser.error("--behaviour-timing requires --prepared-blocks")
     if args.lean_deadlines and not args.lean_memory:
         parser.error("--lean-deadlines requires --lean-memory")
     if args.native_entries and not (args.direct_calls and args.gather_pipe and args.native_vec):

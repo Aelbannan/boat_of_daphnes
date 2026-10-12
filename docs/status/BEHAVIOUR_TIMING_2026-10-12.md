@@ -41,3 +41,32 @@ is also what a first-start build in minutes needs ([DIRECTION.md](../DIRECTION.m
 
 DolRecomp (the translator, a submodule of RecompCore) and the composite's preparation scripts. A prototype is a
 DolRecomp branch plus a `--behaviour-timing` builder option, off by default; Chris decides any default.
+
+## Results
+
+Step 1 is built: `scripts/windows/behaviour_timing.py`, `--behaviour-timing` in the Windows, Linux and Mac builders,
+off by default. It rewrites each block start that has a prepaid copy (384,783 of them) so the block always runs that
+copy and is charged its cycles at once; the turn's budget is still checked at every block, and the program counter is
+stored only on that way out. Points 2 and 3 above (back-edge checks, registers across blocks) are not in it.
+
+M3 Max, untrained modules from the same prepared source (lean blocks, memory and deadlines), the same app, alternated,
+three rounds of 2,400 retraces from save states:
+
+| | Without | With | Change |
+| --- | --- | --- | --- |
+| Outset (s) | 25.79, 25.97, 26.10 | 27.74, 24.48, 24.18 | 5.7% faster (medians) |
+| Dragon Roost Cavern (s) | 15.17, 15.18, 15.28 | 14.05, 14.07, 14.11 | 7.3% faster |
+| Blocks run | 1,237,187 / 1,250,840 | 1,237,192 / 1,250,836 | |
+| Module | 418.1 MB | 391.7 MB | 6.3% smaller |
+| Module compile (CPU time) | 15,286 s | 11,061 s | 28% less |
+
+The game state is not identical, by design: an event can land a block later. What it should keep:
+
+- The 468-place stage select sweep from a Dragon Roost save: the same outcome at every place on both (446 arrive,
+  the same 11 stop at the retrace limit and the same 11 known crashes), and the card unchanged after all 468.
+- The sound: the audio the game produces over each 2,400-retrace run, captured with `BLUEWAKE_CAPTURE_AUDIO_WAV`, is
+  identical sample for sample at both places (1,279,544 and 1,279,736 samples).
+
+Not checked: played by hand, a PC, the Deck, a phone, a trained build, and long runs (cutscenes with their sound in
+time, a save made and loaded).
+
