@@ -157,6 +157,14 @@ Your saves and session logs live in `~/.local/share/BlueWake`, outside the
 build, so rebuilding never touches them. The settings menu (Esc or F1) saves
 preferences separately to `~/.config/BlueWake/settings.ini`.
 
+**Portable mode:** create an empty file named `portable.txt` next to the
+`bluewake` executable, and BlueWake keeps the memory card, settings, save
+states, logs, texture packs and shader caches in a `user` folder beside it
+instead, as on Windows. Controller remaps made in the usual folder are copied
+over the first time; nothing is moved. To bring your saves along, copy
+`~/.local/share/BlueWake/GZLE01.card` (and `sram.bin`) into that `user` folder
+first. `BLUEWAKE_DATA_DIR` still wins over both.
+
 ## The app folder
 
 `build/linux/BlueWake/` is a personal build: `gGZLE01_recomp.so` is code
