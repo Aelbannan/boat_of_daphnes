@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 11, 2026 (night).
+Updated October 12, 2026 (night).
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -30,6 +30,30 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 1. Lean what we have, and catch up with Elliott | 0.7.0 and the next two weeks | Lean block copies (default since today), draw fusion, his faster loads and natives rounds 4, 5 and 7, his upload changes, hidden symbols, Smooth Motion pacing | Faster on the benchmark, and the game plays the same |
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
+
+## Where things stand on October 12
+
+- **The Wind Waker HD look is in `main`** (#284, #287; RecompCore ee99bbc): distant islands, ambient occlusion, sun and
+  cloud shadows, edge light, torch light, HD's far-distance blur and bloom, one switch, off by default, on Mac, Linux,
+  Windows and iOS; **F2** switches it in the game on the desktop (#306). HD textures from a real Wii U dump (3,546) load
+  with it; the importer installs into the Mac and Linux apps' own folders (#295). Not yet played on Windows, Linux or a
+  phone.
+- **Fixed in `main`:** the sea chart and the Pictobox (#283: the cache-flush fallback on by default, and a flush keeps
+  the GPU's EFB copies, the reporter's red plane). The reporter confirms on the next Windows build.
+- **Controls:** the D-pad in Items and Quest Status (#298, #301) and gyro aiming (#302, #304), off by default, on every
+  platform but Android; Linux portable mode (pdale-boop, #303); cforain's architecture docs (#282).
+- **Speed, measured:** on Chris's iPad Pro the prepared iOS build (combined, lean blocks, memory and deadlines) takes the
+  game thread from 81% to 54% at Outset's sea and 53% to 43% in Dragon Roost Cavern, `--behaviour-timing` another 2
+  points; on x86 `--behaviour-timing` is 7 to 11% faster (pdale-boop, 27 of 27 pairs); training with the lazy watch on
+  (#297) is 4.4 to 5.2% faster on the Mac. The alias resolver's last hit (RecompCore #34) gained nothing and is closed.
+- **Flicker (#136):** ComradeClaritux's 120 FPS recording shows Smooth Motion's in-between frames drawing the clouds in the
+  wrong place during a fast turn (frames in order). Not reproduced on the Mac; the next step needs a machine that shows it.
+- **Waiting on contributors:** #297 to be brought up to date with `main` (pdale-boop); behaviour timing played by a few
+  people and on the Deck; the Android port (#93, LiquidAzir) needs `dpad_menus.c` and `hd_look.c` in its build; reporters
+  of #263, #245, #188, #108 and #104 to try the next build.
+- **Waiting on Chris:** whether the prepared iOS build becomes the iPhone and iPad default (installed on his iPad to
+  play); `--behaviour-timing` as a default once people have played it; whether the apps offer HD texture import from a
+  menu; when to freeze 0.8.0.
 
 ## Where things stand on October 11
 
@@ -80,7 +104,7 @@ iPad alike. Chris decided:
 | H5 | Cloud shadows on the sea | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #29): the game's camera passed to Aurora, the world rebuilt from depth or the sea plane; on the switch in #287 |
 | H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #30 to #32, on the switch in #287): sun shadows and edge light from the screen, torch light from the game's point lights. A full shadow map is a later step |
 | H7 | The Wind Waker HD / GameCube switch that sets them together | **In with H2:** "Wind Waker HD look" in the Mac, Linux, Windows and iOS menus (`BLUEWAKE_HD_LOOK`); Android when #93 lands |
-| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). An iPad Pro, October 12, on top of the prepared build: Outset's sea 54% to 52% game-thread busy, the cavern 43% to 41%. A PC, the Deck and a phone next; Chris decides any default |
+| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). An iPad Pro, October 12, on top of the prepared build: Outset's sea 54% to 52% game-thread busy, the cavern 43% to 41%. x86 (pdale-boop): 7 to 11% faster on an i5-6500 and an i5-12600KF, all 27 pairs. Next: played by a few people (a cutscene with music, the sea) and the Deck; Chris decides any default |
 
 ## Now: the speed sprint (from October 11)
 

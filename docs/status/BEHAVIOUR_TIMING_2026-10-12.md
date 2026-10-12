@@ -77,6 +77,21 @@ The game state is not identical, by design: an event can land a block later. Wha
 - The sound: the audio the game produces over each 2,400-retrace run, captured with `BLUEWAKE_CAPTURE_AUDIO_WAV`, is
   identical sample for sample at both places.
 
+## On x86 (pdale-boop, October 12, #215)
+
+Trained Linux builds from one commit (a3ee3ff), the default lean blocks, lean memory and lean deadlines, one also with
+`--behaviour-timing`; clang 23.1.1, `-march=x86-64-v3`. Headless from save states, 2,400 retraces, three alternated
+rounds, median retraces a second with the pace off:
+
+| | Outset | Bird scene | Tower |
+| --- | --- | --- | --- |
+| Intel i5-6500 (the same Debian app, only the module swapped) | +7.1% | +9.3% | +7.6% |
+| i5-12600KF, its four E-cores | +8.1% | +8.4% | +8.0% |
+| i5-12600KF, its P-cores | +9.5% | +10.6% | +10.1% |
+
+Faster in all 27 pairs; 6.6 to 7.8% fewer instructions, the same instructions per cycle, 5 to 7% fewer L1 instruction
+cache misses. The module's code 476 MB to 406 MB (15% smaller), its compile 18 min 12 s to 12 min 15 s.
+
 ## On an iPad Pro (M2), October 12
 
 Two personal iOS builds from the same commit, both trained, with `--combined-optimizations --lean-blocks --lean-memory
