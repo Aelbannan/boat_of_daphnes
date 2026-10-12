@@ -54,13 +54,13 @@ host and a separate native module containing the translated game code.
 
 | Stage | Main code or tool | What it does | Result |
 | --- | --- | --- | --- |
-| [Coordinate](#1-coordinate) | Platform builders and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Reproducible build plan and provenance |
-| [Fetch](#2-fetch) | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves the exact runtime and translator revisions. | Verified RecompCore and DolRecomp source |
-| [Extract](#3-extract) | Platform builders | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc |
-| [Translate](#4-translate) | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated DOL and REL C source |
-| [Compose and prepare](#5-compose-and-prepare) | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source |
-| [Train](#6-train) | Platform PGO paths and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile |
-| [Compile and package](#7-compile-and-package) | CMake, Ninja, compilers, and platform packagers | Produces native binaries and arranges them for the target platform. | Native game module and platform application |
+| Coordinate | [Platform builders](#1-coordinate) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Ordered build with pinned inputs and provenance |
+| Fetch | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source |
+| Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc |
+| Translate | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated C for PowerPC code |
+| Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants |
+| Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile |
+| Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application |
 
 ## 1. Coordinate
 
