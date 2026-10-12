@@ -449,6 +449,9 @@ add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_t
 add_executable(bluewake_dpad_menus_test ${BLUEWAKE_REPO_ROOT}/tests/dpad_menus_test.c)
 target_include_directories(bluewake_dpad_menus_test PRIVATE ${BLUEWAKE_HOST_SRC})
 add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
+add_executable(bluewake_gyro_aim_test ${BLUEWAKE_REPO_ROOT}/tests/gyro_aim_test.c)
+target_include_directories(bluewake_gyro_aim_test PRIVATE ${BLUEWAKE_HOST_SRC})
+add_test(NAME bluewake_gyro_aim_test COMMAND bluewake_gyro_aim_test)
 
 
 add_executable(bluewake_audio_sink_test ${GXRUNTIME_DIR}/graphics/aurora/tests/audio_sink_test.cpp)

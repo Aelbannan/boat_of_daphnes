@@ -37,6 +37,8 @@ struct Settings {
     bool stick_zoom = false;    // off until the R3 gesture has been hardware-tested
     double stick_zoom_speed = 1.275; // control scale; 1.0 is two distance units a second
     bool aim_invert_y = false;  // the left stick's up and down the other way when aiming (#154)
+    bool gyro_aim = false;      // the controller's gyroscope aims (gyro_aim.h, #188)
+    double gyro_aim_speed = 1.0; // 1: the view turns as far as the controller
     bool climb = false;         // climb any wall on a stamina wheel (climb.h)
     int climb_stamina = 12;     // seconds of climbing on a full wheel
     // The Forest Water challenge (forest_water.h): watered trees kept when the
@@ -96,6 +98,8 @@ inline void bw_settings_keep_edits(Settings& saved, const Settings& before, cons
     if (before.stick_zoom != session.stick_zoom) saved.stick_zoom = session.stick_zoom;
     if (before.stick_zoom_speed != session.stick_zoom_speed) saved.stick_zoom_speed = session.stick_zoom_speed;
     if (before.aim_invert_y != session.aim_invert_y) saved.aim_invert_y = session.aim_invert_y;
+    if (before.gyro_aim != session.gyro_aim) saved.gyro_aim = session.gyro_aim;
+    if (before.gyro_aim_speed != session.gyro_aim_speed) saved.gyro_aim_speed = session.gyro_aim_speed;
     if (before.climb != session.climb) saved.climb = session.climb;
     if (before.climb_stamina != session.climb_stamina) saved.climb_stamina = session.climb_stamina;
     if (before.forest_keep_trees != session.forest_keep_trees) saved.forest_keep_trees = session.forest_keep_trees;
