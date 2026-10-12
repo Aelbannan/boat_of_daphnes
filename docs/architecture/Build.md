@@ -5,20 +5,14 @@
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
 - [1. Coordinate](#1-coordinate)
-  - [Select the builder and profile](#select-the-builder-and-profile)
 - [2. Fetch](#2-fetch)
-  - [Pin and retrieve dependencies](#pin-and-retrieve-dependencies)
 - [3. Extract](#3-extract)
-  - [Validate and extract the disc](#validate-and-extract-the-disc)
 - [4. Translate](#4-translate)
-  - [Generate C from PowerPC code](#generate-c-from-powerpc-code)
 - [5. Compose and prepare](#5-compose-and-prepare)
   - [Generate the composite source](#generate-the-composite-source)
   - [Apply mods and optimizations](#apply-mods-and-optimizations)
 - [6. Train](#6-train)
-  - [Profile-guided optimization](#profile-guided-optimization)
 - [7. Compile and package](#7-compile-and-package)
-  - [Build the native outputs](#build-the-native-outputs)
   - [Linux](#linux-x86-64)
   - [Windows](#windows-x86-64)
   - [macOS](#macos-apple-silicon)
@@ -64,8 +58,6 @@ host and a separate native module containing the translated game code.
 
 ## 1. Coordinate
 
-### Select the builder and profile
-
 The target selects [`scripts/linux/build.py`](../../scripts/linux/build.py),
 [`scripts/windows/build.py`](../../scripts/windows/build.py), or
 [`scripts/builder/build.sh`](../../scripts/builder/build.sh). Each builder
@@ -78,8 +70,6 @@ Platform options change compilation and packaging, not the supported game.
 
 ## 2. Fetch
 
-### Pin and retrieve dependencies
-
 The builder checks out exact RecompCore and DolRecomp revisions under
 `ref/recompcore`. It rejects modified dependency source so generated output
 can be traced to the recorded inputs.
@@ -90,8 +80,6 @@ and DolRecomp. Origins and roles are recorded in
 
 ## 3. Extract
 
-### Validate and extract the disc
-
 The builder verifies the USA revision-0 `GZLE01` disc before the long build.
 It extracts `main.dol` and 415 REL modules for translation; the disc continues
 to supply runtime assets.
@@ -101,8 +89,6 @@ conversion path. Apple builds use an uncompressed ISO. See the commands in
 [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ## 4. Translate
-
-### Generate C from PowerPC code
 
 The builder compiles pinned DolRecomp, then runs its GameCube C backend over
 the DOL and each REL. The result preserves PowerPC operations and guest
@@ -137,8 +123,6 @@ the original translated implementation remains in place.
 
 ## 6. Train
 
-### Profile-guided optimization
-
 When enabled, the [Linux builder](../../scripts/linux/build.py) and
 [Windows builder](../../scripts/windows/build.py) run their platform training
 flows directly; the Apple builder uses
@@ -150,8 +134,6 @@ Fingerprints prevent reuse with incompatible inputs. Training output stays in
 the private build directory and is not a public artifact.
 
 ## 7. Compile and package
-
-### Build the native outputs
 
 CMake and Ninja compile the prepared composite into a native game module. A
 separate build produces the shared host, runtime, renderer, audio, input,
