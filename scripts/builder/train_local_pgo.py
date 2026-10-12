@@ -189,6 +189,9 @@ def main():
         "BLUEWAKE_DSP_COEF": str(donor / "Data/Sys/GC/dsp_coef.bin"),
         "BLUEWAKE_MAX_BLOCKS": "100000000000", "BLUEWAKE_MAX_RETRACES": "23000",
         "BLUEWAKE_CYCLE_CAP": "16384", "BLUEWAKE_PLAYER_PROBE": "1",
+        # The control milestone checked below needs the scene overlap phase 6,
+        # which the lazy overlap watch (sampling once a turn) misses.
+        "BLUEWAKE_LAZY_OVERLAP": "0",
         "BLUEWAKE_DSP_MODE": "hle",
         "BLUEWAKE_PAD_BUTTONS": "0x0100", "BLUEWAKE_PAD_PULSE_ON_TITLE_READY": "1",
         "BLUEWAKE_PAD_PULSE_LENGTH": "2", "BLUEWAKE_PAD_CONFIRM_EVENT": "any",

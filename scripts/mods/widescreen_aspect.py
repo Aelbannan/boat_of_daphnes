@@ -14,9 +14,11 @@ a target aspect A it is interpolated between the game's own 4:3 value and the
 The 4:3 values are the game's (read from main.dol for the constants, from the
 decompiled tuning constructors for the runtime structures). A constant load can
 only reach the existing pool around r2, so it takes the nearest constant there;
-the choices for 16:10 are within about a pixel except one picture width (+6).
+the choices for 16:10 are within about a pixel except one picture width (+6),
+and those for 21:9 (t = 2.25, beyond the 16:9 code) within half a pixel.
 
     widescreen_aspect.py 16:10 > mods/widescreen/GZLE01-16x10.gecko
+    widescreen_aspect.py 21:9 > mods/widescreen/GZLE01-21x9.gecko
 """
 import math
 import struct
@@ -46,6 +48,14 @@ HALF_WRITES = {
     0x803E6958: 7,      # meter field_0x50: HUD pane x offset
     0x803E69A4: 0,      # meter field_0x9c
 }
+# Values carried a different way than the interpolation, per aspect. field_0xc
+# is the minimap's x when it is put away (left on the D-pad, or on the boat):
+# interpolated to 21:9 (-351) it leaves the map's right side, about 130 wide
+# with its arrow, on screen. It moves with the HUD shift past 16:9's instead
+# (-256 - (257 - 114)), keeping 16:9's few units of clearance off the left edge.
+HALF_OVERRIDES = {
+    0x803E68E8: {"21:9": -399},
+}
 # Instruction immediates the 16:9 code sets: address -> 4:3 value.
 LI_IMMEDIATES = {
     0x8004A428: 116,    # dMap_c::calcScissor width
@@ -60,14 +70,19 @@ R2 = 0x803FFD00
 # offset -> {aspect: r2 offset of the constant to use}. 114 is the HUD shift
 # (0 at 4:3), 206 the rupee counter x (320 at 4:3), 79 and 480 a picture's x
 # and width (0 and 640 at 4:3), 1.3333 the boomerang sight's x scale (1 at 4:3).
+# -130 and 130 are the x and width of the black bars the added code draws over
+# the side margins (the telescope's mask): 130 covers 16:10 and 16:9, so only
+# 21:9 (margins of 265.5 and 272.6) needs larger ones; the bars only overlap.
 POOL_SWAPS = {
-    -27188: {"16:10": -21536},  # 114.0  -> 68.0   (wants 68.4)
-    -28500: {"16:10": -19520},  # 206.0  -> 250.5  (wants 251.6)
-    -17768: {"16:10": -23268},  # 79.0   -> 47.0   (wants 47.4)
-    -17640: {"16:10": -31580},  # 480.0  -> 550.0  (wants 544)
-    -30556: {"16:10": -32212},  # 1.3333 -> 1.2    (wants 1.2)
+    -18772: {"21:9": -21120},  # -130.0 -> -288.0 (needs <= -265.5)
+    -18768: {"21:9": -29036},  # 130.0  -> 292.5  (needs >= 288 and 272.6)
+    -27188: {"16:10": -21536, "21:9": -19536},  # 114.0  -> 68.0, 257.0 (wants 68.4, 256.5)
+    -28500: {"16:10": -19520, "21:9": -24296},  # 206.0  -> 250.5, 63.0 (wants 251.6, 63.5)
+    -17768: {"16:10": -23268, "21:9": -21412},  # 79.0   -> 47.0, 178.0 (wants 47.4, 177.75)
+    -17640: {"16:10": -31580, "21:9": -22912},  # 480.0  -> 550.0, 280.0 (wants 544, 280)
+    -30556: {"16:10": -32212, "21:9": -32576},  # 1.3333 -> 1.2, 1.75 (wants 1.2, 1.75)
 }
-ASPECTS = {"16:9": ASPECT_169, "16:10": 16.0 / 10.0}
+ASPECTS = {"16:9": ASPECT_169, "16:10": 16.0 / 10.0, "21:9": 21.0 / 9.0}
 
 
 def f32_bits(v):
@@ -110,7 +125,8 @@ def main():
             b = patch_word(addr, b, lerp, name)
         elif kind in (0x02, 0x03) and addr in HALF_WRITES:
             v169 = (b & 0xFFFF) - (0x10000 if b & 0x8000 else 0)
-            b = (b & 0xFFFF0000) | (round(lerp(HALF_WRITES[addr], v169)) & 0xFFFF)
+            v = HALF_OVERRIDES.get(addr, {}).get(name, round(lerp(HALF_WRITES[addr], v169)))
+            b = (b & 0xFFFF0000) | (v & 0xFFFF)
         out.append(f"{a:08X} {b:08X}")
         i += 1
     print("\n".join(out))

@@ -277,13 +277,13 @@ void refresh_smooth_rate() {
 }
 
 void display_tab() {
-    static const char* const kAspects[] = {"4:3 (the game's)", "16:10", "16:9"};
-    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9"};
+    static const char* const kAspects[] = {"4:3 (the game's)", "16:10", "16:9", "21:9"};
+    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
     int aspect = 0;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
         if (g_aspect == kAspectValues[i])
             aspect = i;
-    if (combo("Aspect ratio", &aspect, kAspects, 3)) {
+    if (combo("Aspect ratio", &aspect, kAspects, 4)) {
         g_aspect = kAspectValues[aspect];
         g_dirty = g_restart_pending = true;
     }
