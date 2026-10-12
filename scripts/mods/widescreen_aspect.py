@@ -48,6 +48,14 @@ HALF_WRITES = {
     0x803E6958: 7,      # meter field_0x50: HUD pane x offset
     0x803E69A4: 0,      # meter field_0x9c
 }
+# Values carried a different way than the interpolation, per aspect. field_0xc
+# is the minimap's x when it is put away (left on the D-pad, or on the boat):
+# interpolated to 21:9 (-351) it leaves the map's right side, about 130 wide
+# with its arrow, on screen. It moves with the HUD shift past 16:9's instead
+# (-256 - (257 - 114)), keeping 16:9's few units of clearance off the left edge.
+HALF_OVERRIDES = {
+    0x803E68E8: {"21:9": -399},
+}
 # Instruction immediates the 16:9 code sets: address -> 4:3 value.
 LI_IMMEDIATES = {
     0x8004A428: 116,    # dMap_c::calcScissor width
@@ -117,7 +125,8 @@ def main():
             b = patch_word(addr, b, lerp, name)
         elif kind in (0x02, 0x03) and addr in HALF_WRITES:
             v169 = (b & 0xFFFF) - (0x10000 if b & 0x8000 else 0)
-            b = (b & 0xFFFF0000) | (round(lerp(HALF_WRITES[addr], v169)) & 0xFFFF)
+            v = HALF_OVERRIDES.get(addr, {}).get(name, round(lerp(HALF_WRITES[addr], v169)))
+            b = (b & 0xFFFF0000) | (v & 0xFFFF)
         out.append(f"{a:08X} {b:08X}")
         i += 1
     print("\n".join(out))
