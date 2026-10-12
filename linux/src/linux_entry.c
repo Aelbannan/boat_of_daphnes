@@ -117,6 +117,21 @@ static void bw_copy_aurora_files(void) {
     }
 }
 
+// mkdir -p: the data folder and any missing folders above it (a fresh home
+// without ~/.local/share, or a BLUEWAKE_DATA_DIR that does not exist yet).
+static void make_dirs(const char* path) {
+    char partial[4096];
+    snprintf(partial, sizeof partial, "%s", path);
+    for (char* p = partial + 1; *p != '\0'; p++) {
+        if (*p != '/')
+            continue;
+        *p = '\0';
+        mkdir(partial, 0755);
+        *p = '/';
+    }
+    mkdir(partial, 0755);
+}
+
 static void resolve_dirs(void) {
     // The executable's own path.
     char link[64];
@@ -149,7 +164,7 @@ static void resolve_dirs(void) {
     } else {
         snprintf(g_data_dir, sizeof g_data_dir, "%suser/", g_exe_dir);
     }
-    mkdir(g_data_dir, 0755);
+    make_dirs(g_data_dir);
     char logs[4096];
     snprintf(logs, sizeof logs, "%slogs", g_data_dir);
     mkdir(logs, 0755);
@@ -500,7 +515,10 @@ int main(int argc, char** argv) {
     char launch_marker[4096];
     snprintf(launch_marker, sizeof launch_marker, "%slaunch.pending", g_data_dir);
     if (!bw_launch_begin(launch_marker)) {
-        fprintf(stderr, "BlueWake could not create its launch recovery marker. Check that its data folder is writable.\n");
+        fprintf(stderr, "BlueWake could not create its launch recovery marker in %s. Check that the folder "
+                "can be created and written to%s.\n", g_data_dir,
+                g_portable ? " (portable.txt beside bluewake puts it in the app folder; remove that file to "
+                             "use ~/.local/share/BlueWake instead)" : "");
         return 1;
     }
     bw_crash_test();
