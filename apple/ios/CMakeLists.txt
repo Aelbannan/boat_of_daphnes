@@ -49,6 +49,7 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/audio_watch.c
     ${BLUEWAKE_HOST_SRC}/fast_load.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
+    ${BLUEWAKE_HOST_SRC}/dpad_menus.c
     ${BLUEWAKE_HOST_SRC}/jump_button.c
     ${BLUEWAKE_HOST_SRC}/climb.c
     ${BLUEWAKE_HOST_SRC}/sprint.c

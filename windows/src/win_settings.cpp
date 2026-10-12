@@ -71,6 +71,8 @@ void bluewake_climb_reload(void);
 void bluewake_forest_water_reload(void);
 // hd_look.h: BLUEWAKE_HD_LOOK read again.
 void bluewake_hd_look_reload(void);
+// dpad_menus.h: BLUEWAKE_DPAD_MENUS read again.
+void bluewake_dpad_menus_reload(void);
 void bluewake_haptics_block(bool blocked);
 const char* bluewake_game_options_describe(uint32_t position, const char** title, bool* default_on, bool* on);
 // climb.h: the stamina wheel's state for the HUD.
@@ -147,6 +149,7 @@ void load_file() {
         else if (k == "key_map") d.key_map = v;
         else if (k == "controller_swap_xy") d.controller_swap_xy = parse_bool(v);
         else if (k == "controller_swap_lr") d.controller_swap_lr = parse_bool(v);
+        else if (k == "dpad_menus") d.dpad_menus = parse_bool(v);
         else if (k == "controller_invert_x") d.pad_invert_x = parse_bool(v);
         else if (k == "controller_invert_y") d.pad_invert_y = parse_bool(v);
         else if (k == "stick_camera") d.stick_camera = parse_bool(v);
@@ -199,6 +202,7 @@ void save_file() {
                  d.mouse_sensitivity, d.mouse_invert_y);
     std::fprintf(f, "controller_swap_ab=%d\ncontroller_swap_xy=%d\n", d.controller_swap_ab, d.controller_swap_xy);
     std::fprintf(f, "controller_swap_lr=%d\n", d.controller_swap_lr);
+    std::fprintf(f, "dpad_menus=%d\n", d.dpad_menus);
     if (!d.button_map.empty())
         std::fprintf(f, "button_map=%s\n", d.button_map.c_str());
     if (!d.mouse_buttons.empty())
@@ -451,6 +455,11 @@ void apply_hd_look() {
     bluewake_hd_look_reload();
 }
 
+void apply_dpad_menus() {
+    _putenv_s("BLUEWAKE_DPAD_MENUS", g_session.dpad_menus ? "1" : "0");
+    bluewake_dpad_menus_reload();
+}
+
 void apply_live() {
     const Settings& d = g_session;
     aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
@@ -467,6 +476,7 @@ void apply_live() {
     apply_climb();
     apply_forest_water();
     apply_hd_look();
+    apply_dpad_menus();
 }
 
 void set_menu_open(bool open) {
@@ -675,6 +685,10 @@ void tab_controls() {
     pad |= ImGui::Checkbox("Swap X and Y", &d.controller_swap_xy);
     ImGui::EndDisabled();
     pad |= ImGui::Checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
+    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &d.dpad_menus)) {
+        apply_dpad_menus();
+        changed();
+    }
     if (ImGui::CollapsingHeader("Controller buttons")) {
         ImGui::TextWrapped("Choose which controller button presses each GameCube button. Picking one that is "
                            "already used swaps the two.%s", remapped ? " The swaps above are off while you use "
