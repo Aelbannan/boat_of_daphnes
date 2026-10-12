@@ -24,16 +24,19 @@ void bluewake_hd_look_reload(void) {
     bluewake_hd_distant_islands = islands >= 0 ? islands == 1 : all == 1;
     g_trace = setting("BLUEWAKE_HD_TRACE") == 1;
     // The renderer's parts (Aurora's post_fx). Left to DOL_AURORA_BLOOM and
-    // DOL_AURORA_FAR_BLUR while neither the switch nor the part is set.
+    // DOL_AURORA_FAR_BLUR and DOL_AURORA_AO while neither the switch nor the part is set.
     const int bloom = setting("BLUEWAKE_HD_BLOOM") >= 0 ? setting("BLUEWAKE_HD_BLOOM") : all;
     const int far_blur = setting("BLUEWAKE_HD_FAR_BLUR") >= 0 ? setting("BLUEWAKE_HD_FAR_BLUR") : all;
+    const int ao = setting("BLUEWAKE_HD_AO") >= 0 ? setting("BLUEWAKE_HD_AO") : all;
     if (bloom >= 0)
         aurora_set_bloom(bloom == 1);
     if (far_blur >= 0)
         aurora_set_far_blur(far_blur == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, bloom %s, far blur %s\n",
-            bluewake_hd_distant_islands ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off",
-            far_blur < 0 ? "unset" : far_blur ? "on" : "off");
+    if (ao >= 0)
+        aurora_set_ambient_occlusion(ao == 1);
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, far blur %s, bloom %s\n",
+            bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
+            far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }
 
 // GZLE01 revision 0. Every actor's create tag is on g_fopAcTg_Queue

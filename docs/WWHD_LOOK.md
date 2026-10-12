@@ -28,7 +28,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
 | Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
-| Ambient occlusion | Ambient occlusion | Planned: from the depth buffer (RecompCore) | |
+| Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
 | Cloud shadows on the sea | Cloud shadows | Planned (RecompCore) | |
 | Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
 
@@ -74,4 +74,16 @@ renderer's full feature set, so it stays off in compatibility mode.
 
 Checked on an M3 Max from an Outset save state: the horizon, far islands and sky soften, the island and the HUD stay
 sharp. The switch alone gives the same frame as turning on each part by hand.
+
+### Ambient occlusion
+
+HD darkens creases and the ground where things meet it. Before the far blur and bloom, from the depth buffer alone, at
+a quarter of the size: around each pixel, six pairs of samples on opposite sides, in a ring that shrinks with
+distance. A pair whose average is nearer than the pixel (a crease, a contact) darkens it; on a flat floor the two
+samples straddle the pixel, so it stays as it was. Where there is no depth (the sky, the horizon) and across big
+steps (a silhouette in front of the background) nothing is darkened. `DOL_AURORA_AO_RADIUS` (default 30) and
+`_STRENGTH` (0.6) tune it, and `DOL_AURORA_AO_DEBUG=1` shows the occlusion alone.
+
+Checked on an M3 Max from an Outset save state: darker under Link's feet, round the pier's posts and in the cliffs'
+creases; the pier's deck and the sea unchanged.
 
