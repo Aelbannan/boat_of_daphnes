@@ -28,7 +28,8 @@
 #   --jobs N                  parallel compile jobs (default: all cores)
 #   --game NAME               profile to use (default bluewake)
 #   --platform ios|tvos|macos Apple target (default ios)
-#   --combined-optimizations opt into the measured Mac optimization candidate
+#   --combined-optimizations opt into the PC builds' module preparations (direct calls, natives,
+#                             prepaid blocks): a personal Mac, iPhone or iPad build
 #   --lean-blocks             with --combined-optimizations: Elliott Tate's lean block copies,
 #                             as the Windows and Linux builders use by default
 #   --lean-memory             with --lean-blocks: memory instructions store their pc and cycle
@@ -114,7 +115,8 @@ done
 [[ "$game" =~ ^[a-z][a-z0-9_-]*$ ]] || die "invalid game profile name: $game"
 [[ "$platform" = ios || "$platform" = tvos || "$platform" = macos ]] || die "--platform must be ios, tvos or macos"
 if [ "$module_optimizations" != none ]; then
-    [ "$platform" = macos ] && [ "$app_only" -eq 0 ] || die "--combined-optimizations needs a personal --platform macos build"
+    [ "$platform" = macos ] || [ "$platform" = ios ] || die "--combined-optimizations is for --platform macos or ios"
+    [ "$app_only" -eq 0 ] || die "--combined-optimizations needs a personal build (it changes the game module)"
 fi
 [ -z "$lean_arg" ] || [ "$module_optimizations" != none ] || die "--lean-blocks needs --combined-optimizations"
 if [ "$lean_memory" -eq 1 ]; then
@@ -299,6 +301,14 @@ if [ "$platform" = macos ]; then
 else
 mkdir -p "$app/Frameworks"
 cp "$module" "$app/Frameworks/$PROFILE_MODULE"
+# The module was prepared with the PC builds' optimizations: the app turns on
+# the host side of each (ios_entry.m), as the Mac app does (package_macos.py).
+if [ "$module_optimizations" != none ]; then
+    printf '%s
+' "$module_optimizations" > "$app/ModuleOptimizations"
+else
+    rm -f "$app/ModuleOptimizations"
+fi
 if [ -n "$identity" ]; then
     cp "$profile" "$app/embedded.mobileprovision"
     security cms -D -i "$profile" > "$out/profile.plist"
