@@ -163,7 +163,9 @@ states, logs, texture packs and shader caches in a `user` folder beside it
 instead, as on Windows. Controller remaps made in the usual folder are copied
 over the first time; nothing is moved. To bring your saves along, copy
 `~/.local/share/BlueWake/GZLE01.card` (and `sram.bin`) into that `user` folder
-first. `BLUEWAKE_DATA_DIR` still wins over both.
+first. `BLUEWAKE_DATA_DIR` still wins over both. `scripts/linux/build.py
+--portable` puts `portable.txt` in the app folder for you; a later rebuild
+leaves the `user` folder and `portable.txt` alone.
 
 ## The app folder
 

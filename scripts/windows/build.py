@@ -1289,6 +1289,10 @@ int main(void) {
         }
         (app / "BuilderProvenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
         (app / "README.txt").write_text(README)
+        # --portable: portable.txt keeps saves, settings and logs in a user folder beside
+        # BlueWake.exe (win_entry.c, #64). A rebuild never touches user\, and never removes a portable.txt.
+        if getattr(self.args, "portable", False):
+            (app / "portable.txt").touch()
         return app
 
     @staticmethod
@@ -1383,7 +1387,10 @@ int main(void) {
         print(f"\nBlueWake: {app}")
         print(f"  run {app / 'BlueWake.exe'}")
         print("  It contains game code translated from your disc and a copy of the disc: keep it for yourself.")
-        print("  Saves: %APPDATA%\\BlueWake (outside the build).")
+        if (app / "portable.txt").exists():
+            print(f"  Saves: {app / 'user'} (portable mode: portable.txt is in the app folder).")
+        else:
+            print("  Saves: %APPDATA%\\BlueWake (outside the build).")
 
 
 README = """BlueWake for Windows: The Legend of Zelda: The Wind Waker (GameCube USA),
@@ -1404,6 +1411,8 @@ Mouse: click the game and move the mouse to turn the camera; Esc releases it.
 F11 fullscreen, F10 Smooth Motion, F9 frame rate.
 
 Saves, settings and session logs: %APPDATA%\\BlueWake
+Portable mode: with an empty portable.txt in this folder, all of that stays in
+a user folder here instead (a rebuild leaves it alone).
 """
 
 
@@ -1439,6 +1448,9 @@ def main():
                         help="skip local optimization training; compile without a profile")
     parser.add_argument("--no-pgo", action="store_true", help="alias for --no-train")
     parser.add_argument("--retrain", action="store_true", help="record a new local profile instead of reusing one")
+    parser.add_argument("--portable", action="store_true",
+                        help="put portable.txt in the app folder, so saves, settings and logs stay in a user "
+                             "folder beside BlueWake.exe (a rebuild leaves user\\ alone)")
     parser.add_argument("--host-only", action="store_true",
                         help="after a change to the app's own code (runtime/host/src, windows/src): keep the "
                              "optimization profile of the last build in --out instead of training again, so the "

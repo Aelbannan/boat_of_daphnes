@@ -1174,6 +1174,10 @@ int main(void) {{
         }
         (app / "BuilderProvenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
         (app / "README.txt").write_text(README)
+        # --portable: portable.txt keeps saves, settings and logs in a user folder beside the app
+        # (linux_entry.c, #64). A rebuild never touches user/, and never removes a portable.txt.
+        if getattr(self.args, "portable", False):
+            (app / "portable.txt").touch()
         return app
 
     def package_appimage(self):
@@ -1275,7 +1279,10 @@ int main(void) {{
         print(f"\nBlueWake: {app}")
         print(f"  run {app / 'bluewake'}")
         print("  It contains game code translated from your disc and a copy of the disc: keep it for yourself.")
-        print("  Saves: ~/.local/share/BlueWake (outside the build).")
+        if (app / "portable.txt").exists():
+            print(f"  Saves: {app / 'user'} (portable mode: portable.txt is in the app folder).")
+        else:
+            print("  Saves: ~/.local/share/BlueWake (outside the build).")
         if args.appimage:
             step("AppImage (explicit packaging step)")
             image, zsync = self.package_appimage()
@@ -1302,6 +1309,8 @@ F11 fullscreen, F10 Smooth Motion, F9 frame rate.
 
 Saves and session logs: ~/.local/share/BlueWake
 Settings: ~/.config/BlueWake/settings.ini
+Portable mode: with an empty portable.txt in this folder, all of that stays in
+a user folder here instead (a rebuild leaves it alone).
 """
 
 
@@ -1407,6 +1416,9 @@ def main():
                         help="run this same build inside the Ubuntu 24.04 Linux CI container")
     parser.add_argument("--clang22", action="store_true",
                         help="use Clang 22 instead of Clang 18 (requires --ci-container)")
+    parser.add_argument("--portable", action="store_true",
+                        help="put portable.txt in the app folder, so saves, settings and logs stay in a user "
+                             "folder beside the app (a rebuild leaves user/ alone)")
     parser.add_argument("--appimage", action="store_true",
                         help="after the normal app-folder build, package it as an AppImage")
     args = parser.parse_args()
