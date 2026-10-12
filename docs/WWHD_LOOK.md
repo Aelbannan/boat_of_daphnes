@@ -43,10 +43,21 @@ further out. With the option on, the host adds 100,000 units to both distances o
 (`runtime/host/src/hd_look.c`). It changes only those two numbers in the actor, so the game loads, fades and draws
 the models with its own code, and turning the option off puts the numbers back.
 
+**Only as many as fit (#308).** The game keeps every far-away model in one 128 KB heap of its own
+(`d_a_lod_bg` makes it with `JKRCreateExpHeap(0x20000, …)`), sized for its own distances. A model that doesn't fit
+takes the largest free block of the archive heap instead, the heap that later holds stage and boss archives, and
+keeps it. With every island shown 100,000 units further, sea room 20 had 22 models loaded and 5 of them in the
+archive heap; pdale-boop's game, after a ten-minute sail, later waited forever for Puppet Ganon's archive. So the host
+now extends only as many islands as fit: the game's own first, then the nearest of the others, up to 15 models
+loaded (17 fitted at the busiest place measured). If a model is ever found outside the island heap anyway (its data
+heap's parent, from JSystem's heap tree, is not the 128 KB one), the budget drops below the count at which it
+happened, for the rest of the session. Measured from the stage select at sea rooms 11, 14, 20, 32 and 44: 13 to 15
+models loaded (7 to 13 without the option), none outside the island heap.
+
 The game also lowers a far-away model below the sea by a tenth of its distance past 150,000 units, so islands that
 are now visible sit low on the horizon and rise as you sail closer, like the curve of the earth. That part is kept.
 
-Checked on an M3 Max from an Outset save state: 15 island models loaded instead of 7, a second island on the
+Checked on an M3 Max from an Outset save state (before the budget above): 15 island models loaded instead of 7, a second island on the
 horizon in a captured frame, no lookup failures. `BLUEWAKE_HD_TRACE=1` logs each island model it changes and,
 every 300 retraces, the ones within reach with their distance and whether they're loaded.
 
