@@ -44,19 +44,23 @@ flowchart TD
         Generated["Generated C<br/>plus repeatable preparations and patches"]
         HostSource["BlueWake host and<br/>platform source"]
         RuntimeSource["RecompCore / GXRuntime<br/>and Aurora"]
+        Training["Optional local PGO training<br/>instrumented headless playbacks"]
         GameCompiler["Host compiler"]
         AppCompiler["Host compiler"]
         GameModule["Native translated game module<br/>gGZLE01_recomp.*"]
         Executable["BlueWake platform executable"]
-        Package["Personal platform package"]
+        Package["Personal runnable app folder"]
+        AppImage["Optional Linux AppImage<br/>disc data excluded"]
 
         Disc --> Extract --> Translator --> Generated --> GameCompiler --> GameModule
+        Generated --> Training --> GameCompiler
         HostSource --> AppCompiler
         RuntimeSource --> AppCompiler
         AppCompiler --> Executable
         Extract --> Package
         GameModule --> Package
         Executable --> Package
+        Package -->|"select and bundle redistributable files"| AppImage
     end
 
     subgraph Runtime["Runtime — one application process"]
@@ -81,14 +85,96 @@ flowchart TD
     end
 
     Package --> Startup
+    AppImage --> Startup
     GameModule -. "loaded at startup" .-> Game
-    Extract -. "supplies runtime game data" .-> Assets
+    Disc -. "supplies runtime game data" .-> Assets
 ```
 
 The diagram is a component and data-flow overview, not an exact call sequence.
 Build details vary by platform, but the division between translated game code,
 the handwritten host, guest state, and compatibility services is the central
 architectural model.
+
+### Build toolchain
+
+The diagram deliberately groups many commands into a few components. The list
+below expands its **Build time** subgraph using the current Linux builder as the
+concrete reference. Windows and Apple builds preserve the same broad boundary
+between translated game code and the host application, but use their own build
+and packaging scripts.
+
+1. **Build coordinator — the complete `Build time` subgraph.**
+   [`scripts/linux/build.py`](../../scripts/linux/build.py) validates the tools
+   and target CPU, selects the build options, runs each stage, records logs and
+   writes build provenance. A native build uses the tools installed on the
+   developer's machine. `--ci-container` runs the same builder inside the
+   environment defined by
+   [`scripts/linux/Dockerfile`](../../scripts/linux/Dockerfile).
+
+2. **Pinned dependencies — `Translator` and `RuntimeSource`.**
+   The builder reads the exact RecompCore and DolRecomp revisions from
+   [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh),
+   checks them out under `ref/recompcore`, and refuses a modified dependency
+   tree. [`config/dependencies.lock.json`](../../config/dependencies.lock.json)
+   records their origins and roles. RecompCore supplies the compatibility
+   runtime, GXRuntime, Aurora, DSP sources, and the pinned DolRecomp submodule.
+
+3. **Disc validation and extraction — `Disc` → `Extract`.**
+   The builder accepts an uncompressed `.iso` or `.gcm`, verifies `GZLE01`
+   revision 0, and builds the extractor declared in
+   [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt). The extractor produces
+   `main.dol` and 415 REL modules. The original disc remains the source of the
+   game's runtime data and assets.
+
+4. **PowerPC translation — `Extract` → `Translator` → `Generated`.**
+   The builder first compiles the pinned
+   [DolRecomp](../../ref/recompcore/DolRecomp) tool. It then invokes DolRecomp's
+   GameCube/Gekko C backend for the main DOL and every REL. This output is a
+   mechanical representation of the original instructions, not reconstructed
+   game source.
+
+5. **Composite generation and preparation — `Generated`.**
+   [`scripts/generate_composite.py`](../../scripts/generate_composite.py)
+   combines the translated DOL and REL outputs into one source tree with the
+   module metadata and dispatch structures needed at runtime. The builder
+   verifies that tree against the profile's expected digest, then applies the
+   selected mods and repeatable, source-verified preparation steps. The
+   original translation remains in place wherever an optimization's checks do
+   not permit a replacement.
+
+6. **Profile-guided optimization — `Generated` → `Training` → `GameCompiler`.**
+   Unless disabled, the builder compiles an instrumented module, runs private
+   headless playbacks, merges their LLVM profiles with `llvm-profdata`, and
+   supplies the resulting profile to the final module compilation. Training
+   data stays in the local build directory.
+
+7. **Game-module compilation — `Generated` → `GameCompiler` → `GameModule`.**
+   CMake and Ninja drive Clang and LLD over the prepared composite source and
+   the required runtime interfaces. On Linux the result is
+   `gGZLE01_recomp.so`: native machine code that still operates on guest CPU
+   state and guest memory.
+
+8. **Host application compilation — `HostSource` + `RuntimeSource` →
+   `AppCompiler` → `Executable`.**
+   [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt) combines the Linux entry
+   layer, the shared host, RecompCore/GXRuntime, Aurora, SDL, and the DSP
+   implementation. CMake and Ninja drive Clang and the configured system
+   linker, producing the Linux `bluewake` executable separately from the
+   translated game module.
+
+9. **Runnable package — `Extract` + `GameModule` + `Executable` → `Package`.**
+   The builder assembles `build/linux/BlueWake/` by default. This personal app
+   folder contains the executable, translated module, required support files,
+   prepared DOL and REL data, and the user's disc image. It must not be shared.
+
+10. **Optional AppImage — `Package` → `AppImage`.**
+    [`scripts/linux/make_appimage.sh`](../../scripts/linux/make_appimage.sh)
+    selects the host, translated module, DSP files, desktop metadata, and
+    redistributable libraries. It deliberately excludes the disc image and
+    extracted DOL/REL data; the AppImage setup flow obtains those from the
+    player's disc on first launch. The script then creates the AppImage and its
+    `.zsync` metadata, and the builder runs the
+    [ABI check](../../scripts/linux/check_appimage_abi.py).
 
 ### Source anchors
 
