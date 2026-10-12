@@ -1,7 +1,7 @@
-From d728865fdedabaaf5adacc26b4923f478bcc9bf2 Mon Sep 17 00:00:00 2001
+From 815deef978b4023ca8b1f53434384e3a4097bdca Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 16:59:32 +0900
-Subject: [PATCH 170/170] Aurora: HD's far-distance blur, before bloom
+Subject: [PATCH 170/175] Aurora: HD's far-distance blur, before bloom
  (post_fx, off by default)
 
 ---

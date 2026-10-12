@@ -1,8 +1,8 @@
-From 9ab94568287325f419066bd8be04f68b89e31721 Mon Sep 17 00:00:00 2001
+From 2a20231918edd82a3f8101c5a2eb1a386327e13e Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 20:56:23 +0900
-Subject: [PATCH] Aurora: sun shadows from what is on screen, toward the game's
- sun (post_fx, off by default)
+Subject: [PATCH 173/175] Aurora: sun shadows from what is on screen, toward
+ the game's sun (post_fx, off by default)
 
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   5 +

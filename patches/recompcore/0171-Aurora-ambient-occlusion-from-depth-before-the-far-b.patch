@@ -1,8 +1,8 @@
-From 140c8c137a5b9a83edb262ea0f1111cfbfed0358 Mon Sep 17 00:00:00 2001
+From 6519ea7d376ac03399fd3d1e3942253f8b85e978 Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 17:45:05 +0900
-Subject: [PATCH] Aurora: ambient occlusion from depth, before the far blur and
- bloom (post_fx, off by default)
+Subject: [PATCH 171/175] Aurora: ambient occlusion from depth, before the far
+ blur and bloom (post_fx, off by default)
 
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   4 +

@@ -75,7 +75,7 @@ iPad alike. Chris decided:
 | --- | --- | --- |
 | H1 | HD textures and HUD from your own Wii U dump, chosen in the app's setup, not only by `scripts/import_wwhd_textures.py`; what breaks with a pack fixed (the sea chart, #263: the cache-flush fallback on by default is Chris's call) | #57 asks for the HD UI |
 | H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. **In `main` (October 12), off by default:** the host adds 100,000 units to both distances on each island model; [WWHD_LOOK.md](WWHD_LOOK.md) | Game-side, no renderer change; the cheapest |
-| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **Built** (RecompCore #26, #27), off by default, on the switch in BlueWake #287, a draft that waits for Chris to approve the pin |
+| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **Built** (RecompCore #26, #27), off by default, on the switch from BlueWake #287 (RecompCore a10b7e4) |
 | H4 | Ambient occlusion from the depth buffer | **Built** (RecompCore #28), on the switch in #287 with H3 |
 | H5 | Cloud shadows on the sea | **Built** (RecompCore #29): the game's camera passed to Aurora, the world rebuilt from depth or the sea plane; on the switch in #287 |
 | H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | **Built** (RecompCore #30 to #32, on the switch in #287): sun shadows and edge light from the screen, torch light from the game's point lights. A full shadow map is a later step |

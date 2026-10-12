@@ -1,8 +1,8 @@
-From e26ead87cb7442382d539dc088de1a642db01485 Mon Sep 17 00:00:00 2001
+From a10b7e428a7d64311f1f0d1694d834c2b5fecfa2 Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 21:12:35 +0900
-Subject: [PATCH] Aurora: torch and fire light from the game's own point lights
- (post_fx, off by default)
+Subject: [PATCH 175/175] Aurora: torch and fire light from the game's own
+ point lights (post_fx, off by default)
 
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   6 +

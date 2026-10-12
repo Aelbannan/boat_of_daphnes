@@ -1,8 +1,8 @@
-From ce8efcefc75e39ac7c56dfed2bd0f4eafa5d3d6b Mon Sep 17 00:00:00 2001
+From fc305dff8820a13e03b82902e33f205a80ecdd66 Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 21:03:43 +0900
-Subject: [PATCH] Aurora: edge light, a warm rim on the sunlit outline of what
- is near the camera (post_fx, off by default)
+Subject: [PATCH 174/175] Aurora: edge light, a warm rim on the sunlit outline
+ of what is near the camera (post_fx, off by default)
 
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   3 +
