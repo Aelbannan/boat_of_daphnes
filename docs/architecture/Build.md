@@ -228,10 +228,8 @@ prepare the mobile archive during the dependency hook.
 ```mermaid
 flowchart TD
     Disc["Required extraction input<br/>uncompressed GZLE01 ISO / GCM"]
-    Compressed["Optional Windows input<br/>supported compressed Dolphin image"]
     Linux["Linux builder<br/>header preflight"]
     Windows["Windows builder<br/>header preflight"]
-    Convert["Pinned nodtool<br/>convert to ISO"]
     Apple["Apple profile_extract()<br/>build CLI wrapper"]
     Importer["Shared disc_import.c<br/>validate and prepare"]
     Output["OUT/game<br/>main.dol + 415 RELs"]
@@ -239,8 +237,6 @@ flowchart TD
     Disc --> Linux
     Disc --> Windows
     Disc --> Apple
-    Compressed -->|Windows convenience path| Convert
-    Convert -->|produces required ISO| Windows
     Linux --> Importer
     Windows --> Importer
     Apple --> Importer
