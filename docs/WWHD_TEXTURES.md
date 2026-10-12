@@ -17,9 +17,29 @@ many textures the chosen pack has, and a way to add a pack:
 - **iPhone and iPad:** ⋯ › Mods › **Install Texture Pack…**, which copies the
   pack into the app.
 
-Making the pack from your Wind Waker HD disc still uses the importer below,
-on a Mac, Linux or Windows computer. An importer built into the app, so the
-same section can make the pack on every build, is in progress.
+## Import in the app (Mac, Linux and Windows)
+
+F1 › Mods › **Import from Wind Waker HD…** makes the pack inside BlueWake, with
+nothing to install:
+
+1. Pick the folder of your own decrypted Wind Waker HD dump: the one that holds
+   `code`, `content` and `meta` (as Cemu uses it), or its `content` folder.
+2. BlueWake reads it with the GameCube disc it already plays and makes the pack
+   in a new folder, `Load/Textures/WWHD` in its data folder (`WWHD-2` and so
+   on if that exists). A bar shows the progress; you can close the menu and play
+   while it works, or cancel it.
+3. When it finishes, the new pack is selected and **HD textures** is on. Restart
+   BlueWake to load it.
+
+It is the script below, built into the app: from the same discs it makes the
+same 3,546 textures. It takes about three minutes on an M3 Max. WUX and WUD
+images still need the script for now, as does iPhone and iPad, which will get
+the same button.
+
+## The import script
+
+The script makes the same pack from a computer, and also reads WUX and WUD
+images with their key files.
 
 ## Set up the importer
 
