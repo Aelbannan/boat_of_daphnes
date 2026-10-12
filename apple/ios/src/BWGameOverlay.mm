@@ -705,18 +705,13 @@ static NSUInteger g_packFiles = NSNotFound;
             };
             if ([d boolForKey:key] && other[key] != nil)
                 [d setBool:NO forKey:other[key]];
-            [weakSelf refreshMenu];
-            UIAlertController* alert = [UIAlertController
-                alertControllerWithTitle:@"Applies Next Launch"
-                                 message:@"Mods take effect the next time BlueWake starts. Your saves are not changed."
-                          preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[weakSelf actionTitled:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [weakSelf presentAlert:alert];
+            // The subtitle says "On at next launch", so the menu stays open.
+            [weakSelf updateOpenMenu:^UIMenu* { return [weakSelf modsMenu]; }];
         }];
         action.subtitle = [NSString stringWithFormat:@"%@ · %@", detail, [weakSelf modState:key]];
         action.state = [[NSUserDefaults standardUserDefaults] boolForKey:key] ? UIMenuElementStateOn
                                                                               : UIMenuElementStateOff;
-        return action;
+        return [weakSelf keepMenuOpen:action];
     };
     if (g_packFiles == NSNotFound) {
         g_packFiles = 0;
