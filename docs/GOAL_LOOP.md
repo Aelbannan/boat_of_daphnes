@@ -74,13 +74,13 @@ iPad alike. Chris decided:
 | # | Step | Notes |
 | --- | --- | --- |
 | H1 | HD textures and HUD from your own Wii U dump, chosen in the app's setup, not only by `scripts/import_wwhd_textures.py`; what breaks with a pack fixed (the sea chart, #263: the cache-flush fallback on by default is Chris's call) | #57 asks for the HD UI |
-| H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. An option that moves those out, as a host feature on the actor (like Forest Water) | Game-side, no renderer change; the cheapest |
-| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | RecompCore |
-| H4 | Ambient occlusion from the depth buffer | RecompCore |
+| H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. **In `main` (October 12), off by default:** the host adds 100,000 units to both distances on each island model; [WWHD_LOOK.md](WWHD_LOOK.md) | Game-side, no renderer change; the cheapest |
+| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **Built** (RecompCore #26, #27), off by default, on the switch in BlueWake #287, a draft that waits for Chris to approve the pin |
+| H4 | Ambient occlusion from the depth buffer | **Built** (RecompCore #28), on the switch in #287 with H3 |
 | H5 | Cloud shadows on the sea | RecompCore |
 | H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | The hardest: needs the scene drawn from the sun |
-| H7 | The Wind Waker HD / GameCube switch that sets them together | Every platform's menu |
-| T1 | The game-behaviour timing prototype | A switch, measured like every other step |
+| H7 | The Wind Waker HD / GameCube switch that sets them together | **In with H2:** "Wind Waker HD look" in the Mac, Linux, Windows and iOS menus (`BLUEWAKE_HD_LOOK`); Android when #93 lands |
+| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). A PC, the Deck and a phone next; Chris decides any default |
 
 ## Now: the speed sprint (from October 11)
 

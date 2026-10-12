@@ -33,6 +33,7 @@
 #include "edge_intercepts.h"
 #include "game_options.h"
 #include "forest_water.h"
+#include "hd_look.h"
 #include "fast_load.h"
 #include "fps_watch.h"
 #include "jump_button.h"
@@ -2258,8 +2259,10 @@ static void host_spr_write(CPUState* cpu, u16 spr, u32 value, u32 cia) {
 static void host_cache_control(CPUState* cpu, u8 operation, u32 ea, u32 cia) {
     (void)cpu;
     (void)cia;
+    // A flush, not a write (guest_memory_dirty.h): images the GPU rendered
+    // into guest memory (EFB copies) keep their GPU copy (#263's red plane).
     if (operation == PPC_CACHE_DCBST || operation == PPC_CACHE_DCBF)
-        dol_guest_memory_dirty_mark(ea & ~31u, 32u);
+        dol_guest_memory_flush_mark(ea & ~31u, 32u);
 }
 
 static void heap_write_watch(u32 offset, u32 size, void* user) {
@@ -5230,6 +5233,7 @@ static void host_sync_vi_cycles(CPUState* cpu) {
         bluewake_fps_watch_retrace();
         bluewake_fast_load_retrace(bluewake_host_thread_cpu_us());
         bluewake_quick_doors_retrace();
+        bluewake_hd_look_retrace(cpu);
         bluewake_haptics_retrace();
         if (g_wall_pace_enabled && !bluewake_fast_load_fast_forward())
             host_wall_pace(g_host_retrace_count);
@@ -8073,6 +8077,7 @@ int main(int argc, char** argv) {
         host_rel_section_linked_start(mod, 317u, 1u));
     host_skip_fast_refresh();  // Forest Water's tree-timer address
     bluewake_forest_water_reload();
+    bluewake_hd_look_reload();
     bluewake_mouse_camera_attach(&cpu);
     bluewake_climb_attach(&cpu);
     bluewake_jump_button_attach(&cpu);

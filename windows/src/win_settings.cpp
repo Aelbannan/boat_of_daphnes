@@ -69,6 +69,8 @@ void bluewake_mouse_camera_reload(void);
 void bluewake_climb_reload(void);
 // forest_water.h: BLUEWAKE_FOREST_WATER_KEEP_TREES and _30_MINUTES read again.
 void bluewake_forest_water_reload(void);
+// hd_look.h: BLUEWAKE_HD_LOOK read again.
+void bluewake_hd_look_reload(void);
 void bluewake_haptics_block(bool blocked);
 const char* bluewake_game_options_describe(uint32_t position, const char** title, bool* default_on, bool* on);
 // climb.h: the stamina wheel's state for the HUD.
@@ -157,6 +159,7 @@ void load_file() {
         else if (k == "climb_stamina") d.climb_stamina = std::clamp(std::atoi(v.c_str()), 4, 30);
         else if (k == "forest_water_keep_trees") d.forest_keep_trees = parse_bool(v);
         else if (k == "forest_water_30_minutes") d.forest_30_minutes = parse_bool(v);
+        else if (k == "hd_look") d.hd_look = parse_bool(v);
         else if (k == "haptics") d.haptics = v == "off" ? 0 : v == "classic" ? 1 : 2;
         else if (k == "haptics_strength") d.haptics_strength = std::clamp(std::atoi(v.c_str()), 0, 100);
         else if (k == "haptics_triggers") d.haptics_triggers = parse_bool(v);
@@ -210,6 +213,7 @@ void save_file() {
     std::fprintf(f, "climb=%d\nclimb_stamina=%d\n", d.climb, d.climb_stamina);
     std::fprintf(f, "forest_water_keep_trees=%d\nforest_water_30_minutes=%d\n", d.forest_keep_trees,
                  d.forest_30_minutes);
+    std::fprintf(f, "hd_look=%d\n", d.hd_look);
     if (!d.texture_pack.empty())
         std::fprintf(f, "texture_pack=%s\n", d.texture_pack.c_str());
     std::fprintf(f, "haptics=%s\nhaptics_strength=%d\nhaptics_triggers=%d\n",
@@ -442,6 +446,11 @@ void apply_forest_water() {
     bluewake_forest_water_reload();
 }
 
+void apply_hd_look() {
+    _putenv_s("BLUEWAKE_HD_LOOK", g_session.hd_look ? "1" : "0");
+    bluewake_hd_look_reload();
+}
+
 void apply_live() {
     const Settings& d = g_session;
     aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
@@ -457,6 +466,7 @@ void apply_live() {
     apply_stick();
     apply_climb();
     apply_forest_water();
+    apply_hd_look();
 }
 
 void set_menu_open(bool open) {
@@ -538,6 +548,11 @@ void tab_display(SDL_Window* w) {
     bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Checkbox("Fullscreen   (F11 or Alt+Enter)", &full))
         set_fullscreen(w, full);
+    if (ImGui::Checkbox("Wind Waker HD look", &d.hd_look)) {
+        apply_hd_look();
+        changed();
+    }
+    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away.");
     if (ImGui::Checkbox("Smooth Motion (experimental)   (F10)", &d.smooth_motion)) {
         apply_smooth_rate(w);
         aurora_set_frame_interpolation(d.smooth_motion);
