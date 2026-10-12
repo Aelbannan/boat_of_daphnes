@@ -1,28 +1,32 @@
-From 2b126f7c82649a66b6c64ad0bac4cbac4ec791fc Mon Sep 17 00:00:00 2001
+From ee99bbc13c948351f6974c745cad2593a25eacbf Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Mon, 12 Oct 2026 21:51:47 +0900
 Subject: [PATCH] Guest memory: a cache flush keeps EFB copies (write and flush
  epochs apart)
 
 ---
- GXRuntime/backends/aurora/aurora_backend.cpp  |   1 +
- .../backends/aurora/aurora_backend_private.h  |   1 +
- GXRuntime/backends/aurora/aurora_graphics.cpp |   6 ++++
- .../graphics/aurora/lib/gfx/gxcore_draw.cpp   |  16 ++++++---
- .../graphics/aurora/lib/gfx/gxcore_draw.hpp   |   2 ++
- .../include/gxruntime/guest_memory_dirty.h    |   9 +++++
- GXRuntime/src/guest_memory_dirty.c            |  33 +++++++++++++-----
- GXRuntime/tests/runtime_tests.c               |  16 +++++++++
- gxruntime-memory-card-corrupt.dolcard.lock    |   0
- gxruntime-memory-card-test.dolcard.bak        | Bin 0 -> 8300 bytes
- gxruntime-memory-card-test.dolcard.bak-day-4  | Bin 0 -> 40 bytes
- gxruntime-memory-card-test.dolcard.lock       |   0
- 12 files changed, 71 insertions(+), 13 deletions(-)
- create mode 100644 gxruntime-memory-card-corrupt.dolcard.lock
- create mode 100644 gxruntime-memory-card-test.dolcard.bak
- create mode 100644 gxruntime-memory-card-test.dolcard.bak-day-4
- create mode 100644 gxruntime-memory-card-test.dolcard.lock
+ .gitignore                                    |  3 ++
+ GXRuntime/backends/aurora/aurora_backend.cpp  |  1 +
+ .../backends/aurora/aurora_backend_private.h  |  1 +
+ GXRuntime/backends/aurora/aurora_graphics.cpp |  6 ++++
+ .../graphics/aurora/lib/gfx/gxcore_draw.cpp   | 16 ++++++---
+ .../graphics/aurora/lib/gfx/gxcore_draw.hpp   |  2 ++
+ .../include/gxruntime/guest_memory_dirty.h    |  9 +++++
+ GXRuntime/src/guest_memory_dirty.c            | 33 ++++++++++++++-----
+ GXRuntime/tests/runtime_tests.c               | 16 +++++++++
+ 9 files changed, 74 insertions(+), 13 deletions(-)
 
+diff --git a/.gitignore b/.gitignore
+index 1270b78..dedca96 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -54,3 +54,6 @@ CMakeLists.txt.user
+ StrikersRecomp/generated_smc.txt
+ StrikersRecomp/generated.c
+ StrikersRecomp/generated.h
++
++# Left behind by GXRuntime host tests run from the repository root
++gxruntime-memory-card-*.dolcard*
 diff --git a/GXRuntime/backends/aurora/aurora_backend.cpp b/GXRuntime/backends/aurora/aurora_backend.cpp
 index 73b8c66..2b141b2 100644
 --- a/GXRuntime/backends/aurora/aurora_backend.cpp
@@ -72,7 +76,7 @@ index 95bb3df..2380cf7 100644
      if (!plan.ok)
          return; // skip reasons are tallied in the sink gap counters
 diff --git a/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp b/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp
-index 52a4bf3..2fe0f6c 100644
+index 1faf316..e4440bb 100644
 --- a/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp
 +++ b/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp
 @@ -332,6 +332,13 @@ uint64_t small_texture_hash(const uint8_t* bytes, uint32_t size,
@@ -249,35 +253,6 @@ index a82ed17..9dfc87b 100644
  }
  
  int main(void) {
-diff --git a/gxruntime-memory-card-corrupt.dolcard.lock b/gxruntime-memory-card-corrupt.dolcard.lock
-new file mode 100644
-index 0000000..e69de29
-diff --git a/gxruntime-memory-card-test.dolcard.bak b/gxruntime-memory-card-test.dolcard.bak
-new file mode 100644
-index 0000000000000000000000000000000000000000..4428a2ab438016a84ba735d1f5da4893f9de20e3
-GIT binary patch
-literal 8300
-zcmeIuI}U<S5QX6(VFS1VLP0OsP#T7g#6%t~6(%;u2#GF%o=vzWYiet)^j>X<E3o*d
-znAhn(-Q?+dt4k4a#5G-f8P2;(<G}m;#Mj#xK5SyMs2TOxp1OV4w}<}w{q1E|lu07)
-z%aq9+JFoZYY3IBatNJp(*%3eh0R#|0009ILKmY**5I_I{1Q0*~0R#|0009ILKmY**
-J5J2Gn1>RYj`G^1j
-
-literal 0
-HcmV?d00001
-
-diff --git a/gxruntime-memory-card-test.dolcard.bak-day-4 b/gxruntime-memory-card-test.dolcard.bak-day-4
-new file mode 100644
-index 0000000000000000000000000000000000000000..fac96c46ec61da98f7b4a90d3e2c95b8a43f3dac
-GIT binary patch
-literal 40
-pcmZ?q_i=U%axr9JU|?im0g?;~3?1cZp)STsf*>9UG|J393IKsu2D1PF
-
-literal 0
-HcmV?d00001
-
-diff --git a/gxruntime-memory-card-test.dolcard.lock b/gxruntime-memory-card-test.dolcard.lock
-new file mode 100644
-index 0000000..e69de29
 -- 
 2.46.0
 

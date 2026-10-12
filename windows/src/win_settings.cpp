@@ -552,7 +552,7 @@ void tab_display(SDL_Window* w) {
         apply_hd_look();
         changed();
     }
-    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away.");
+    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
     if (ImGui::Checkbox("Smooth Motion (experimental)   (F10)", &d.smooth_motion)) {
         apply_smooth_rate(w);
         aurora_set_frame_interpolation(d.smooth_motion);

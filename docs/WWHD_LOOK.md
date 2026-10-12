@@ -26,11 +26,13 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | --- | --- | --- | --- |
 | HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)); choosing it in the app's setup is next | `DOL_AURORA_TEXTURE_PACK` |
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
-| Bloom | Bloom | Built in RecompCore ([#26](https://github.com/chrissotraidis/RecompCore/pull/26)); joins the switch once BlueWake pins it | `DOL_AURORA_BLOOM` |
-| HD's far-distance blur | HD depth of field | Next: the scene blurred by its depth, with bloom's blur | |
-| Ambient occlusion | Ambient occlusion | Planned: from the depth buffer (RecompCore) | |
-| Cloud shadows on the sea | Cloud shadows | Planned (RecompCore) | |
-| Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
+| Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
+| HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
+| Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
+| Cloud shadows on the sea | Cloud shadows | **In**, with the switch, outdoors (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
+| Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, outdoors, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
+| Edge light | Character edge light | **In**, with the switch, outdoors (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
+| Torch light | Torch and fire light | **In**, with the switch, everywhere (RecompCore 0175). Off by default | `BLUEWAKE_HD_TORCH_LIGHT` |
 
 ### Distant islands
 
@@ -61,4 +63,75 @@ and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL
 
 Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
 bloom; Smooth Motion runs with it. Not yet on Windows, Linux, a Deck or a phone.
+
+### Far blur
+
+HD softens the distance. At the same point as bloom, the scene is blurred at a quarter of the size and blended back
+by distance, before bloom. Aurora's depth gives the distance; Wind Waker draws the sky, the sea toward the horizon and
+the islands' far models without depth, so those get a lighter amount of their own. At Outset's pier, Link is about
+240 near-plane units away and the island's cliffs about 3,700, so the blur starts at 8,000 and is full at 30,000:
+the island stays sharp and the horizon softens. `DOL_AURORA_FAR_BLUR_START`, `_END`, `_AMOUNT` (0.8) and
+`_BACKGROUND` (0.35) tune it, and `DOL_AURORA_FAR_BLUR_DEBUG=1` shows the distance as brightness. It needs the
+renderer's full feature set, so it stays off in compatibility mode.
+
+Checked on an M3 Max from an Outset save state: the horizon, far islands and sky soften, the island and the HUD stay
+sharp. The switch alone gives the same frame as turning on each part by hand.
+
+### Ambient occlusion
+
+HD darkens creases and the ground where things meet it. Before the far blur and bloom, from the depth buffer alone, at
+a quarter of the size: around each pixel, six pairs of samples on opposite sides, in a ring that shrinks with
+distance. A pair whose average is nearer than the pixel (a crease, a contact) darkens it; on a flat floor the two
+samples straddle the pixel, so it stays as it was. Where there is no depth (the sky, the horizon) and across big
+steps (a silhouette in front of the background) nothing is darkened. `DOL_AURORA_AO_RADIUS` (default 30) and
+`_STRENGTH` (0.6) tune it, and `DOL_AURORA_AO_DEBUG=1` shows the occlusion alone.
+
+Checked on an M3 Max from an Outset save state: darker under Link's feet, round the pier's posts and in the cliffs'
+creases; the pier's deck and the sea unchanged.
+
+### Cloud shadows
+
+Soft shadows drift over the sea and the islands, as in HD. Outdoors (the stages the game marks as outdoors or the sea), the host reads the game's camera once a
+retrace (the current view's inverse view matrix, field of view, aspect and near plane) and passes it to Aurora. After
+ambient occlusion, each pixel's place in the world comes from that camera and the scene's depth, or, below the horizon
+where there is no depth, from where the view ray meets the sea. Smooth noise in world X/Z, drifting slowly, darkens it
+and fades out with distance. `DOL_AURORA_CLOUD_SHADOWS_STRENGTH` (0.28) and `_SCALE` (world units across a cloud,
+7,000) tune it; `DOL_AURORA_CLOUD_SHADOWS_DEBUG=1` paints a 1,000-unit world grid to check the camera.
+
+Checked on an M3 Max from an Outset save state: the grid sits square on the pier and the cliffs, and the shadows show
+on the open sea and the cove. Because the camera is read once a retrace, the pattern may trail by a frame in a fast
+turn; not checked by hand.
+
+### Sun shadows
+
+HD casts sun shadows across the whole scene. Outdoors (the stages the game marks as outdoors or the sea), the host also passes the direction to the sun
+(`g_env_light.mSunPos`, which the game keeps at the camera's eye plus that direction). After ambient occlusion, from each
+pixel's place in view space, 24 steps go toward the sun; a step that lands behind a surface in the depth buffer is in
+shadow. It's drawn at a quarter of the size, blurred and multiplied in, and fades with distance and when the sun is low.
+Because it works from the screen, something off screen casts nothing; a full shadow map, the scene drawn again from the
+sun, would be the next step. `DOL_AURORA_SUN_SHADOWS_STRENGTH` (0.35) and `_REACH` (world units, 1,500) tune it.
+
+Checked on an M3 Max from an Outset save state with the sun high: Link casts a soft shadow on the pier away from the
+sun, and the ladder's post and the pier's edges darken; the HUD is unchanged.
+
+### Edge light
+
+HD rims characters with light on their sunlit side. After sun shadows, for anything within 1,500 units of the camera,
+the renderer looks a few pixels toward the sun on screen: where the depth there jumps far behind or there is none, the
+pixel is on a sunlit outline and gets a warm rim. It isn't limited to characters; anything near with sky or something
+far behind it on the sun's side gets it. `DOL_AURORA_EDGE_LIGHT_STRENGTH` (0.4) tunes it.
+
+Checked on an M3 Max from an Outset save state: Link's arm, sleeve and shirt on the sun's side, and the ladder's posts,
+get a warm rim; the HUD is unchanged.
+
+### Torch light
+
+On the GameCube, a torch lights the models near it but not the walls and floor. With the switch, the host reads the
+game's own point lights each retrace (`g_env_light.mpPLights`: torches, fires, lanterns, bombs) and passes the 16 nearest
+the camera to Aurora, which lights every surface around them from the depth, with a smooth falloff and a slight flicker
+for the lights the game marks as fluctuating. `DOL_AURORA_TORCH_LIGHT_STRENGTH` (0.35) and `_REACH` (the glow's radius,
+times the game's own, 3) tune it.
+
+Checked on an M3 Max from a Dragon Roost Cavern save state: five lights near the camera, and the wall around the torch
+glows warm; the floor and the HUD are unchanged.
 

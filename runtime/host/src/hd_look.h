@@ -11,6 +11,12 @@
 //
 // Distant islands (BLUEWAKE_HD_DISTANT_ISLANDS): each island's far-away model
 // (d_a_lod_bg) appears and is unloaded 100,000 units further out, as in HD.
+// Cloud shadows (BLUEWAKE_HD_CLOUD_SHADOWS), sun shadows (BLUEWAKE_HD_SUN_SHADOWS)
+// and edge light (BLUEWAKE_HD_EDGE_LIGHT) outdoors, from the game's
+// camera and sun. Torch light (BLUEWAKE_HD_TORCH_LIGHT) everywhere, from the
+// game's own point lights. Ambient occlusion (BLUEWAKE_HD_AO), far blur (BLUEWAKE_HD_FAR_BLUR) and
+// bloom (BLUEWAKE_HD_BLOOM): Aurora's post_fx, on the finished scene before
+// the HUD.
 // Read again by the settings menus.
 void bluewake_hd_look_reload(void);
 // Once per retrace.
