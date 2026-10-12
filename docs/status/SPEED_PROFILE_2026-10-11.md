@@ -207,7 +207,7 @@ Forcing them inline (`always_inline`, local branch `codex/fp-always-inline`) gav
 Outset 22.66 s against 22.94 s (1.2%), the cavern 13.86 s against 14.20 s (2.4%), checkpoints identical. The calls
 cost less than the code they would add.
 
-## S2, fix 4 (waiting on Chris): the alias resolver's last hit (October 12)
+## S2, fix 4 (not pinned): the alias resolver's last hit (October 12)
 
 `ppc_guest_alias_resolve` (RecompCore `GXRuntime/src/core/cpu.c`) was 2.2% of the trained build's game thread: a
 binary search over about 1,900 aliases on every access to an actor module's data. It now tries the alias it found
@@ -220,7 +220,7 @@ With `BLUEWAKE_LAZY_OVERLAP=1` on both, the same host and sources, alternated, t
 pair: Outset 21.89 s against 21.79 s (0.5%), Dragon Roost Cavern 13.20 s against 13.03 s (1.2%), every run faster,
 identical checkpoints. It is a RecompCore change, on for everyone once pinned, so it waits for Chris: the commit is
 `f4afb6f` on a local branch `codex/alias-last-hit` of the benchmark checkout's RecompCore, on the pinned `ddd031b`.
-Not pushed; a RecompCore pull request and a BlueWake pin follow if Chris says yes.
+Later on October 12 it went up as chrissotraidis/RecompCore#34 on `ee99bbc` (with the HD look and the flush fix). There, alternated on a quiet Mac, it made no measurable difference at Outset (24.69 s against 24.73 s, medians) and 0 to 2.5% in Dragon Roost Cavern, with identical checkpoints, so it is not pinned. A trained build or a phone may show more.
 
 ## Everything together (October 12)
 
