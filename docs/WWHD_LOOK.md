@@ -26,8 +26,8 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | --- | --- | --- | --- |
 | HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)); choosing it in the app's setup is next | `DOL_AURORA_TEXTURE_PACK` |
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
-| Bloom | Bloom | Built in RecompCore ([#26](https://github.com/chrissotraidis/RecompCore/pull/26)); joins the switch once BlueWake pins it | `DOL_AURORA_BLOOM` |
-| HD's far-distance blur | HD depth of field | Next: the scene blurred by its depth, with bloom's blur | |
+| Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
+| HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
 | Ambient occlusion | Ambient occlusion | Planned: from the depth buffer (RecompCore) | |
 | Cloud shadows on the sea | Cloud shadows | Planned (RecompCore) | |
 | Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
@@ -61,4 +61,17 @@ and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL
 
 Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
 bloom; Smooth Motion runs with it. Not yet on Windows, Linux, a Deck or a phone.
+
+### Far blur
+
+HD softens the distance. At the same point as bloom, the scene is blurred at a quarter of the size and blended back
+by distance, before bloom. Aurora's depth gives the distance; Wind Waker draws the sky, the sea toward the horizon and
+the islands' far models without depth, so those get a lighter amount of their own. At Outset's pier, Link is about
+240 near-plane units away and the island's cliffs about 3,700, so the blur starts at 8,000 and is full at 30,000:
+the island stays sharp and the horizon softens. `DOL_AURORA_FAR_BLUR_START`, `_END`, `_AMOUNT` (0.8) and
+`_BACKGROUND` (0.35) tune it, and `DOL_AURORA_FAR_BLUR_DEBUG=1` shows the distance as brightness. It needs the
+renderer's full feature set, so it stays off in compatibility mode.
+
+Checked on an M3 Max from an Outset save state: the horizon, far islands and sky soften, the island and the HUD stay
+sharp. The switch alone gives the same frame as turning on each part by hand.
 
