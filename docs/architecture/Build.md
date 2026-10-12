@@ -271,6 +271,51 @@ disc image. Wind Waker stores modules both as loose files and inside
 `RELS.arc`, so the importer handles the disc file-system table, RARC archives,
 and optional Yaz0 compression before producing one uniform REL directory.
 
+**Extraction paths**
+
+```mermaid
+flowchart TD
+    Disc["GZLE01 disc image"]
+    Header["GameCube header<br/>identity and offsets"]
+    Dol["DOL section table<br/>compute executable size"]
+    Revision["SHA-1 check<br/>USA revision 0"]
+    FST["File-system table"]
+    Loose["Loose rels/*.rel"]
+    Archive["RELS.arc<br/>RARC archive"]
+    Decode["Decode Yaz0<br/>where present"]
+    Normalize["Set REL alignment<br/>field to 4"]
+    StagedDol[".import/main.dol"]
+    StagedRels[".import/rels/*.rel"]
+    Runtime["Textures, audio, and other assets<br/>remain on the disc image"]
+
+    Disc --> Header
+    Header -->|DOL offset| Dol --> Revision --> StagedDol
+    Header -->|FST offset and size| FST
+    FST --> Loose --> Decode
+    FST --> Archive --> Decode
+    Decode --> Normalize --> StagedRels
+    Disc -. "not extracted" .-> Runtime
+```
+
+**Safe publication and builder gate**
+
+```mermaid
+flowchart LR
+    Prepare["Write complete outputs<br/>under OUT/game/.import"]
+    Importer{"Importer checks pass?"}
+    Clean["Remove temporary outputs<br/>keep failure isolated"]
+    Publish["Replace OUT/game/main.dol<br/>and OUT/game/rels"]
+    Count{"Exactly 415 RELs?"}
+    Stop["Stop the build"]
+    Translate["Continue to translation"]
+
+    Prepare --> Importer
+    Importer -->|no| Clean --> Stop
+    Importer -->|yes| Publish --> Count
+    Count -->|no| Stop
+    Count -->|yes| Translate
+```
+
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
 | Check disc identity | Opens the image, verifies the GameCube magic, and requires game ID `GZLE01`. | Supported game image | Validation result or specific error | [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265) |
