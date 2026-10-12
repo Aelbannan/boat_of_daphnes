@@ -227,8 +227,8 @@ prepare the mobile archive during the dependency hook.
 
 ```mermaid
 flowchart TD
-    Disc["Uncompressed GZLE01<br/>ISO / GCM"]
-    Compressed["Supported compressed<br/>Dolphin image"]
+    Disc["Required extraction input<br/>uncompressed GZLE01 ISO / GCM"]
+    Compressed["Optional Windows input<br/>supported compressed Dolphin image"]
     Linux["Linux builder<br/>header preflight"]
     Windows["Windows builder<br/>header preflight"]
     Convert["Pinned nodtool<br/>convert to ISO"]
@@ -239,7 +239,8 @@ flowchart TD
     Disc --> Linux
     Disc --> Windows
     Disc --> Apple
-    Compressed -->|Windows only| Convert --> Windows
+    Compressed -->|Windows convenience path| Convert
+    Convert -->|produces required ISO| Windows
     Linux --> Importer
     Windows --> Importer
     Apple --> Importer
@@ -250,6 +251,9 @@ All three builders converge on
 [`apple/ios/src/disc_import.c`](../../apple/ios/src/disc_import.c), the same
 importer used by the Apple first-run flow. Platform code handles accepted input
 formats and builds a suitable command-line wrapper around that shared logic.
+An uncompressed GZLE01 ISO or GCM is the common extraction input. Windows can
+optionally accept a supported compressed Dolphin image and normalize it to an
+ISO first; Linux and Apple require the uncompressed input directly.
 
 ### Input and platform paths
 
