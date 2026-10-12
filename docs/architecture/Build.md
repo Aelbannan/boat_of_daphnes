@@ -166,20 +166,32 @@ supported game revision.
 flowchart TD
     Profile["bluewake.sh<br/>executable pins"]
     Lock["dependencies.lock.json<br/>dependency record"]
-    Desktop["Linux / Windows<br/>dependencies()"]
-    Apple["Apple<br/>profile_dependencies()"]
+    Linux["Linux build.py<br/>dependencies()"]
+    Windows["Windows build.py<br/>dependencies()"]
+    Apple["Apple build.sh<br/>profile_dependencies()"]
+    AppleTarget{"Apple target"}
     RecompCore["ref/recompcore<br/>exact detached revision"]
     DolRecomp["ref/recompcore/DolRecomp<br/>exact submodule revision"]
-    Dawn["build/deps<br/>verified Dawn archive"]
+    Dawn["build/deps<br/>verified mobile Dawn archive"]
+    MacDawn["Desktop Aurora resolves<br/>macOS Dawn later"]
 
-    Profile --> Desktop
+    Profile --> Linux
+    Profile --> Windows
     Profile --> Apple
-    Desktop --> RecompCore
-    Apple --> RecompCore
-    RecompCore --> DolRecomp
-    Apple -->|iOS / tvOS| Dawn
+    Linux -->|fetch and verify| RecompCore
+    Windows -->|fetch and verify| RecompCore
+    Apple -->|fetch and verify| RecompCore
+    RecompCore -->|sync pinned submodule| DolRecomp
+    Apple -->|choose renderer package path| AppleTarget
+    AppleTarget -->|iOS / tvOS| Dawn
+    AppleTarget -->|macOS| MacDawn
     Lock -. "records origins and roles" .-> Profile
 ```
+
+Linux and Windows have separate implementations that produce the same pinned
+Git checkout. Apple performs that same checkout, then selects a second,
+target-specific renderer path: iOS/tvOS prepare the verified mobile Dawn
+archive here, while macOS leaves Dawn resolution to desktop Aurora.
 
 ### Dependency declarations
 
