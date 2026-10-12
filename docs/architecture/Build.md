@@ -243,10 +243,13 @@ flowchart TD
     Importer --> Output
 ```
 
-All three builders converge on
-[`apple/ios/src/disc_import.c`](../../apple/ios/src/disc_import.c), the same
-importer used by the Apple first-run flow. Platform code handles accepted input
-formats and builds a suitable command-line wrapper around that shared logic.
+Linux, Windows, and the Apple build pipeline all use the shared extraction
+implementation in
+[`apple/ios/src/disc_import.c`](../../apple/ios/src/disc_import.c). Linux and
+Windows compile it into their `bluewake_disc_extract` tools; the Apple builder
+compiles it with [`scripts/ios/disc_extract.c`](../../scripts/ios/disc_extract.c)
+as a command-line wrapper. The iOS first-run flow also links the same shared
+implementation. Platform code handles accepted input formats and invocation.
 An uncompressed GZLE01 ISO or GCM is the common extraction input. Windows can
 optionally accept a supported compressed Dolphin image and normalize it to an
 ISO first; Linux and Apple require the uncompressed input directly.
