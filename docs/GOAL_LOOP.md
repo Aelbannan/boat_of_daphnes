@@ -80,7 +80,7 @@ iPad alike. Chris decided:
 | H5 | Cloud shadows on the sea | RecompCore |
 | H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | The hardest: needs the scene drawn from the sun |
 | H7 | The Wind Waker HD / GameCube switch that sets them together | **In with H2:** "Wind Waker HD look" in the Mac, Linux, Windows and iOS menus (`BLUEWAKE_HD_LOOK`); Android when #93 lands |
-| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Scoped October 12: [design note](status/BEHAVIOUR_TIMING_2026-10-12.md) (cycles per block checked at back-edges, guest registers in host registers inside a block) |
+| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). A PC, the Deck and a phone next; Chris decides any default |
 
 ## Now: the speed sprint (from October 11)
 
