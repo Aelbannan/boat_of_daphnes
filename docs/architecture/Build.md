@@ -404,4 +404,4 @@ TBD.
 
 TBD.
 
-[build-details-follow-up]: https://github.com/cforain/bluewake/pull/1
+[build-details-follow-up]: https://github.com/chrissotraidis/bluewake/pull/310
