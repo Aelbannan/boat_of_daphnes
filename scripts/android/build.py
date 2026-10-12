@@ -398,6 +398,7 @@ class AndroidBuilder(wb.Builder):
             "lean_blocks": getattr(self.args, "lean_blocks", False),
             "lean_memory": self.args.lean_memory,
             "lean_deadlines": self.args.lean_deadlines,
+            "behaviour_timing": self.args.behaviour_timing,
             "cpu": self.args.cpu,
             "local_training": self.profile is not None,
             "compiler": self.clang_version,
@@ -566,11 +567,10 @@ class AndroidBuilder(wb.Builder):
             "BLUEWAKE_MAX_RETRACES": str(retraces or self.TRAINING_RETRACES),
             "BLUEWAKE_WALL_PACE": "" if rendered else "0",
             "BLUEWAKE_PLAYER_PROBE": "1", "BLUEWAKE_PAD_BUTTONS": "0x0100",
-            # The player-control milestone waits for the scene overlap phase to
-            # reach 6, which lasts only a moment: the lazy overlap watch, sampling
-            # once a turn, misses it, so it is off here (as in the Windows builder's
-            # training, #281).
-            "BLUEWAKE_LAZY_OVERLAP": "0",
+            # The lazy overlap watch stays on (the app's default): with the player
+            # probe, the app keeps the full watch until the player-control milestone
+            # these playbacks wait for, then trains the lazy path as it runs in play
+            # (as in the Windows builder's training, #297).
             "BLUEWAKE_PAD_PULSE_ON_TITLE_READY": "1", "BLUEWAKE_PAD_PULSE_LENGTH": "2",
             "BLUEWAKE_PAD_CONFIRM_EVENT": "any",
             "BLUEWAKE_PAD_SCRIPT": ",".join([f"{n}:0x0100:2" for n in range(17800, 22001, 150)] + self.TRAINING_RUN),
@@ -733,7 +733,8 @@ def main():
                         help="build the plain translation, without the Windows builder's default source "
                              "optimizations (its --fixed-cpu, --direct-calls, ... options then add them one at a time)")
     # Each once, whether or not it is among the defaults (lean memory and lean deadlines are since #277).
-    for name in dict.fromkeys((*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines", "native_entries")):
+    for name in dict.fromkeys((*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines", "native_entries",
+                               "behaviour_timing")):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true",
                             help="as in scripts/windows/build.py")
     parser.add_argument("--no-lean-blocks", action="store_true",
@@ -787,6 +788,8 @@ def main():
         parser.error("--lean-memory requires --gather-pipe (its accesses call gather_pipe.h's helpers)")
     if args.lean_deadlines and not args.lean_memory:
         parser.error("--lean-deadlines requires --lean-memory")
+    if args.behaviour_timing and not args.prepared_blocks:
+        parser.error("--behaviour-timing requires --prepared-blocks")
     if args.native_entries and not (args.direct_calls and args.gather_pipe and args.native_vec):
         parser.error("--native-entries requires --direct-calls, --gather-pipe and --native-vec")
     args.jobs_auto = args.jobs is None
