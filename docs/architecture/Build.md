@@ -237,31 +237,32 @@ prepare the mobile archive during the dependency hook.
 ```mermaid
 flowchart TD
     Disc["Required extraction input<br/>uncompressed GZLE01 ISO / GCM"]
-    Linux["Linux builder<br/>header preflight"]
-    Windows["Windows builder<br/>header preflight"]
-    Apple["Apple profile_extract()<br/>build CLI wrapper"]
-    Importer["Shared disc_import.c<br/>validate and prepare"]
-    Output["OUT/game<br/>main.dol + 415 RELs"]
+    Linux["Linux build.py<br/>platform adapter"]
+    Windows["Windows build.py<br/>platform adapter"]
+    Apple["Apple profile_extract()<br/>platform adapter"]
+    CLI["Shared build-time CLI<br/>scripts/ios/disc_extract.c"]
+    Importer["Shared extraction core<br/>apple/ios/src/disc_import.c"]
+    Output["Build output<br/>OUT/game/main.dol + rels/"]
+    FirstRun["iOS first-run UI"]
+    AppData["iOS app data<br/>prepared game files"]
 
     Disc --> Linux
     Disc --> Windows
     Disc --> Apple
-    Linux --> Importer
-    Windows --> Importer
-    Apple --> Importer
-    Importer --> Output
+    Linux -->|CMake target| CLI
+    Windows -->|CMake target| CLI
+    Apple -->|direct Clang command| CLI
+    CLI --> Importer --> Output
+    FirstRun -. "calls the core API directly" .-> Importer
+    Importer -. "first-run destination" .-> AppData
 ```
 
-Linux, Windows, and the Apple build pipeline all use the shared extraction
-implementation in
-[`apple/ios/src/disc_import.c`](../../apple/ios/src/disc_import.c). Linux and
-Windows compile it into their `bluewake_disc_extract` tools; the Apple builder
-compiles it with [`scripts/ios/disc_extract.c`](../../scripts/ios/disc_extract.c)
-as a command-line wrapper. The iOS first-run flow also links the same shared
-implementation. Platform code handles accepted input formats and invocation.
-An uncompressed GZLE01 ISO or GCM is the common extraction input. Windows can
-optionally accept a supported compressed Dolphin image and normalize it to an
-ISO first; Linux and Apple require the uncompressed input directly.
+| Boundary | Shared | Platform-specific |
+| --- | --- | --- |
+| Input adapter | The extraction tool ultimately receives an uncompressed GZLE01 ISO or GCM. | Builders own paths and preflight checks; Windows may first normalize a supported compressed Dolphin image. |
+| Build-time CLI | Every build pipeline compiles the same [`disc_extract.c`](../../scripts/ios/disc_extract.c) wrapper with the same extraction core. | Linux and Windows create the tool through CMake; the Apple profile invokes Clang directly. |
+| Extraction core | [`disc_import.c`](../../apple/ios/src/disc_import.c) validates the disc and revision, extracts the DOL and RELs, normalizes them, and publishes the prepared tree. | The iOS first-run UI links this core directly instead of using the command-line wrapper. |
+| Caller-owned result | The prepared layout is always `main.dol` plus `rels/*.rel`. | Builders place it under `OUT/game/` and enforce 415 RELs; iOS places it in the app's data container and reports progress through its UI. |
 
 ### Input and platform paths
 
