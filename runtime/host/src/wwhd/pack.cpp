@@ -11,6 +11,14 @@
 
 #include <zlib.h>
 
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
+
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -238,6 +246,105 @@ void write_file(const fs::path& path, const Bytes& data) {
         throw FormatError("cannot write " + path.string());
 }
 
+// Encodes and writes PNGs on a few threads. Queued images are capped by size,
+// so a phone does not hold the whole pack in memory. drain() waits for every
+// queued write (before a file may be removed, and at the end).
+class PngWriter {
+  public:
+    explicit PngWriter(unsigned threads) {
+        for (unsigned i = 0; i < threads; i++)
+            workers_.emplace_back([this] { work(); });
+    }
+    ~PngWriter() {
+        {
+            std::lock_guard<std::mutex> hold(lock_);
+            stop_ = true;
+        }
+        wake_.notify_all();
+        room_.notify_all();
+        for (std::thread& t : workers_)
+            t.join();
+    }
+    void add(const fs::path& path, const Image& image) {
+        if (workers_.empty()) {
+            write_file(path, encode_png(image));
+            return;
+        }
+        std::unique_lock<std::mutex> hold(lock_);
+        room_.wait(hold, [&] { return queued_bytes_ < kMaxQueuedBytes || stop_; });
+        check();
+        queued_bytes_ += image.rgba.size();
+        queue_.push_back({path, image});
+        wake_.notify_one();
+    }
+    void drain() {
+        std::unique_lock<std::mutex> hold(lock_);
+        room_.wait(hold, [&] { return (queue_.empty() && busy_ == 0) || stop_; });
+        check();
+    }
+
+  private:
+    static constexpr size_t kMaxQueuedBytes = 256u << 20;
+    void check() {
+        if (!error_.empty())
+            throw FormatError(error_);
+    }
+    void work() {
+        for (;;) {
+            std::pair<fs::path, Image> job;
+            {
+                std::unique_lock<std::mutex> hold(lock_);
+                wake_.wait(hold, [&] { return !queue_.empty() || stop_; });
+                if (stop_)
+                    return;
+                job = std::move(queue_.front());
+                queue_.pop_front();
+                busy_++;
+            }
+            std::string failure;
+            try {
+                write_file(job.first, encode_png(job.second));
+            } catch (const std::exception& ex) {
+                failure = ex.what();
+            }
+            {
+                std::lock_guard<std::mutex> hold(lock_);
+                busy_--;
+                queued_bytes_ -= job.second.rgba.size();
+                if (!failure.empty() && error_.empty())
+                    error_ = failure;
+            }
+            room_.notify_all();
+        }
+    }
+    std::mutex lock_;
+    std::condition_variable wake_, room_;
+    std::deque<std::pair<fs::path, Image>> queue_;
+    size_t queued_bytes_ = 0;
+    size_t busy_ = 0;
+    bool stop_ = false;
+    std::string error_;
+    std::vector<std::thread> workers_;
+};
+
+std::string digest_of(const std::vector<Image>& images, bool exact) {
+    if (exact) {
+        Sha256 sha;
+        for (const Image& im : images)
+            sha.update(im.rgba.data(), im.rgba.size());
+        return sha.hex();
+    }
+    XXH3_state_t* state = XXH3_createState();
+    XXH3_128bits_reset(state);
+    for (const Image& im : images)
+        XXH3_128bits_update(state, im.rgba.data(), im.rgba.size());
+    const XXH128_hash_t h = XXH3_128bits_digest(state);
+    XXH3_freeState(state);
+    char hex[33];
+    std::snprintf(hex, sizeof hex, "%016llx%016llx", (unsigned long long)h.high64, (unsigned long long)h.low64);
+    return hex;
+}
+
 std::string json_string(const std::string& s) {
     std::string out = "\"";
     for (unsigned char c : s) {
@@ -340,6 +447,11 @@ ImportResult import_pack(const ImportOptions& o) {
     std::map<std::string, Match> matches;
     std::set<std::string> conflicts;
     try {
+        // Declared in the try block, so an error or a cancel stops its threads
+        // before the staging folder is removed.
+        const unsigned cores = std::thread::hardware_concurrency();
+        const unsigned threads = o.threads ? o.threads : std::max(1u, std::min(8u, cores > 1 ? cores - 1 : 1u));
+        PngWriter writer(o.exact_report ? 0 : threads);
         for (const std::string& source : files) {
             check_cancel();
             progress.files_read++;
@@ -381,10 +493,7 @@ ImportResult import_pack(const ImportOptions& o) {
                             for (const GCTexture* t : gc)
                                 if (!variants.count(t->format)) {
                                     variants[t->format] = for_gc_format(images, t->format, mask);
-                                    Sha256 sha;
-                                    for (const Image& im : variants[t->format])
-                                        sha.update(im.rgba.data(), im.rgba.size());
-                                    digests[t->format] = sha.hex();
+                                    digests[t->format] = digest_of(variants[t->format], o.exact_report);
                                 }
                             const int priority = candidate_priority(hd.name, resource(hd.source));
                             for (const GCTexture* original : gc) {
@@ -414,6 +523,7 @@ ImportResult import_pack(const ImportOptions& o) {
                                     originals_for_key.insert(originals_for_key.end(), p.originals.begin(), p.originals.end());
                                     alternatives = p.alternatives;
                                     alternatives.push_back(p.hd);
+                                    writer.drain();
                                     for (const std::string& name : p.generated)
                                         fs::remove(staging / name, ec);
                                     conflicts.erase(key);
@@ -422,12 +532,16 @@ ImportResult import_pack(const ImportOptions& o) {
                                 for (size_t i = 0; i < variant.size(); i++) {
                                     const std::string name =
                                         i == 0 ? key : key.substr(0, key.size() - 4) + "_mip" + std::to_string(i) + ".png";
-                                    const Bytes png = encode_png(variant[i]);
-                                    write_file(staging / name, png);
-                                    Sha256 file_sha;
-                                    file_sha.update(png.data(), png.size());
+                                    if (o.exact_report) {
+                                        const Bytes png = encode_png(variant[i]);
+                                        write_file(staging / name, png);
+                                        Sha256 file_sha;
+                                        file_sha.update(png.data(), png.size());
+                                        m.generated_sha256.push_back(file_sha.hex());
+                                    } else {
+                                        writer.add(staging / name, variant[i]);
+                                    }
                                     m.generated.push_back(name);
-                                    m.generated_sha256.push_back(file_sha.hex());
                                 }
                                 m.file = key;
                                 m.hd = hd.source;
@@ -457,6 +571,7 @@ ImportResult import_pack(const ImportOptions& o) {
                 result.errors.push_back({source, ex.what()});
             }
         }
+        writer.drain();
         check_cancel();
         report("Finishing the pack");
         for (const std::string& key : conflicts)
@@ -478,7 +593,7 @@ ImportResult import_pack(const ImportOptions& o) {
                 return out + "]";
             };
             std::string files_sha = "{";
-            for (size_t i = 0; i < m.generated.size(); i++)
+            for (size_t i = 0; i < m.generated_sha256.size() && i < m.generated.size(); i++)
                 files_sha += (i ? ", " : "") + json_string(m.generated[i]) + ": " + json_string(m.generated_sha256[i]);
             files_sha += "}";
             textures += std::string(textures.empty() ? "" : ",\n") + "    {\"file\": " + json_string(m.file) +

@@ -3,6 +3,7 @@
 #include "wwhd/pack.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 int main(int argc, char** argv) {
     if (argc != 4) {
@@ -13,6 +14,8 @@ int main(int argc, char** argv) {
     options.hd_folder = argv[1];
     options.gc_disc = argv[2];
     options.output = argv[3];
+    // WWHD_EXACT_REPORT=1: SHA-256s in the report, to compare with the script's.
+    options.exact_report = std::getenv("WWHD_EXACT_REPORT") != nullptr;
     options.progress = [](const wwhd::ImportProgress& p) {
         std::fprintf(stderr, "%s: %zu/%zu files, %zu replacements\n", p.stage.c_str(), p.files_read, p.files_total,
                      p.replacements);

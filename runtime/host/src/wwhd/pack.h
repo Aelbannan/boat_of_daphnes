@@ -23,6 +23,11 @@ struct ImportOptions {
     std::string output;    // a new folder for the pack
     std::function<void(const ImportProgress&)> progress;
     const std::atomic<bool>* cancel = nullptr;
+    // SHA-256 of every image and file in import-report.json, as the script
+    // writes them, to compare packs (slower; the app leaves it off).
+    bool exact_report = false;
+    // Threads writing PNGs: 0 for the machine's cores less one (at most 8).
+    unsigned threads = 0;
 };
 
 struct ImportResult {
