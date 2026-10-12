@@ -79,41 +79,66 @@ flowchart TD
 ### `bluewake.sh` game profile
 
 [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh)
-is the shared game-specific build contract. It records application metadata,
-the exact RecompCore and DolRecomp revisions, the expected composite digest,
-and default optimization profiles.
+is sourced configuration and shell functions, not a standalone builder. It:
 
-It also defines the dependency, extraction, translation, generation, mod,
-compile, and app hooks used by the generic Apple pipeline. Linux and Windows
-read its common pins and digest without executing those Apple-oriented hooks.
+1. Defines the game ID, bundle ID, module name, default output, and PGO inputs.
+2. Pins RecompCore, DolRecomp, and Dawn by revision or checksum.
+3. Stores the expected digest for the unmodified generated composite source.
+4. Implements Apple pipeline hooks that fetch dependencies, extract the disc,
+   run DolRecomp, generate and modify the composite, compile the dylib, and
+   build the app.
+
+Linux and Windows parse the shared pin and digest values directly. The Apple
+builder sources the file and invokes its hook functions.
 
 ### Linux builder
 
 [`scripts/linux/build.py`](../../scripts/linux/build.py) owns the Linux x86-64
-pipeline. It checks the Linux toolchain, runs every source stage, trains local
-PGO, compiles the module and host, and assembles the runnable app folder.
+pipeline. In order, it:
 
-It can run natively or through the shared CI container. AppImage creation is
-an optional final packaging step over the same build outputs.
+1. Checks Clang, LLD, `llvm-profdata`, CMake, Ninja, Git, and Python; with
+   `--ci-container`, it builds the shared image and reinvokes itself inside it.
+2. Fetches the pinned dependencies, validates the disc, and extracts
+   `main.dol` plus 415 RELs into `OUT/game/`.
+3. Builds DolRecomp, translates the DOL and RELs, verifies the composite
+   digest, and applies selected mods and guarded preparations.
+4. Builds an instrumented module, runs headless training playbacks, and merges
+   `OUT/pgo-local/composite.profdata` unless training is disabled or reused.
+5. Compiles `gGZLE01_recomp.so` and the `bluewake` host, then assembles
+   `OUT/BlueWake/` with the game inputs, DSP data, and provenance.
+6. With `--appimage`, packages and audits the AppImage from those outputs.
 
 ### Windows builder
 
 [`scripts/windows/build.py`](../../scripts/windows/build.py) provides the
-equivalent pipeline for Windows x86-64 with Visual Studio's LLVM/Clang and the
-Windows SDK. It also handles supported compressed-disc conversion and required
-runtime DLLs.
+Windows x86-64 pipeline. In order, it:
 
-The builder trains the Windows module profile, compiles the module and host,
-and packages the directly runnable `BlueWake` folder.
+1. Checks Visual Studio's LLVM/Clang, the Windows SDK, CMake, Ninja, and Git.
+2. Converts supported compressed Dolphin images with its pinned `nodtool`
+   path, then validates and extracts the DOL and 415 RELs.
+3. Builds DolRecomp, translates the extracted code, verifies the composite,
+   and applies the requested mod variants.
+4. Trains or reuses the local module profile, then compiles
+   `gGZLE01_recomp.dll` and `BlueWake.exe`.
+5. Copies Dawn, SDL, DSP, game inputs, and provenance into the directly
+   runnable `OUT/BlueWake/` folder.
 
 ### Apple builder
 
 [`scripts/builder/build.sh`](../../scripts/builder/build.sh) is the generic
-pipeline for macOS, iOS/iPadOS, and tvOS. It selects the Apple SDK and target,
-then sources `bluewake.sh` and calls its game-specific hooks in order.
+pipeline for macOS, iOS/iPadOS, and tvOS. In order, it:
 
-It coordinates module and app compilation, local PGO, bundle assembly,
-signing, optional IPA output, and device installation where supported.
+1. Parses the target, signing, PGO, module-optimization, packaging, and device
+   options; selects `macosx`, `iphoneos`, or `appletvos` through Xcode.
+2. Sources `bluewake.sh`, checks Xcode/CMake/Ninja, and calls its dependency,
+   extraction, translation, generation, and mod hooks.
+3. Optionally runs the profile's local training hook, then calls its compile
+   hook to produce `gGZLE01_recomp.dylib`.
+4. Builds or imports the target app, embeds the module, records enabled module
+   optimizations, and signs the module and bundle.
+5. Packages macOS `BlueWake.app` or an optional unsigned IPA. IPA staging
+   removes signing material and rejects discs, extracted code, saves, and keys.
+6. When requested, installs and launches the supported device build.
 
 All three builders validate their tools, reuse safe intermediates, and record
 provenance. Platform options change compilation and packaging, not the
