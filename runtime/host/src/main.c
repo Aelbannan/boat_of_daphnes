@@ -33,8 +33,10 @@
 #include "edge_intercepts.h"
 #include "game_options.h"
 #include "forest_water.h"
+#include "hd_look.h"
 #include "fast_load.h"
 #include "fps_watch.h"
+#include "dpad_menus.h"
 #include "jump_button.h"
 #include "settings_menu.h"
 #include "sprint.h"
@@ -346,6 +348,11 @@ static u32 g_overlap_last_phase = UINT32_MAX;
 // tested at every direct call and block edge, where it was about 7% of the game
 // thread. The guest runs the same; only when the host notices a phase changes.
 static bool g_lazy_overlap;
+// With the lazy watch, the player probe's control milestone (which the builders'
+// training openings must reach) still needs the overlap phase 6 that lasts only a
+// moment at the handover: the full watch stays on until control is admitted, and
+// the lazy path runs from there on, as in play.
+static bool g_overlap_watch_until_control;
 static u32 g_overlap_terminal_phase = UINT32_MAX;
 static bool g_name_character_jut_hold_reported;
 static bool g_name_character_jut_trigger_reported;
@@ -1973,7 +1980,7 @@ static void host_actor_search_native(CPUState* cpu) {
 // The scene part of the dynamic test: an overlap phase change interrupt flags
 // alone do not describe.
 static inline bool host_chassis_overlap_requires_full(void) {
-    if (!g_lazy_overlap && g_name_scene_object >= 0x80000000u &&
+    if ((!g_lazy_overlap || g_overlap_watch_until_control) && g_name_scene_object >= 0x80000000u &&
         (g_file_start_pulse.triggered || !g_file_start_pulse.configured)) {
         if (g_ppc_guest_alias_generation != g_overlap_cached_alias_state ||
             g_overlap_slot_ptr == NULL)
@@ -2035,7 +2042,8 @@ static void host_skip_fast_refresh(void) {
     g_skip_fast.range_span[0] = BLUEWAKE_PARTICLE_DRAW_LAST - BLUEWAKE_PARTICLE_DRAW_FIRST;
     g_skip_fast.range_first[1] = BLUEWAKE_WAKE_DRAW_FIRST;
     g_skip_fast.range_span[1] = BLUEWAKE_WAKE_DRAW_LAST - BLUEWAKE_WAKE_DRAW_FIRST;
-    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed;
+    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed &&
+                         !g_overlap_watch_until_control;
 }
 static u64 g_direct_call_queries, g_direct_call_allowed;
 
@@ -2258,8 +2266,10 @@ static void host_spr_write(CPUState* cpu, u16 spr, u32 value, u32 cia) {
 static void host_cache_control(CPUState* cpu, u8 operation, u32 ea, u32 cia) {
     (void)cpu;
     (void)cia;
+    // A flush, not a write (guest_memory_dirty.h): images the GPU rendered
+    // into guest memory (EFB copies) keep their GPU copy (#263's red plane).
     if (operation == PPC_CACHE_DCBST || operation == PPC_CACHE_DCBF)
-        dol_guest_memory_dirty_mark(ea & ~31u, 32u);
+        dol_guest_memory_flush_mark(ea & ~31u, 32u);
 }
 
 static void heap_write_watch(u32 offset, u32 size, void* user) {
@@ -4410,9 +4420,14 @@ static void host_si_complete_pad_transfer(u32 control) {
     host_note_live_input(&live_pad[0]);
     bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                        &live_pad[channel], &merged_pad);
-    const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    u16 buttons = host_pad_buttons(channel, effective_pad.button);
+    if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+        effective_pad.button = buttons;
+        bluewake_dpad_menus_apply(&effective_pad);
+        buttons = effective_pad.button;
+    }
     const DolPadState* pad = &effective_pad;
-    const u16 buttons = host_pad_buttons(channel, pad->button);
     host_pad_trace(channel, pad, buttons);
     u32 data0 = 0x09000000u; // SI_GC_CONTROLLER
     u32 data1 = 0u;
@@ -4517,9 +4532,14 @@ static void host_si_latch_pad_poll(void) {
         DolPadState merged_pad;
         bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                            &live_pad[channel], &merged_pad);
-        const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        u16 buttons = host_pad_buttons(channel, effective_pad.button);
+        if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+            effective_pad.button = buttons;
+            bluewake_dpad_menus_apply(&effective_pad);
+            buttons = effective_pad.button;
+        }
         const DolPadState* pad = &effective_pad;
-        const u16 buttons = host_pad_buttons(channel, pad->button);
         host_pad_trace(channel, pad, buttons);
         if (g_input_log_enabled && channel == 0u)
             host_input_log_read(pad, buttons);
@@ -5230,6 +5250,7 @@ static void host_sync_vi_cycles(CPUState* cpu) {
         bluewake_fps_watch_retrace();
         bluewake_fast_load_retrace(bluewake_host_thread_cpu_us());
         bluewake_quick_doors_retrace();
+        bluewake_hd_look_retrace(cpu);
         bluewake_haptics_retrace();
         if (g_wall_pace_enabled && !bluewake_fast_load_fast_forward())
             host_wall_pace(g_host_retrace_count);
@@ -7576,13 +7597,18 @@ int main(int argc, char** argv) {
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
         g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
-        fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
-                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
+        g_overlap_watch_until_control = g_lazy_overlap && player_probe && getenv("BLUEWAKE_LOAD_STATE") == NULL;
+        fprintf(stderr, "[chassis] lazy overlap watch: %s%s\n",
+                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)",
+                g_overlap_watch_until_control ? " (full until player control)" : "");
     }
+    // The game's own cache flushes mark the texture cache's memory changed, so
+    // images it rewrites in place (the Pictobox preview, #13; the sea chart's
+    // island maps, #263) are read again. On by default; =0 turns it off.
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
-    g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
+    g_cache_flush_fallback_enabled = cache_flush == NULL || strcmp(cache_flush, "0") != 0;
     fprintf(stderr, "[texture-cache] fallback writeback=%s\n",
-            g_cache_flush_fallback_enabled ? "on (experimental)" : "off");
+            g_cache_flush_fallback_enabled ? "on" : "off (BLUEWAKE_CACHE_FLUSH_FALLBACK=0)");
     g_archive_reports = 0;
     g_dynamic_load_reports = 0;
     g_dynamic_link_header_reported = false;
@@ -8070,6 +8096,7 @@ int main(int argc, char** argv) {
         host_rel_section_linked_start(mod, 317u, 1u));
     host_skip_fast_refresh();  // Forest Water's tree-timer address
     bluewake_forest_water_reload();
+    bluewake_hd_look_reload();
     bluewake_mouse_camera_attach(&cpu);
     bluewake_climb_attach(&cpu);
     bluewake_jump_button_attach(&cpu);
@@ -8079,6 +8106,7 @@ int main(int argc, char** argv) {
     bluewake_quick_doors_attach(&cpu);
     bluewake_draw_tags_attach(&cpu);
     bluewake_haptics_attach(&cpu);
+    bluewake_dpad_menus_attach(&cpu);
 
     unsigned long long blocks = 0;
     const char* stop_reason = NULL;
@@ -8621,6 +8649,10 @@ int main(int argc, char** argv) {
                 if (!player_control_admitted &&
                     player_control_hold_retraces >= 8u) {
                     player_control_admitted = true;
+                    if (g_overlap_watch_until_control) {
+                        g_overlap_watch_until_control = false;
+                        host_skip_fast_refresh();
+                    }
                     fprintf(stderr,
                             "[player-milestone] control-admitted retrace=%llu "
                             "event_mode=%u demo_type=%u demo_mode=%u ovl=%u "

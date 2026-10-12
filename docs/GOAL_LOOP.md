@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 11, 2026 (night).
+Updated October 12, 2026 (night).
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -30,6 +30,30 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 1. Lean what we have, and catch up with Elliott | 0.7.0 and the next two weeks | Lean block copies (default since today), draw fusion, his faster loads and natives rounds 4, 5 and 7, his upload changes, hidden symbols, Smooth Motion pacing | Faster on the benchmark, and the game plays the same |
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
+
+## Where things stand on October 12
+
+- **The Wind Waker HD look is in `main`** (#284, #287; RecompCore ee99bbc): distant islands, ambient occlusion, sun and
+  cloud shadows, edge light, torch light, HD's far-distance blur and bloom, one switch, off by default, on Mac, Linux,
+  Windows and iOS; **F2** switches it in the game on the desktop (#306). HD textures from a real Wii U dump (3,546) load
+  with it; the importer installs into the Mac and Linux apps' own folders (#295). Not yet played on Windows, Linux or a
+  phone.
+- **Fixed in `main`:** the sea chart and the Pictobox (#283: the cache-flush fallback on by default, and a flush keeps
+  the GPU's EFB copies, the reporter's red plane). The reporter confirms on the next Windows build.
+- **Controls:** the D-pad in Items and Quest Status (#298, #301) and gyro aiming (#302, #304), off by default, on every
+  platform but Android; Linux portable mode (pdale-boop, #303); cforain's architecture docs (#282).
+- **Speed, measured:** on Chris's iPad Pro the prepared iOS build (combined, lean blocks, memory and deadlines) takes the
+  game thread from 81% to 54% at Outset's sea and 53% to 43% in Dragon Roost Cavern, `--behaviour-timing` another 2
+  points; on x86 `--behaviour-timing` is 7 to 11% faster (pdale-boop, 27 of 27 pairs); training with the lazy watch on
+  (#297) is 4.4 to 5.2% faster on the Mac. The alias resolver's last hit (RecompCore #34) gained nothing and is closed.
+- **Flicker (#136):** ComradeClaritux's 120 FPS recording shows Smooth Motion's in-between frames drawing the clouds in the
+  wrong place during a fast turn (frames in order). Not reproduced on the Mac; the next step needs a machine that shows it.
+- **Waiting on contributors:** #297 to be brought up to date with `main` (pdale-boop); behaviour timing played by a few
+  people and on the Deck; the Android port (#93, LiquidAzir) needs `dpad_menus.c` and `hd_look.c` in its build; reporters
+  of #263, #245, #188, #108 and #104 to try the next build.
+- **Waiting on Chris:** whether the prepared iOS build becomes the iPhone and iPad default (installed on his iPad to
+  play); `--behaviour-timing` as a default once people have played it; whether the apps offer HD texture import from a
+  menu; when to freeze 0.8.0.
 
 ## Where things stand on October 11
 
@@ -73,14 +97,14 @@ iPad alike. Chris decided:
 
 | # | Step | Notes |
 | --- | --- | --- |
-| H1 | HD textures and HUD from your own Wii U dump, chosen in the app's setup, not only by `scripts/import_wwhd_textures.py`; what breaks with a pack fixed (the sea chart, #263: the cache-flush fallback on by default is Chris's call) | #57 asks for the HD UI |
-| H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. An option that moves those out, as a host feature on the actor (like Forest Water) | Game-side, no renderer change; the cheapest |
-| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | RecompCore |
-| H4 | Ambient occlusion from the depth buffer | RecompCore |
-| H5 | Cloud shadows on the sea | RecompCore |
-| H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | The hardest: needs the scene drawn from the sun |
-| H7 | The Wind Waker HD / GameCube switch that sets them together | Every platform's menu |
-| T1 | The game-behaviour timing prototype | A switch, measured like every other step |
+| H1 | HD textures and HUD from your own Wii U dump, chosen in the app's setup, not only by `scripts/import_wwhd_textures.py` | **October 12:** the importer, run on a decrypted USA dump on this Mac, made 3,546 replacements, and BlueWake loaded all of them at Outset with the HD look (frames in #57; no measurable cost). The importer now installs into the folders the Mac and Linux apps read (#295). The sea chart with a pack is fixed in `main` (#283: the cache-flush fallback on by default, with RecompCore ee99bbc keeping the GPU's EFB copies). Still to do: choosing the dump in the app's setup, and the redesigned HD menus. #57 asks for the HD UI |
+| H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. **In `main` (October 12), off by default:** the host adds 100,000 units to both distances on each island model; [WWHD_LOOK.md](WWHD_LOOK.md) | Game-side, no renderer change; the cheapest |
+| H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #26, #27), off by default, on the switch from BlueWake #287 (RecompCore a10b7e4) |
+| H4 | Ambient occlusion from the depth buffer | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #28), on the switch in #287 with H3 |
+| H5 | Cloud shadows on the sea | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #29): the game's camera passed to Aurora, the world rebuilt from depth or the sea plane; on the switch in #287 |
+| H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #30 to #32, on the switch in #287): sun shadows and edge light from the screen, torch light from the game's point lights. A full shadow map is a later step |
+| H7 | The Wind Waker HD / GameCube switch that sets them together | **In with H2:** "Wind Waker HD look" in the Mac, Linux, Windows and iOS menus (`BLUEWAKE_HD_LOOK`); Android when #93 lands |
+| T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). An iPad Pro, October 12, on top of the prepared build: Outset's sea 54% to 52% game-thread busy, the cavern 43% to 41%. x86 (pdale-boop): 7 to 11% faster on an i5-6500 and an i5-12600KF, all 27 pairs. Next: played by a few people (a cutscene with music, the sea) and the Deck; Chris decides any default |
 
 ## Now: the speed sprint (from October 11)
 
@@ -99,7 +123,7 @@ Chris decides every default change, any merge that changes how the game runs, th
 | --- | --- | --- | --- |
 | S1 | **Done October 11 ([record](status/SPEED_PROFILE_2026-10-11.md)): about a quarter of the CPU time is the game's own work; the rest is the program counter and cycle observation around memory instructions, the dispatcher, exact floating point and the host's per-call checks.** Measure where the game thread's time goes, on this Mac's ARM build with the PC builds' preparations and lean blocks (`--combined-optimizations --lean-blocks`, #257): headless, unpaced, from save states at Outset, the bird scene and Dragon Roost Cavern; a CPU profile split into game work, per-instruction bookkeeping, memory access, the host's per-call checks and the renderer's writes. | Codex | A table in [PERFORMANCE.md](PERFORMANCE.md#results) that ranks the shares |
 | S2 | **Fix 1 measured October 12: `--lean-memory` (already in the Windows and Linux builders) is about 5.5 to 6% faster on this Mac and plays the same; contributors asked for x86, Deck and phone numbers; turning it on by default is Chris's decision. On Apple it needs the training link fixed first. Fix 2, October 12: `--lean-deadlines` (new, opt-in in all three builders) is 3.7 to 4.9% faster again, with the same game state; the module is 8.5% larger. The host's per-call checks answered inline in the module: no gain alone. Fix 3: `BLUEWAKE_LAZY_OVERLAP=1` takes the scene overlap watch, which only diagnostics read, out of those checks, and then the inline answer pays: 3.9 to 4.7% faster, same game state ([record](status/SPEED_PROFILE_2026-10-11.md)). All of them together (with the alias resolver's last hit, waiting on Chris) against lean blocks: 13.2% less game-thread time at Outset and 16.5% in Dragon Roost Cavern, untrained, same game state.** Remove the biggest share first, from S1's ranking: (1) the program counter, the cycle observation and the deadline check only on the path that leaves RAM; (2) the host's per-call checks as one inline flag; (3) MSR[FP] checked once per block; (4) fewer dispatches; (5) a last-hit cache for alias lookups. Earlier list: the host's per-call checks become one flag the module reads inline (row 0 below); the memory fast path checks one "slow memory" flag instead of aliases, reservation and write journal separately (RecompCore `cpu.h`); the lean copies write the program counter and the observation value only where an instruction can observe them; the game's registers stay in locals inside a block. | Codex | Each: a switch, matching checkpoints at three states, a "Results" row on the Mac and one from a contributor's PC or phone |
-| S3 | **Apple builds with the PC preparations** (PRIORITIES row 6): the same states on a plain Mac build and a prepared one. **October 12: the trained Mac build with lean memory and lean deadlines links now (training at `-O1`) and is 6.3 to 7.4% faster than the trained lean build** ([record](status/SPEED_PROFILE_2026-10-11.md)). Still to do: the plain Mac build in the same table, and an iPad. | Codex | Numbers recorded; Chris decides the default |
+| S3 | **Apple builds with the PC preparations** (PRIORITIES row 6): the same states on a plain Mac build and a prepared one. **October 12: the trained Mac build with lean memory and lean deadlines links now (training at `-O1`) and is 6.3 to 7.4% faster than the trained lean build** ([record](status/SPEED_PROFILE_2026-10-11.md)). Still to do: the plain Mac build in the same table, and an iPad. **October 12, the iPad Pro (M2) baseline** on the installed 0.7.0 tiered build, copied cards, 7,200 retraces: Outset's sea 81% game-thread busy, Dragon Roost Cavern 53%, both at 59.9, matching October 11; the prepared build (combined, lean blocks, memory and deadlines, trained, from `main`'s code): Outset's sea 54% busy and the cavern 43%, both at 59.9, no crash, Chris's save unchanged. A third less game-thread time at Outset; played by hand next. | Codex | Numbers recorded; Chris decides the default |
 | S4 | **Prepare the next release in parallel,** without deciding it: what is in `main` since 0.7.0, its checks, and the Linux AppImage as the headline. **Draft: [RELEASE_NEXT_DRAFT_2026-10-11.md](status/RELEASE_NEXT_DRAFT_2026-10-11.md).** | Codex prepares; Chris decides | A release record ready for Chris |
 
 Waiting on Chris: whether Android (#93) merges as experimental below full speed, and when to freeze the release.

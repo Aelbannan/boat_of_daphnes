@@ -9,9 +9,11 @@
 // The host's modules are C.
 extern "C" {
 #include "climb.h"
+#include "dpad_menus.h"
 #include "fast_load.h"
 #include "game_options.h"
 #include "forest_water.h"
+#include "hd_look.h"
 #include "haptics.h"
 #include "jump_button.h"
 #include "mouse_camera.h"
@@ -63,16 +65,18 @@ const char* const kKeys[] = {
     "DOL_AURORA_TEXTURE_PACK",  "BLUEWAKE_MODS",            "BLUEWAKE_OPTIONS",
     "BLUEWAKE_FADE_FRAMES",     "BLUEWAKE_FAST_FORWARD",    "BLUEWAKE_QUICK_DOORS",
     "BLUEWAKE_JUMP_BUTTON", "BLUEWAKE_PAD_SWAP_AB", "BLUEWAKE_PAD_SWAP_XY", "BLUEWAKE_PAD_SWAP_LR",
+    "BLUEWAKE_DPAD_MENUS",
     "BLUEWAKE_BUTTON_MAP",
     "BLUEWAKE_SPRINT_SPEED",    "BLUEWAKE_MOUSE_CAMERA",    "BLUEWAKE_MOUSE_SENSITIVITY",
     "BLUEWAKE_MOUSE_INVERT_Y",  "BLUEWAKE_MOUSE_BUTTONS",   "BLUEWAKE_KEY_MAP",
     "BLUEWAKE_STICK_CAMERA",    "BLUEWAKE_STICK_CAMERA_SPEED",
     "BLUEWAKE_STICK_CAMERA_INVERT_X", "BLUEWAKE_STICK_CAMERA_INVERT_Y", "BLUEWAKE_STICK_AIM_SPEED",
     "BLUEWAKE_STICK_ZOOM",      "BLUEWAKE_STICK_ZOOM_SPEED", "BLUEWAKE_AIM_INVERT_Y",
+    "BLUEWAKE_GYRO_AIM",        "BLUEWAKE_GYRO_AIM_SPEED",
     "BLUEWAKE_HAPTICS", "BLUEWAKE_HAPTICS_STRENGTH", "BLUEWAKE_HAPTICS_TRIGGERS",
     "BLUEWAKE_CLIMB",           "BLUEWAKE_CLIMB_STAMINA",
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
-    "BLUEWAKE_STAGE_SELECT_TOGGLE",
+    "BLUEWAKE_STAGE_SELECT_TOGGLE", "BLUEWAKE_HD_LOOK",
 };
 
 std::string g_path;                          // the settings file ("" when none)
@@ -288,6 +292,16 @@ void display_tab() {
         g_dirty = g_restart_pending = true;
     }
     restart_note();
+
+    bool hd_look = env_on("BLUEWAKE_HD_LOOK", false);
+    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &hd_look)) {
+        set_env("BLUEWAKE_HD_LOOK", hd_look ? "1" : "0");
+        bluewake_hd_look_reload();
+        g_dirty = true;
+    }
+    ImGui::TextWrapped("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from "
+                       "further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance "
+                       "and bloom. Off by default.");
 
     bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
     if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
@@ -528,6 +542,11 @@ void controls_tab() {
     ImGui::EndDisabled();
     bool swap_lr = env_on("BLUEWAKE_PAD_SWAP_LR", false);
     if (ImGui::Checkbox("Swap L and R (the triggers)", &swap_lr)) set_env("BLUEWAKE_PAD_SWAP_LR", swap_lr ? "1" : "0");
+    bool dpad_menus = env_on("BLUEWAKE_DPAD_MENUS", false);
+    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &dpad_menus)) {
+        set_env("BLUEWAKE_DPAD_MENUS", dpad_menus ? "1" : "0");
+        bluewake_dpad_menus_reload();
+    }
     if (ImGui::CollapsingHeader("Controller buttons")) {
         ImGui::TextWrapped("Choose which controller button presses each GameCube button. Picking one that is "
                            "already used swaps the two.%s", remapped ? " The swaps above are off while you use "
@@ -635,6 +654,23 @@ void controls_tab() {
         set_env("BLUEWAKE_AIM_INVERT_Y", aim_invert ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
+    bool gyro = env_on("BLUEWAKE_GYRO_AIM", false);
+    if (ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+                        &gyro)) {
+        set_env("BLUEWAKE_GYRO_AIM", gyro ? "1" : "0");
+        bluewake_mouse_camera_reload();
+    }
+    ImGui::BeginDisabled(!gyro);
+    float gyro_speed = static_cast<float>(std::atof(env("BLUEWAKE_GYRO_AIM_SPEED", "1").c_str()));
+    if (!(gyro_speed > 0.f))
+        gyro_speed = 1.f;
+    if (slider("Gyro aim speed", &gyro_speed, 0.25f, 4.f, "%.2fx")) {
+        char text[16];
+        std::snprintf(text, sizeof text, "%.2f", gyro_speed);
+        set_env("BLUEWAKE_GYRO_AIM_SPEED", text);
+        bluewake_mouse_camera_reload();
+    }
+    ImGui::EndDisabled();
     ImGui::PushTextWrapPos();
     ImGui::TextDisabled(stick ? "Click the right stick for first person. When controller zoom is on, hold it and move the stick up/down. In the telescope and Picto Box, the left stick or D-pad zooms."
                               : "The game's right stick: its left and right follow Better Wind Waker's "
@@ -979,6 +1015,15 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
             break;
         if (event->key.scancode == SDL_SCANCODE_F1) {
             g_open ? close_menu() : open_menu();
+            return true;
+        }
+        // F2: the Wind Waker HD look on or off, at once, and kept (#108).
+        if (event->key.scancode == SDL_SCANCODE_F2) {
+            const bool on = !env_on("BLUEWAKE_HD_LOOK", false);
+            set_env("BLUEWAKE_HD_LOOK", on ? "1" : "0");
+            bluewake_hd_look_reload();
+            save();
+            std::fprintf(stderr, "[settings] Wind Waker HD look %s (F2)\n", on ? "on" : "off");
             return true;
         }
         if (event->key.scancode == SDL_SCANCODE_ESCAPE) {

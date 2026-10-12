@@ -69,6 +69,7 @@ Options (`--help` lists all):
 | `--native-entries` | Elliott Tate's second and third native sets; off by default. They apply only where the translation matches what his builder produces, so they need the lean copies (the default) |
 | `--no-lean-memory` | Loads and stores in the prepaid copies as before Elliott Tate's lean memory (on by default since October 12), and so without lean deadlines either: about 5% slower. Lean memory changes nothing with `--no-lean-blocks` |
 | `--no-lean-deadlines` | Keeps the deadline test after every load and store. Lean deadlines (on by default since October 12) test it only on an access's way out of RAM, where the deadline can move: About 4 to 5% faster on a Mac, the same game state ([PERFORMANCE.md](PERFORMANCE.md#results)). `--native-entries` declines its natives with it, since their hashes cover the copies, so use `--no-lean-deadlines` with `--native-entries` |
+| `--behaviour-timing` | A prototype, off by default: every block of game code runs its prepaid copy, so a timer or an interrupt lands at the start of the next block instead of on its exact instruction, and the turn's budget is checked where the code can loop. About 7 to 9% faster on a Mac, with a smaller module and a quicker build; the game state is not identical to a build without it, but the 468-place stage select sweep and the sound came out the same ([the note](status/BEHAVIOUR_TIMING_2026-10-12.md)) |
 | `--no-cold` | Compile code the training never ran for speed too; slower in every test so far, so off |
 | `--jobs N` | Parallel compile jobs (default: the cores, as far as free memory allows) |
 | `--march LEVEL` | CPU level for the game module (default `x86-64-v3`) |
@@ -193,7 +194,8 @@ never touches it:
 
 **Portable mode:** create an empty file named `portable.txt` next to `BlueWake.exe`, and BlueWake keeps all of
 this in a `user` folder beside it instead (builds from `main` after October 4, 2026). To bring existing saves
-along, copy the contents of `%APPDATA%\BlueWake` into that `user` folder first. An `.iso` or `.gcm` disc image
+along, copy the contents of `%APPDATA%\BlueWake` into that `user` folder first. `scripts\windows\build.py --portable`
+puts `portable.txt` in the app folder for you; a later rebuild leaves the `user` folder and `portable.txt` alone. An `.iso` or `.gcm` disc image
 is read where it is in either mode; only Dolphin's compressed formats are unpacked to a copy.
 
 ## How the port works

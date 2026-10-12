@@ -270,6 +270,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
             @BW_MOD_WIDESCREEN_1610_KEY : @([d boolForKey:@BW_MOD_WIDESCREEN_1610_KEY]),
             @BW_MOD_HD_TEXTURES_KEY : @([d boolForKey:@BW_MOD_HD_TEXTURES_KEY]),
             @BW_MOD_BETTERWW_KEY : @([d boolForKey:@BW_MOD_BETTERWW_KEY]),
+            @BW_HD_LOOK_KEY : @([d boolForKey:@BW_HD_LOOK_KEY]),
         };
         _buttons = [NSMutableArray array];
         _editGestures = [NSMutableArray array];
@@ -576,7 +577,10 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     UIMenu* buttonMenu = [UIMenu menuWithTitle:@"Button Mapping" image:[UIImage systemImageNamed:@"circle.grid.2x2"]
                                     identifier:nil options:0 children:remaps];
     UIMenu* controllerMenu = [UIMenu menuWithTitle:@"Controller" image:[UIImage systemImageNamed:@"gamecontroller"]
-                                        identifier:nil options:0 children:@[ cameraMenu, buttonMenu ]];
+                                        identifier:nil options:0 children:@[
+        cameraMenu, buttonMenu, toggle(@"D-pad in Items and Quest Status", BW_DPAD_MENUS_KEY),
+        toggle(@"Gyro Aiming (move the controller to aim)", BW_GYRO_AIM_KEY),
+    ]];
 
     UIAction* removeDisc = [UIAction actionWithTitle:@"Remove Disc Image…" image:[UIImage systemImageNamed:@"trash"]
                                           identifier:nil handler:^(__kindof UIAction* a) {
@@ -720,6 +724,7 @@ static NSUInteger g_packFiles = NSNotFound;
                   @BW_MOD_WIDESCREEN_1610_KEY),
         modToggle(@"HD Texture Pack", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         modToggle(@"Better Wind Waker", bwwDetail, @"sailboat", @BW_MOD_BETTERWW_KEY),
+        modToggle(@"Wind Waker HD Look", @"Far islands, shading, cloud shadows, bloom", @"sparkles", @BW_HD_LOOK_KEY),
     ]];
     UIAction* installPack = [UIAction actionWithTitle:@"Install Texture Pack…"
                                                 image:[UIImage systemImageNamed:@"square.and.arrow.down"]

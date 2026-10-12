@@ -10,6 +10,12 @@
 
 #include "controller_settings.h"
 
+// runtime/host/src/dpad_menus.h, declared here: that header brings in the
+// guest CPU's, which this file has no use for.
+extern "C" void bluewake_dpad_menus_reload(void);
+// runtime/host/src/mouse_camera.h: its settings (gyro aiming among them) read again.
+extern "C" void bluewake_mouse_camera_reload(void);
+
 static const char* const kRemapNames[BW_REMAP_COUNT] = {"A", "B", "X", "Y", "Z", "Start"};
 // Aurora's standard defaults: face buttons by position, right shoulder Z.
 static const unsigned kRemapDefault[BW_REMAP_COUNT] = {
@@ -65,6 +71,17 @@ BWSettingsSnapshot g_bw_settings = {1u, 3, 0, false, false, {0}, false, 0};
 
 void bluewake_settings_changed(void) {
     NSUserDefaults* defaults = NSUserDefaults.standardUserDefaults;
+    // The D-pad in Items and Quest Status (runtime/host/src/dpad_menus.h): once
+    // the player has chosen, the choice wins over the environment.
+    if ([defaults objectForKey:@BW_DPAD_MENUS_KEY] != nil) {
+        setenv("BLUEWAKE_DPAD_MENUS", [defaults boolForKey:@BW_DPAD_MENUS_KEY] ? "1" : "0", 1);
+        bluewake_dpad_menus_reload();
+    }
+    // Gyro aiming (runtime/host/src/gyro_aim.h), the same way.
+    if ([defaults objectForKey:@BW_GYRO_AIM_KEY] != nil) {
+        setenv("BLUEWAKE_GYRO_AIM", [defaults boolForKey:@BW_GYRO_AIM_KEY] ? "1" : "0", 1);
+        bluewake_mouse_camera_reload();
+    }
     g_bw_settings.render_scale = [defaults objectForKey:@BW_RENDER_SCALE_KEY] != nil
                                      ? (int)[defaults integerForKey:@BW_RENDER_SCALE_KEY] : 3;
     g_bw_settings.anisotropy = (int)[defaults integerForKey:@BW_ANISOTROPY_KEY];

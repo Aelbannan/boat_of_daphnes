@@ -66,6 +66,7 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/rel_scratch_allocator.c
     ${BLUEWAKE_HOST_SRC}/scheduler_contract.c
     ${BLUEWAKE_HOST_SRC}/fast_load.c
+    ${BLUEWAKE_HOST_SRC}/dpad_menus.c
     ${BLUEWAKE_HOST_SRC}/jump_button.c
     ${BLUEWAKE_HOST_SRC}/climb.c
     ${BLUEWAKE_HOST_SRC}/save_state.c
@@ -74,6 +75,7 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/haptics.c
     ${BLUEWAKE_HOST_SRC}/draw_tags.c
     ${BLUEWAKE_HOST_SRC}/forest_water.c
+    ${BLUEWAKE_HOST_SRC}/hd_look.c
     ${BLUEWAKE_HOST_SRC}/audio_watch.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
@@ -444,6 +446,12 @@ set_tests_properties(bluewake_desktop_controller_test PROPERTIES TIMEOUT 15)
 add_executable(bluewake_face_button_swap_test ${BLUEWAKE_REPO_ROOT}/tests/face_button_swap_test.c)
 target_include_directories(bluewake_face_button_swap_test PRIVATE ${BLUEWAKE_HOST_SRC})
 add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_test)
+add_executable(bluewake_dpad_menus_test ${BLUEWAKE_REPO_ROOT}/tests/dpad_menus_test.c)
+target_include_directories(bluewake_dpad_menus_test PRIVATE ${BLUEWAKE_HOST_SRC})
+add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
+add_executable(bluewake_gyro_aim_test ${BLUEWAKE_REPO_ROOT}/tests/gyro_aim_test.c)
+target_include_directories(bluewake_gyro_aim_test PRIVATE ${BLUEWAKE_HOST_SRC})
+add_test(NAME bluewake_gyro_aim_test COMMAND bluewake_gyro_aim_test)
 
 
 add_executable(bluewake_audio_sink_test ${GXRUNTIME_DIR}/graphics/aurora/tests/audio_sink_test.cpp)

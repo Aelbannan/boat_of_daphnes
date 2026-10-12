@@ -1,6 +1,7 @@
 #include "mouse_camera.h"
 #include "controller_ports.h"
 #include "game_options.h"
+#include "gyro_aim.h"
 #include "input_remap.h"
 #include "jump_button.h"
 #include "settings_menu.h"
@@ -213,6 +214,14 @@ static const double kPadZoomPerSecond = 1.2;
 static bool g_first_person;     // ... or first person (C-stick up's view, SS01)
 static bool g_aiming;     // first person or an item's aim, the player in control
 static bool g_aim_invert_y; // BLUEWAKE_AIM_INVERT_Y: the left stick's up and down the other way there (#154)
+// Gyro aiming (gyro_aim.h, #188): BLUEWAKE_GYRO_AIM=1 turns it on (off by
+// default), BLUEWAKE_GYRO_AIM_SPEED scales it (1: the view turns as far as the
+// controller). It only adds up while aiming, from one controller at a time.
+static bool g_gyro_on;
+static double g_gyro_speed = 1.0;
+static double g_gyro_yaw, g_gyro_pitch; // degrees since the last aim frame
+static SDL_JoystickID g_gyro_pad;       // the controller whose gyro is read (0: none yet)
+static Uint64 g_gyro_last;              // its last report's sensor time, nanoseconds
 static bool g_conducting; // the Wind Waker is out: its C-stick picks the notes (#156)
 static bool g_stick_click_down; // the stick's click, as last read
 static unsigned long long g_enter_from; // a released R3 tap holds C-stick up until first person takes it
@@ -249,6 +258,57 @@ static void set_captured(bool captured) {
                      : "off (click to turn it on)");
 }
 
+// Gyro aiming: the gyroscope reports only once asked for, on each controller
+// that has one (SDL reads it on a DualSense, DualShock 4, Switch Pro and the
+// Steam Deck).
+static void gyro_enable(SDL_Gamepad* pad) {
+    if (pad != NULL && SDL_GamepadHasSensor(pad, SDL_SENSOR_GYRO))
+        SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_GYRO, g_gyro_on);
+}
+
+static void gyro_enable_all(void) {
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&count);
+    for (int i = 0; ids != NULL && i < count; i++)
+        gyro_enable(SDL_GetGamepadFromID(ids[i]));
+    SDL_free(ids);
+}
+
+// A gyro report: the turn since the last one, from one controller, added up
+// while aiming (and dropped otherwise, so it never builds up for later).
+static void gyro_report(const SDL_GamepadSensorEvent* report) {
+    if (!g_gyro_on || g_blocked)
+        return;
+    if (g_gyro_pad == 0) {
+        g_gyro_pad = report->which;
+        g_gyro_last = 0;
+    }
+    if (report->which != g_gyro_pad)
+        return;
+    const Uint64 now = report->sensor_timestamp;
+    const double seconds = g_gyro_last != 0 && now > g_gyro_last ? (double)(now - g_gyro_last) / 1e9 : 0.0;
+    g_gyro_last = now;
+    if (!g_aiming || seconds <= 0.0 || seconds > 0.1) {
+        g_gyro_yaw = g_gyro_pitch = 0.0;
+        return;
+    }
+    bw_gyro_turn(report->data[0], report->data[1], seconds, g_gyro_speed, &g_gyro_yaw, &g_gyro_pitch);
+}
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+// iPhone and iPad: the controllers' gyro alone (their touches are mouse events).
+static void observe_gyro(const void* sdl_event, void* user) {
+    (void)user;
+    const SDL_Event* event = (const SDL_Event*)sdl_event;
+    if (event->type == SDL_EVENT_GAMEPAD_ADDED)
+        gyro_enable(SDL_GetGamepadFromID(event->gdevice.which));
+    else if (event->type == SDL_EVENT_GAMEPAD_REMOVED && event->gdevice.which == g_gyro_pad)
+        g_gyro_pad = 0;
+    else if (event->type == SDL_EVENT_GAMEPAD_SENSOR_UPDATE && event->gsensor.sensor == SDL_SENSOR_GYRO)
+        gyro_report(&event->gsensor);
+}
+#endif
+
 static void observe(const void* sdl_event, void* user) {
     (void)user;
     const SDL_Event* event = (const SDL_Event*)sdl_event;
@@ -258,8 +318,17 @@ static void observe(const void* sdl_event, void* user) {
         event->type == SDL_EVENT_GAMEPAD_REMAPPED) {
         if (event->type != SDL_EVENT_GAMEPAD_REMOVED)
             bw_log_gamepad_mapping(event->gdevice.which);
+        if (event->type == SDL_EVENT_GAMEPAD_ADDED)
+            gyro_enable(SDL_GetGamepadFromID(event->gdevice.which));
+        if (event->type == SDL_EVENT_GAMEPAD_REMOVED && event->gdevice.which == g_gyro_pad)
+            g_gyro_pad = 0;
         bw_claim_player_one();
         bw_game_dead_zone(0);
+    }
+    if (event->type == SDL_EVENT_GAMEPAD_SENSOR_UPDATE) {
+        if (event->gsensor.sensor == SDL_SENSOR_GYRO)
+            gyro_report(&event->gsensor);
+        return;
     }
     if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
         bw_player_one_button(event->gbutton.which);
@@ -361,6 +430,8 @@ static void load_gamepad_mappings(void) {
 void bluewake_mouse_camera_install(void) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     // An iPad's touches arrive as mouse events too; its controls are on screen.
+    // Only a controller's gyro is read (gyro aiming).
+    dol_aurora_set_event_observer(observe_gyro, NULL);
     return;
 #else
     // Installed even with the mouse camera off: the options menu and the
@@ -440,6 +511,12 @@ static void read_stick_settings(void) {
     g_stick_zoom_speed = zoom != NULL && atof(zoom) > 0.0 ? atof(zoom) : 1.275;
     g_stick_invert_x = env_is("BLUEWAKE_STICK_CAMERA_INVERT_X", '1') ? -1.0 : 1.0;
     g_stick_invert_y = env_is("BLUEWAKE_STICK_CAMERA_INVERT_Y", '1') ? -1.0 : 1.0;
+    g_gyro_on = env_is("BLUEWAKE_GYRO_AIM", '1');
+    const char* gyro = getenv("BLUEWAKE_GYRO_AIM_SPEED");
+    g_gyro_speed = gyro != NULL && atof(gyro) > 0.0 ? atof(gyro) : 1.0;
+    g_gyro_yaw = g_gyro_pitch = 0.0;
+    g_gyro_pad = 0;
+    g_gyro_last = 0;
     if (!g_stick_zoom_on) {
         g_stick_zoom_axis = 0.0;
         g_stick_zoom_gesture = (BwStickZoomGesture){0};
@@ -466,6 +543,7 @@ void bluewake_mouse_camera_reload(void) {
     g_invert_y = invert != NULL && invert[0] == '1' ? -1.0 : 1.0;
     bluewake_mouse_camera_buttons(getenv("BLUEWAKE_MOUSE_BUTTONS"));
     read_stick_settings();
+    gyro_enable_all();
 }
 
 void bluewake_mouse_camera_attach(CPUState* cpu) {
@@ -477,6 +555,11 @@ void bluewake_mouse_camera_attach(CPUState* cpu) {
     if (invert != NULL && invert[0] == '1')
         g_invert_y = -1.0;
     read_stick_settings();
+    // Gyro aiming saved on: the controllers already connected report from now
+    // (their arrival may have come before the setting was read).
+    gyro_enable_all();
+    if (g_gyro_on)
+        fprintf(stderr, "[gyro] gyro aiming on (speed %.2fx)\n", g_gyro_speed);
     if (g_stick_on)
         fprintf(stderr,
                 "[stick] the right stick turns the camera directly (%.0f degrees a second) and aims (%.0f); its "
@@ -815,6 +898,10 @@ static void aim_frame(CPUState* cpu, u32 player) {
     if (style_engine(cpu, style) != (u32)kEngineSubject)
         return;
     g_aim_ran = true;
+    // Gyro aiming: the controller's turn since the last aim frame, taken now
+    // whatever happens below, so a held aim never saves it up.
+    const double gyro_yaw = g_gyro_yaw, gyro_pitch = g_gyro_pitch;
+    g_gyro_yaw = g_gyro_pitch = 0.0;
     if (!player_in_control(cpu) || mem_read32(cpu, camera + kSubjectTag) != kSubjectTagValue) {
         g_sum_x = g_sum_y = g_wheel = 0.0;
         return;
@@ -839,6 +926,8 @@ static void aim_frame(CPUState* cpu, u32 player) {
                        ? push * kPadZoomPerSecond * kGameFrameSeconds
                        : 0.0;
     }
+    stick_yaw += gyro_yaw;
+    stick_pitch += gyro_pitch;
     if (g_sum_x == 0.0 && g_sum_y == 0.0 && g_wheel == 0.0 && stick_yaw == 0.0 && stick_pitch == 0.0 &&
         pad_zoom == 0.0)
         return;

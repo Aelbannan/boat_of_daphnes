@@ -69,6 +69,10 @@ void bluewake_mouse_camera_reload(void);
 void bluewake_climb_reload(void);
 // forest_water.h: BLUEWAKE_FOREST_WATER_KEEP_TREES and _30_MINUTES read again.
 void bluewake_forest_water_reload(void);
+// hd_look.h: BLUEWAKE_HD_LOOK read again.
+void bluewake_hd_look_reload(void);
+// dpad_menus.h: BLUEWAKE_DPAD_MENUS read again.
+void bluewake_dpad_menus_reload(void);
 void bluewake_haptics_block(bool blocked);
 const char* bluewake_game_options_describe(uint32_t position, const char** title, bool* default_on, bool* on);
 // climb.h: the stamina wheel's state for the HUD.
@@ -145,6 +149,7 @@ void load_file() {
         else if (k == "key_map") d.key_map = v;
         else if (k == "controller_swap_xy") d.controller_swap_xy = parse_bool(v);
         else if (k == "controller_swap_lr") d.controller_swap_lr = parse_bool(v);
+        else if (k == "dpad_menus") d.dpad_menus = parse_bool(v);
         else if (k == "controller_invert_x") d.pad_invert_x = parse_bool(v);
         else if (k == "controller_invert_y") d.pad_invert_y = parse_bool(v);
         else if (k == "stick_camera") d.stick_camera = parse_bool(v);
@@ -153,10 +158,13 @@ void load_file() {
         else if (k == "stick_zoom") d.stick_zoom = parse_bool(v);
         else if (k == "stick_zoom_speed") d.stick_zoom_speed = std::clamp(std::atof(v.c_str()), 0.25, 2.0);
         else if (k == "aim_invert_y") d.aim_invert_y = parse_bool(v);
+        else if (k == "gyro_aim") d.gyro_aim = parse_bool(v);
+        else if (k == "gyro_aim_speed") d.gyro_aim_speed = std::clamp(std::atof(v.c_str()), 0.25, 4.0);
         else if (k == "climb") d.climb = parse_bool(v);
         else if (k == "climb_stamina") d.climb_stamina = std::clamp(std::atoi(v.c_str()), 4, 30);
         else if (k == "forest_water_keep_trees") d.forest_keep_trees = parse_bool(v);
         else if (k == "forest_water_30_minutes") d.forest_30_minutes = parse_bool(v);
+        else if (k == "hd_look") d.hd_look = parse_bool(v);
         else if (k == "haptics") d.haptics = v == "off" ? 0 : v == "classic" ? 1 : 2;
         else if (k == "haptics_strength") d.haptics_strength = std::clamp(std::atoi(v.c_str()), 0, 100);
         else if (k == "haptics_triggers") d.haptics_triggers = parse_bool(v);
@@ -196,6 +204,7 @@ void save_file() {
                  d.mouse_sensitivity, d.mouse_invert_y);
     std::fprintf(f, "controller_swap_ab=%d\ncontroller_swap_xy=%d\n", d.controller_swap_ab, d.controller_swap_xy);
     std::fprintf(f, "controller_swap_lr=%d\n", d.controller_swap_lr);
+    std::fprintf(f, "dpad_menus=%d\n", d.dpad_menus);
     if (!d.button_map.empty())
         std::fprintf(f, "button_map=%s\n", d.button_map.c_str());
     if (!d.mouse_buttons.empty())
@@ -207,9 +216,11 @@ void save_file() {
                  d.stick_aim_speed);
     std::fprintf(f, "stick_zoom=%d\nstick_zoom_speed=%.3f\n", d.stick_zoom, d.stick_zoom_speed);
     std::fprintf(f, "aim_invert_y=%d\n", d.aim_invert_y);
+    std::fprintf(f, "gyro_aim=%d\ngyro_aim_speed=%.2f\n", d.gyro_aim, d.gyro_aim_speed);
     std::fprintf(f, "climb=%d\nclimb_stamina=%d\n", d.climb, d.climb_stamina);
     std::fprintf(f, "forest_water_keep_trees=%d\nforest_water_30_minutes=%d\n", d.forest_keep_trees,
                  d.forest_30_minutes);
+    std::fprintf(f, "hd_look=%d\n", d.hd_look);
     if (!d.texture_pack.empty())
         std::fprintf(f, "texture_pack=%s\n", d.texture_pack.c_str());
     std::fprintf(f, "haptics=%s\nhaptics_strength=%d\nhaptics_triggers=%d\n",
@@ -425,6 +436,8 @@ void apply_stick() {
     _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_X", d.pad_invert_x ? "1" : "0");
     _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_Y", d.pad_invert_y ? "1" : "0");
     _putenv_s("BLUEWAKE_AIM_INVERT_Y", d.aim_invert_y ? "1" : "0");
+    _putenv_s("BLUEWAKE_GYRO_AIM", d.gyro_aim ? "1" : "0");
+    _putenv_s("BLUEWAKE_GYRO_AIM_SPEED", std::to_string(d.gyro_aim_speed).c_str());
     bluewake_mouse_camera_reload();
 }
 
@@ -442,6 +455,16 @@ void apply_forest_water() {
     bluewake_forest_water_reload();
 }
 
+void apply_hd_look() {
+    _putenv_s("BLUEWAKE_HD_LOOK", g_session.hd_look ? "1" : "0");
+    bluewake_hd_look_reload();
+}
+
+void apply_dpad_menus() {
+    _putenv_s("BLUEWAKE_DPAD_MENUS", g_session.dpad_menus ? "1" : "0");
+    bluewake_dpad_menus_reload();
+}
+
 void apply_live() {
     const Settings& d = g_session;
     aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
@@ -457,6 +480,8 @@ void apply_live() {
     apply_stick();
     apply_climb();
     apply_forest_water();
+    apply_hd_look();
+    apply_dpad_menus();
 }
 
 void set_menu_open(bool open) {
@@ -538,6 +563,11 @@ void tab_display(SDL_Window* w) {
     bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Checkbox("Fullscreen   (F11 or Alt+Enter)", &full))
         set_fullscreen(w, full);
+    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
+        apply_hd_look();
+        changed();
+    }
+    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
     if (ImGui::Checkbox("Smooth Motion (experimental)   (F10)", &d.smooth_motion)) {
         apply_smooth_rate(w);
         aurora_set_frame_interpolation(d.smooth_motion);
@@ -653,6 +683,16 @@ void tab_controls() {
     bool pad = ImGui::Checkbox("Controller: camera stick left and right inverted", &d.pad_invert_x);
     pad |= ImGui::Checkbox("Controller: camera stick up and down inverted", &d.pad_invert_y);
     stick |= ImGui::Checkbox("Left stick up and down inverted when aiming (first person, items)", &d.aim_invert_y);
+    stick |= ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+                             &d.gyro_aim);
+    ImGui::BeginDisabled(!d.gyro_aim);
+    float gyro_speed = static_cast<float>(d.gyro_aim_speed);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::SliderFloat("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
+        d.gyro_aim_speed = gyro_speed;
+        stick = true;
+    }
+    ImGui::EndDisabled();
     BwButtonMap map;
     const bool remapped = bw_button_map_parse(d.button_map, &map);
     ImGui::BeginDisabled(remapped);
@@ -660,6 +700,10 @@ void tab_controls() {
     pad |= ImGui::Checkbox("Swap X and Y", &d.controller_swap_xy);
     ImGui::EndDisabled();
     pad |= ImGui::Checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
+    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &d.dpad_menus)) {
+        apply_dpad_menus();
+        changed();
+    }
     if (ImGui::CollapsingHeader("Controller buttons")) {
         ImGui::TextWrapped("Choose which controller button presses each GameCube button. Picking one that is "
                            "already used swaps the two.%s", remapped ? " The swaps above are off while you use "
@@ -1470,6 +1514,13 @@ extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
         return 1;
     case VK_F8:
         bluewake_save_state_hotkey(true);
+        return 1;
+    case VK_F2:
+        // The Wind Waker HD look on or off, at once, and kept (#108).
+        g_session.hd_look = !g_session.hd_look;
+        apply_hd_look();
+        changed();
+        std::fprintf(stderr, "[windows] Wind Waker HD look %s (F2)\n", g_session.hd_look ? "on" : "off");
         return 1;
     case VK_F9:
         g_session.show_fps = !g_session.show_fps;

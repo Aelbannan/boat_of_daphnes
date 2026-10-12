@@ -309,6 +309,22 @@ int main(int argc, char** argv) {
         // host_wall_pace) instead of by the audio queue alone.
         bw_default("BLUEWAKE_WALL_PACE", @"1");
         bw_default("DOL_AUDIO_NO_THROTTLE", @"1");
+        // A module the builder prepared with the PC builds' optimizations
+        // (build.sh --combined-optimizations writes ModuleOptimizations beside
+        // it): the host side of each, as the Mac app turns on (main.c). The
+        // module's own readiness checks still decide each fast path.
+        NSString* optimizations = [[NSBundle mainBundle] pathForResource:@"ModuleOptimizations" ofType:nil];
+        NSString* mode = optimizations
+            ? [NSString stringWithContentsOfFile:optimizations encoding:NSUTF8StringEncoding error:nil]
+            : nil;
+        mode = [mode stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if ([mode isEqualToString:@"combined-v1"]) {
+            for (NSString* name in @[ @"BLUEWAKE_DIRECT_CALLS", @"BLUEWAKE_GATHER_PIPE", @"BLUEWAKE_GATHER_PIPE_BATCH",
+                                      @"BLUEWAKE_NATIVE_J3D", @"BLUEWAKE_NATIVE_VEC", @"BLUEWAKE_NATIVE_MATH",
+                                      @"BLUEWAKE_NATIVE_SKIN", @"BLUEWAKE_NATIVE_GAME_MATH" ])
+                bw_default(name.UTF8String, @"1");
+            bw_default("BLUEWAKE_NATIVE_WORKERS", @"2");
+        }
 
         bw_default("BLUEWAKE_RENDERER", @"aurora");
         bw_default("BLUEWAKE_CYCLE_CAP", @"16384");
@@ -366,6 +382,9 @@ int main(int argc, char** argv) {
                                                        attributes:nil error:nil];
             if ([d boolForKey:@"BlueWake.Mod.HDTextures"])
                 bw_default("DOL_AURORA_TEXTURE_PACK", pack);
+            // The Wind Waker HD look (runtime/host/src/hd_look.h).
+            if ([d boolForKey:@"BlueWake.HDLook"])
+                bw_default("BLUEWAKE_HD_LOOK", @"1");
             // Better Wind Waker's settings (game options: mods/betterww/
             // options.txt, runtime/host/src/game_options.c): the mod carries
             // their code, and each setting the player changed from its default

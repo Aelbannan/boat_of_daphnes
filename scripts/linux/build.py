@@ -568,7 +568,8 @@ int main(void) {{
                        f"{int(self.args.fixed_cpu)}\n{int(self.args.fixed_mem1)}\n{int(self.args.inline_fp)}\n{int(self.args.gather_pipe)}\n{int(self.args.direct_calls)}\n{int(self.args.inline_gpr)}\n{int(self.args.native_j3d)}\n{int(self.args.native_vec)}\n{int(self.args.native_math)}\n{int(self.args.native_skin)}\n{int(self.args.native_game_math)}\n"
                        f"{int(self.args.lean_memory)}\n{int(self.args.native_entries)}\n"
                        + ("lean_blocks\n" if getattr(self.args, "lean_blocks", False) else "")
-                       + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")).encode())
+                       + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")
+                       + ("behaviour_timing\n" if getattr(self.args, "behaviour_timing", False) else "")).encode())
         for f in (sorted((ROOT / "scripts/mods").glob("*")) + sorted((ROOT / "mods/widescreen").glob("*.gecko"))
                   + [ROOT / "mods/betterww/options.txt", ROOT / "scripts/windows/fast_blocks.py",
                      ROOT / "scripts/windows/return_ranges.py",
@@ -595,6 +596,8 @@ int main(void) {{
                 inputs.update(f.read_bytes())
         if getattr(self.args, "lean_deadlines", False):
             inputs.update((ROOT / "scripts/windows/lean_deadlines.py").read_bytes())
+        if getattr(self.args, "behaviour_timing", False):
+            inputs.update((ROOT / "scripts/windows/behaviour_timing.py").read_bytes())
         if self.args.direct_calls or self.args.native_game_math or getattr(self.args, "native_entries", False):
             # The source-derived watch lists are part of the prepared module.
             inputs.update(watched_inputs())
@@ -723,6 +726,13 @@ int main(void) {{
         if self.args.native_entries:
             self.run("native-entries", [sys.executable, ROOT / "scripts/windows/native_entries.py",
                                          o / "composite-src"])
+        # Game-behaviour timing (behaviour_timing.py; a prototype, off by default):
+        # every block runs its prepaid copy, so a device event lands at the next
+        # block's start instead of on its exact instruction, and the turn's budget is
+        # checked where control can loop (and at calls). Last, on the final source.
+        if getattr(self.args, "behaviour_timing", False):
+            self.run("behaviour-timing", [sys.executable, ROOT / "scripts/windows/behaviour_timing.py",
+                                           o / "composite-src", "--loop-checks"])
         digest = tree_digest(o / "composite-src")
         receipt = {"enabled": self.args.prepared_blocks,
                    "fixed_cpu": self.args.fixed_cpu,
@@ -738,6 +748,7 @@ int main(void) {{
                    "native_game_math": self.args.native_game_math,
                    "lean_memory": self.args.lean_memory,
                    "lean_deadlines": getattr(self.args, "lean_deadlines", False),
+                   "behaviour_timing": getattr(self.args, "behaviour_timing", False),
                    "lean_blocks": getattr(self.args, "lean_blocks", False),
                    "native_entries": self.args.native_entries,
                    "gather_sha256": {name: sha256_file(ROOT / "cmake/composite" / name)
@@ -953,6 +964,7 @@ int main(void) {{
                                             "native_vec", "native_math", "native_skin", "native_game_math",
                                             "lean_memory", "native_entries", "lean_blocks")},
                                **({"lean_deadlines": True} if getattr(self.args, "lean_deadlines", False) else {}),
+                               **({"behaviour_timing": True} if getattr(self.args, "behaviour_timing", False) else {}),
                                "runtime": self.git("-C", str(self.recompcore), "rev-parse", "HEAD"),
                                "source": tree_digest(self.out / "composite-src")},
                               sort_keys=True).encode())
@@ -1050,10 +1062,9 @@ int main(void) {{
             "BLUEWAKE_DSP_COEF": str(self.recompcore / "Data/Sys/GC/dsp_coef.bin"),
             "BLUEWAKE_MAX_RETRACES": str(tour_end), "BLUEWAKE_WALL_PACE": "0",
             "BLUEWAKE_PLAYER_PROBE": "1", "BLUEWAKE_PAD_BUTTONS": "0x0100",
-            # The player-control milestone below waits for the scene overlap
-            # phase to reach 6, which lasts only a moment: the lazy overlap
-            # watch, sampling once a turn, misses it, so it is off here.
-            "BLUEWAKE_LAZY_OVERLAP": "0",
+            # The lazy overlap watch stays on (the app's default): with the player
+            # probe, the app keeps the full watch until the player-control milestone
+            # below, then trains the lazy path as it runs in play.
             "BLUEWAKE_PAD_PULSE_ON_TITLE_READY": "1", "BLUEWAKE_PAD_PULSE_LENGTH": "2",
             "BLUEWAKE_PAD_CONFIRM_EVENT": "any",
             "BLUEWAKE_PAD_SCRIPT": ",".join(opening + tour_moves),
@@ -1162,6 +1173,10 @@ int main(void) {{
         }
         (app / "BuilderProvenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
         (app / "README.txt").write_text(README)
+        # --portable: portable.txt keeps saves, settings and logs in a user folder beside the app
+        # (linux_entry.c, #64). A rebuild never touches user/, and never removes a portable.txt.
+        if getattr(self.args, "portable", False):
+            (app / "portable.txt").touch()
         return app
 
     def package_appimage(self):
@@ -1263,7 +1278,10 @@ int main(void) {{
         print(f"\nBlueWake: {app}")
         print(f"  run {app / 'bluewake'}")
         print("  It contains game code translated from your disc and a copy of the disc: keep it for yourself.")
-        print("  Saves: ~/.local/share/BlueWake (outside the build).")
+        if (app / "portable.txt").exists():
+            print(f"  Saves: {app / 'user'} (portable mode: portable.txt is in the app folder).")
+        else:
+            print("  Saves: ~/.local/share/BlueWake (outside the build).")
         if args.appimage:
             step("AppImage (explicit packaging step)")
             image, zsync = self.package_appimage()
@@ -1290,6 +1308,8 @@ F11 fullscreen, F10 Smooth Motion, F9 frame rate.
 
 Saves and session logs: ~/.local/share/BlueWake
 Settings: ~/.config/BlueWake/settings.ini
+Portable mode: with an empty portable.txt in this folder, all of that stays in
+a user folder here instead (a rebuild leaves it alone).
 """
 
 
@@ -1375,6 +1395,11 @@ def main():
                              "line, where the deadline can move (on by default since October 12; needs --lean-memory)")
     parser.add_argument("--no-lean-deadlines", action="store_true",
                         help="keep the deadline test after every lean load and store: about 4%% slower")
+    parser.add_argument("--behaviour-timing", action="store_true",
+                        help="game-behaviour timing, a prototype: every block runs its prepaid copy, so a timer or "
+                             "interrupt lands at the next block's start rather than its exact instruction, and the turn's "
+                             "budget is checked at loops and calls. About 7 to 9%% faster on an M3 Max, a smaller "
+                             "module and a quicker build; off by default (needs --prepared-blocks)")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")
@@ -1390,6 +1415,9 @@ def main():
                         help="run this same build inside the Ubuntu 24.04 Linux CI container")
     parser.add_argument("--clang22", action="store_true",
                         help="use Clang 22 instead of Clang 18 (requires --ci-container)")
+    parser.add_argument("--portable", action="store_true",
+                        help="put portable.txt in the app folder, so saves, settings and logs stay in a user "
+                             "folder beside the app (a rebuild leaves user/ alone)")
     parser.add_argument("--appimage", action="store_true",
                         help="after the normal app-folder build, package it as an AppImage")
     args = parser.parse_args()
@@ -1429,6 +1457,8 @@ def main():
         parser.error("--lean-memory requires --prepared-blocks")
     if args.lean_memory and not args.gather_pipe:
         parser.error("--lean-memory requires --gather-pipe (its accesses call gather_pipe.h's helpers)")
+    if getattr(args, "behaviour_timing", False) and not args.prepared_blocks:
+        parser.error("--behaviour-timing requires --prepared-blocks")
     if args.lean_deadlines and not args.lean_memory:
         parser.error("--lean-deadlines requires --lean-memory")
     if args.native_entries and not (args.direct_calls and args.gather_pipe and args.native_vec):
