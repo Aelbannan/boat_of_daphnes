@@ -53,7 +53,7 @@ host and a separate native module containing the translated game code.
 
 ### Concepts
 
-- [RecompCore](https://github.com/chrissotraidis/RecompCore/commit/ee99bbc13c948351f6974c745cad2593a25eacbf) — the pinned static-recompilation runtime inherited from the Wind Waker Recomp lineage. It supplies GXRuntime, Aurora, DSP support, CPU/runtime interfaces, and the DolRecomp submodule; BlueWake supplies the build orchestration, platform applications, and project-specific integration.
+- [RecompCore](https://github.com/chrissotraidis/RecompCore) — the lower-level static-recompilation foundation inherited from the Wind Waker Recomp lineage. BlueWake fetches a tested RecompCore revision into `ref/recompcore` and uses its GXRuntime, Aurora renderer, DSP support, CPU/runtime interfaces, and DolRecomp submodule. BlueWake adds the `GZLE01` build profile, composite preparation, mods, platform applications, packaging, and game-specific host integration; runtime changes are developed in RecompCore and then adopted by updating BlueWake's pin.
 
 - [Build profile](../../scripts/builder/profiles/bluewake.sh) — game-specific configuration and hooks, not performance data. `bluewake.sh` defines the supported game, dependency pins, expected generated-source digest, output names, and Apple build hooks.
 
