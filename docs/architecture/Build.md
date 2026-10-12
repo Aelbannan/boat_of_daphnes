@@ -169,18 +169,16 @@ flowchart TD
     Linux["Linux build.py<br/>dependencies()"]
     Windows["Windows build.py<br/>dependencies()"]
     Apple["Apple build.sh<br/>profile_dependencies()"]
-    LinuxGit["Pinned RecompCore<br/>and DolRecomp checkout"]
-    WindowsGit["Pinned RecompCore<br/>and DolRecomp checkout"]
-    AppleGit["Pinned RecompCore<br/>and DolRecomp checkout"]
+    Checkout["ref/recompcore<br/>pinned RecompCore and DolRecomp checkout"]
     Dawn["build/deps<br/>verified mobile Dawn archive"]
 
     Profile --> Linux
     Profile --> Windows
     Profile --> Apple
-    Linux -->|fetch and verify| LinuxGit
-    Windows -->|fetch and verify| WindowsGit
-    Apple -->|fetch and verify| AppleGit
-    AppleGit -. "iOS / tvOS only: fetch additionally" .-> Dawn
+    Linux -->|fetch and verify| Checkout
+    Windows -->|fetch and verify| Checkout
+    Apple -->|fetch and verify| Checkout
+    Checkout -. "Apple iOS / tvOS only: additional dependency" .-> Dawn
     Lock -. "records origins and roles" .-> Profile
 ```
 
