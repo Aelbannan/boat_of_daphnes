@@ -21,9 +21,9 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | The lazy overlap watch, on by default since October 12 (`BLUEWAKE_LAZY_OVERLAP=0` turns it off): the host stops reading the scene's overlap phase at every direct call, and the game module answers the per-call question itself (#274) | #59, #215, #93 | Every platform | M3 Max: 3.9 to 4.7% faster on top of lean memory and lean deadlines; identical checkpoints, also through four scene changes; every one of 708 M inline answers agreed with the host | A Windows PC, a Deck and the Fold 7 |
 | **The Wind Waker HD look, first piece:** islands on the horizon from further away, one switch in every desktop menu and on iOS, off by default ([WWHD_LOOK.md](../WWHD_LOOK.md)) | #57 | Every platform but Android | Mac, from a save state: 15 island models instead of 7, an extra island in a captured frame | Windows and Linux by hand; an iOS build |
 | CI actions brought up to date (Mrlinkwii, #273) | none | CI | Every check passes with them | none |
+| **Fixed:** the sea chart shows each island's own map, and the Pictobox preview the new photo: the cache-flush fallback is on by default (`BLUEWAKE_CACHE_FLUSH_FALLBACK=0` turns it off) | #263, #13 | Every platform | The #263 reporter on Windows (opt-in): every map right, frame rate and Pictobox unchanged; Mac: no measurable cost, identical checkpoints | A physical iPad |
 
-Not in it yet: Android (#93, waits on speed and Chris's bar). A decision for Chris before the freeze: the cache-flush
-fallback on by default for #263 and #13 (no measurable cost on the game thread; the reporter confirmed on Windows that it fixes the maps, with the frame rate and the Pictobox unchanged).
+Not in it yet: Android (#93, waits on speed and Chris's bar).
 
 ## Checks before publishing
 

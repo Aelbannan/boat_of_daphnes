@@ -61,3 +61,6 @@ cmake-build-*/
 .vscode/
 *.swp
 *~
+
+# Left behind by GXRuntime host tests run from the repository root
+gxruntime-memory-card-*.dolcard*

@@ -2259,8 +2259,10 @@ static void host_spr_write(CPUState* cpu, u16 spr, u32 value, u32 cia) {
 static void host_cache_control(CPUState* cpu, u8 operation, u32 ea, u32 cia) {
     (void)cpu;
     (void)cia;
+    // A flush, not a write (guest_memory_dirty.h): images the GPU rendered
+    // into guest memory (EFB copies) keep their GPU copy (#263's red plane).
     if (operation == PPC_CACHE_DCBST || operation == PPC_CACHE_DCBF)
-        dol_guest_memory_dirty_mark(ea & ~31u, 32u);
+        dol_guest_memory_flush_mark(ea & ~31u, 32u);
 }
 
 static void heap_write_watch(u32 offset, u32 size, void* user) {
@@ -7581,10 +7583,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
                 g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
     }
+    // The game's own cache flushes mark the texture cache's memory changed, so
+    // images it rewrites in place (the Pictobox preview, #13; the sea chart's
+    // island maps, #263) are read again. On by default; =0 turns it off.
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
-    g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
+    g_cache_flush_fallback_enabled = cache_flush == NULL || strcmp(cache_flush, "0") != 0;
     fprintf(stderr, "[texture-cache] fallback writeback=%s\n",
-            g_cache_flush_fallback_enabled ? "on (experimental)" : "off");
+            g_cache_flush_fallback_enabled ? "on" : "off (BLUEWAKE_CACHE_FLUSH_FALLBACK=0)");
     g_archive_reports = 0;
     g_dynamic_load_reports = 0;
     g_dynamic_link_header_reported = false;
