@@ -264,12 +264,20 @@ ISO first; Linux and Apple require the uncompressed input directly.
 
 ### Shared extraction
 
+The importer is a selective parser, not a full disc unpacker. It reads offsets
+from the GameCube header, extracts only the executable code needed by
+DolRecomp, and leaves textures, audio, and other runtime assets on the original
+disc image. Wind Waker stores modules both as loose files and inside
+`RELS.arc`, so the importer handles the disc file-system table, RARC archives,
+and optional Yaz0 compression before producing one uniform REL directory.
+
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
 | Check disc identity | Opens the image, verifies the GameCube magic, and requires game ID `GZLE01`. | Supported game image | Validation result or specific error | [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265) |
 | Read the executable | Uses the disc header to locate the DOL, reads its section table, and computes the complete executable size. | In-memory main executable | DOL byte buffer | [DOL extraction](../../apple/ios/src/disc_import.c#L343-L367) |
 | Verify revision | Computes the DOL SHA-1 and compares it with the supported USA revision-0 value. | Exact supported executable, not only a matching disc ID | Verified DOL digest | [Revision check](../../apple/ios/src/disc_import.c#L368-L379) |
-| Extract modules | Walks the disc file-system table, decompresses loose Yaz0 RELs, locates `RELS.arc`, and unpacks its RARC/Yaz0 members. | Complete translated-code input set | Temporary `main.dol` and `rels/*.rel` | [File-system extraction](../../apple/ios/src/disc_import.c#L395-L479), [`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316) |
+| Extract modules | Walks the disc file-system table, decompresses loose Yaz0 RELs, locates `RELS.arc`, and unpacks its RARC/Yaz0 members. | Complete translated-code input set | Staged `main.dol` and `rels/*.rel` | [File-system extraction](../../apple/ios/src/disc_import.c#L395-L479), [`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316) |
+| Normalize modules | Sets each extracted REL's alignment field to four, matching the canonical inputs from which BlueWake's composite source is generated. The disc image is not modified. | Consistent REL headers across both disc storage paths | Normalized staged `rels/*.rel` | [`write_rel`](../../apple/ios/src/disc_import.c#L206-L221) |
 | Publish outputs | Replaces the previous prepared files only after extraction succeeds; failures remove the temporary files. | Finished prepared game tree | `OUT/game/main.dol` and `OUT/game/rels/` | [Output swap and cleanup](../../apple/ios/src/disc_import.c#L481-L506) |
 | Verify module count | Each builder requires exactly 415 extracted RELs before translation begins. | Consistent input set on every platform | Successful extraction-stage log | [Linux](../../scripts/linux/build.py#L519-L525), [Windows](../../scripts/windows/build.py#L547-L559), [Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
 
