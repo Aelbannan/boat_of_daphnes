@@ -65,7 +65,7 @@ host and a separate native module containing the translated game code.
 
 - [Composite generation](../../scripts/generate_composite.py) — combines the separately translated main DOL and all 415 RELs into one deterministic source tree, with a shared dispatcher and ABI tables for building one native game module. “Composite” here means composing translated program units, not combining rendered images; BlueWake verifies the generated tree against the profile's expected digest before modifying or compiling it.
 
-- [Profile-guided optimization](../../scripts/linux/build.py#L771-L906) — the final compiler uses recorded execution counts to optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
+- [Profile-guided optimization (PGO)](../../scripts/linux/build.py#L771-L906) — PGO uses recorded execution counts to help the final compiler optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
 
 - [Training](../../scripts/linux/build.py#L979-L1105) — deterministic headless game playbacks used to produce PGO counters, not machine learning. Builders merge the raw counters with `llvm-profdata` and keep game-derived profiles in the private build directory.
 
