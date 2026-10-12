@@ -342,6 +342,12 @@ exact-count gates in [Linux](../../scripts/linux/build.py#L519-L525),
 | Publish outputs | Replaces the previous prepared files only after extraction succeeds; failures remove the temporary files. | Finished prepared game tree | `OUT/game/main.dol` and `OUT/game/rels/` | [Output swap and cleanup](../../apple/ios/src/disc_import.c#L481-L506) |
 | Verify module count | Each builder requires exactly 415 extracted RELs before translation begins. | Consistent input set on every platform | Successful extraction-stage log | [Linux](../../scripts/linux/build.py#L519-L525), [Windows](../../scripts/windows/build.py#L547-L559), [Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
 
+These paths are private build intermediates. `OUT` means the directory passed
+with `--out`; for a default Linux build, `OUT/game/main.dol` is therefore
+`build/linux/game/main.dol`, with the RELs under `build/linux/game/rels/`.
+Linux and Windows also copy them into `OUT/BlueWake/game/` for the runnable
+folder. The AppImage packager does not embed the DOL, RELs, or disc image.
+
 The extracted DOL and RELs are game-derived private inputs. They remain in the
 local build tree; the original disc continues to provide runtime assets. See
 the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
