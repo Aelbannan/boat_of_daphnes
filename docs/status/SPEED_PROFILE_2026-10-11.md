@@ -220,7 +220,7 @@ With `BLUEWAKE_LAZY_OVERLAP=1` on both, the same host and sources, alternated, t
 pair: Outset 21.89 s against 21.79 s (0.5%), Dragon Roost Cavern 13.20 s against 13.03 s (1.2%), every run faster,
 identical checkpoints. It is a RecompCore change, on for everyone once pinned, so it waits for Chris: the commit is
 `f4afb6f` on a local branch `codex/alias-last-hit` of the benchmark checkout's RecompCore, on the pinned `ddd031b`.
-Later on October 12 it went up as chrissotraidis/RecompCore#34 on `ee99bbc` (with the HD look and the flush fix). There, alternated on a quiet Mac, it made no measurable difference at Outset (24.69 s against 24.73 s, medians) and 0 to 2.5% in Dragon Roost Cavern, with identical checkpoints, so it is not pinned. A trained build or a phone may show more.
+Later on October 12 it went up as chrissotraidis/RecompCore#34 on `ee99bbc` (with the HD look and the flush fix). There, alternated on a quiet Mac, it made no measurable difference at Outset (24.69 s against 24.73 s, medians) and 0 to 2.5% in Dragon Roost Cavern, with identical checkpoints, so it is not pinned. On a trained module (main at #298) it was no better: Outset 0.5 to 0.7% faster in three of four pairs, Dragon Roost Cavern 1 to 3% slower in three of four, identical checkpoints. RecompCore #34 is closed; its branch stays.
 
 ## Everything together (October 12)
 
