@@ -248,6 +248,10 @@ std::string hex64(uint64_t value) {
 } // namespace
 
 std::string GCTexture::filename() const {
+    if (!cached_name.empty())
+        return cached_name;
+    if (!name_error.empty())
+        throw FormatError(name_error);
     std::string out = "tex1_" + std::to_string(width) + "x" + std::to_string(height) + "_" +
                       hex64(XXH64(pixels.data(), pixels.size(), 0));
     if (format == 8 || format == 9 || format == 10) {
@@ -450,10 +454,22 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
             throw FormatError("truncated GameCube disc");
         try {
             leaves(data, e.path, [&](const std::string& name, const Bytes& leaf) {
+                const size_t first = textures.size();
                 try {
                     gc_textures(leaf, name, textures);
                 } catch (const FormatError& ex) {
                     errors.push_back({name, ex.what()});
+                }
+                for (size_t i = first; i < textures.size(); i++) {
+                    GCTexture& t = textures[i];
+                    try {
+                        t.cached_name = t.filename();
+                    } catch (const FormatError& ex) {
+                        t.name_error = ex.what();
+                    }
+                    const bool sprite = t.format <= 3 || t.format == 8 || t.format == 9;
+                    if (!sprite)
+                        Bytes().swap(t.pixels);
                 }
             });
         } catch (const FormatError& ex) {

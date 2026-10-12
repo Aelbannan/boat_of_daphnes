@@ -68,6 +68,10 @@ struct GCTexture {
     Bytes palette;
     int palette_format = 0;
     int mipmaps = 1;
+    // index_gc() works the name out once and keeps the pixels only for the
+    // formats sprites are fitted to (I4, I8, IA4, IA8, C4, C8), to save memory.
+    std::string cached_name;
+    std::string name_error;
 
     // Dolphin's replacement name: tex1_WxH_<xxh64 of the data>[_<palette>]_<format>.png
     std::string filename() const;

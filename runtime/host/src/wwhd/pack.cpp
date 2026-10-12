@@ -284,7 +284,7 @@ class PngWriter {
     }
 
   private:
-    static constexpr size_t kMaxQueuedBytes = 256u << 20;
+    static constexpr size_t kMaxQueuedBytes = 96u << 20;
     void check() {
         if (!error_.empty())
             throw FormatError(error_);
@@ -450,7 +450,7 @@ ImportResult import_pack(const ImportOptions& o) {
         // Declared in the try block, so an error or a cancel stops its threads
         // before the staging folder is removed.
         const unsigned cores = std::thread::hardware_concurrency();
-        const unsigned threads = o.threads ? o.threads : std::max(1u, std::min(8u, cores > 1 ? cores - 1 : 1u));
+        const unsigned threads = o.threads ? o.threads : std::max(1u, std::min(4u, cores > 1 ? cores - 1 : 1u));
         PngWriter writer(o.exact_report ? 0 : threads);
         for (const std::string& source : files) {
             check_cancel();
