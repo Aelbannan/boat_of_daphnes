@@ -276,14 +276,14 @@ and optional Yaz0 compression before producing one uniform REL directory.
 ```mermaid
 flowchart TD
     Disc["GZLE01 disc image"]
-    Header["GameCube header<br/>identity and offsets"]
-    Dol["DOL section table<br/>compute executable size"]
+    Header["bluewake_disc_check()<br/>identity and GameCube magic"]
+    Dol["bluewake_disc_prepare()<br/>read offsets and DOL sections"]
     Revision["SHA-1 check<br/>USA revision 0"]
     FST["File-system table"]
     Loose["Loose rels/*.rel"]
     Archive["RELS.arc<br/>RARC archive"]
-    Decode["Decode Yaz0<br/>where present"]
-    Normalize["Set REL alignment<br/>field to 4"]
+    Decode["yaz0_decode() / unpack_rels_arc()<br/>decode modules"]
+    Normalize["write_rel()<br/>set alignment field to 4"]
     StagedDol[".import/main.dol"]
     StagedRels[".import/rels/*.rel"]
     Runtime["Textures, audio, and other assets<br/>remain on the disc image"]
@@ -296,6 +296,11 @@ flowchart TD
     Decode --> Normalize --> StagedRels
     Disc -. "not extracted" .-> Runtime
 ```
+
+Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265),
+[`bluewake_disc_prepare`](../../apple/ios/src/disc_import.c#L318-L506),
+[`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316), and
+[`write_rel`](../../apple/ios/src/disc_import.c#L206-L221).
 
 **Safe publication and builder gate**
 
@@ -315,6 +320,11 @@ flowchart LR
     Count -->|no| Stop
     Count -->|yes| Translate
 ```
+
+Code: [staging, publication, and cleanup](../../apple/ios/src/disc_import.c#L318-L506);
+exact-count gates in [Linux](../../scripts/linux/build.py#L519-L525),
+[Windows](../../scripts/windows/build.py#L547-L559), and
+[Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130).
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
