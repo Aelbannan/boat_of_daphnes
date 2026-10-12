@@ -22,6 +22,7 @@ extern "C" {
 #define BW_MOD_HD_TEXTURES_KEY "BlueWake.Mod.HDTextures"  // bool, applies at launch
 #define BW_MOD_BETTERWW_KEY "BlueWake.Mod.BetterWW"       // bool, applies at launch
 #define BW_HD_LOOK_KEY "BlueWake.HDLook"                 // bool, applies at launch (hd_look.h)
+#define BW_DPAD_MENUS_KEY "BlueWake.DpadMenus"           // bool, applies at once (dpad_menus.h, #245)
 // Better Wind Waker's settings (game options, runtime/host/src/game_options.h):
 // BW_OPTION_KEY_PREFIX + the option's name, a bool set only once the player
 // changes it from its default; applies at launch.
