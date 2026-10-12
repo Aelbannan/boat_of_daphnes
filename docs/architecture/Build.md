@@ -171,8 +171,8 @@ flowchart TD
     Linux["Linux build.py<br/>dependencies()"]
     Windows["Windows build.py<br/>dependencies()"]
     Apple["Apple build.sh<br/>profile_dependencies()"]
-    Checkout["ref/recompcore<br/>pinned RecompCore and DolRecomp checkout"]
-    Dawn["build/deps<br/>verified mobile Dawn archive"]
+    Checkout["Shared source dependency output<br/>ref/recompcore<br/>pinned RecompCore and DolRecomp checkout"]
+    Dawn["Apple mobile renderer dependency output<br/>build/deps<br/>verified Dawn archive"]
 
     Profile --> Linux
     Profile --> Windows
@@ -180,15 +180,16 @@ flowchart TD
     Linux -->|fetch and verify| Checkout
     Windows -->|fetch and verify| Checkout
     Apple -->|fetch and verify| Checkout
-    Checkout -. "Apple iOS / tvOS only: additional dependency" .-> Dawn
+    Apple -. "iOS / tvOS only: independent additional fetch" .-> Dawn
     Lock -. "records origins and roles" .-> Profile
 ```
 
 Each platform has a separate implementation that produces the same pinned
-RecompCore and DolRecomp checkout. Apple completes that checkout first; iOS
-and tvOS then fetch the verified mobile Dawn archive as an additional
-dependency. macOS performs no additional Dawn fetch in this stage because
-desktop Aurora resolves its macOS package later.
+RecompCore and DolRecomp checkout. Apple's dependency hook also fetches the
+verified mobile Dawn archive for iOS and tvOS. The hook performs that fetch
+after the checkout, but this is execution order rather than a dependency:
+Dawn does not consume the RecompCore checkout. macOS performs no additional
+Dawn fetch here because desktop Aurora resolves its macOS package later.
 
 ### Dependency declarations
 
