@@ -403,4 +403,88 @@ std::vector<Image> for_gc_format(const std::vector<Image>& images, int gc_format
     return out;
 }
 
+Image crop(const Image& in, int left, int top, int right, int bottom) {
+    Image out(std::max(0, right - left), std::max(0, bottom - top));
+    for (int y = 0; y < out.height; y++) {
+        const int sy = y + top;
+        if (sy < 0 || sy >= in.height)
+            continue;
+        for (int x = 0; x < out.width; x++) {
+            const int sx = x + left;
+            if (sx >= 0 && sx < in.width)
+                std::memcpy(out.at(x, y), in.at(sx, sy), 4);
+        }
+    }
+    return out;
+}
+
+void paste(Image& dst, const Image& src, int x, int y) {
+    for (int sy = 0; sy < src.height; sy++) {
+        const int dy = y + sy;
+        if (dy < 0 || dy >= dst.height)
+            continue;
+        for (int sx = 0; sx < src.width; sx++) {
+            const int dx = x + sx;
+            if (dx >= 0 && dx < dst.width)
+                std::memcpy(dst.at(dx, dy), src.at(sx, sy), 4);
+        }
+    }
+}
+
+Image alpha_composite(const Image& dst, const Image& src) {
+    if (dst.width != src.width || dst.height != src.height)
+        throw FormatError("alpha_composite size mismatch");
+    constexpr unsigned kBits = 7; // AlphaComposite.c PRECISION_BITS
+    const auto shift_div255 = [](uint32_t a) { return ((a >> 8) + a) >> 8; };
+    Image out(dst.width, dst.height);
+    for (size_t i = 0; i < dst.rgba.size(); i += 4) {
+        const uint8_t* d = &dst.rgba[i];
+        const uint8_t* s = &src.rgba[i];
+        uint8_t* o = &out.rgba[i];
+        if (s[3] == 0) {
+            std::memcpy(o, d, 4);
+            continue;
+        }
+        const uint32_t blend = uint32_t(d[3]) * (255 - s[3]);
+        const uint32_t outa255 = uint32_t(s[3]) * 255 + blend;
+        const uint32_t coef1 = uint32_t(s[3]) * 255 * 255 * (1u << kBits) / outa255;
+        const uint32_t coef2 = 255 * (1u << kBits) - coef1;
+        for (int c = 0; c < 3; c++) {
+            const uint32_t tmp = s[c] * coef1 + d[c] * coef2;
+            o[c] = uint8_t(shift_div255(tmp + (0x80u << kBits)) >> kBits);
+        }
+        o[3] = uint8_t(shift_div255(outa255 + 0x80));
+    }
+    return out;
+}
+
+void alpha_composite_at(Image& dst, const Image& src, int x, int y) {
+    const Image background = crop(dst, x, y, x + src.width, y + src.height);
+    paste(dst, alpha_composite(background, src), x, y);
+}
+
+bool alpha_bbox(const Image& in, Box& box) {
+    int left = in.width, top = in.height, right = -1, bottom = -1;
+    for (int y = 0; y < in.height; y++)
+        for (int x = 0; x < in.width; x++)
+            if (in.at(x, y)[3]) {
+                left = std::min(left, x);
+                right = std::max(right, x);
+                top = std::min(top, y);
+                bottom = std::max(bottom, y);
+            }
+    if (right < 0)
+        return false;
+    box = {left, top, right + 1, bottom + 1};
+    return true;
+}
+
+Image flip_top_bottom(const Image& in) {
+    Image out(in.width, in.height);
+    const size_t row = size_t(in.width) * 4;
+    for (int y = 0; y < in.height; y++)
+        std::memcpy(out.rgba.data() + size_t(in.height - 1 - y) * row, in.rgba.data() + size_t(y) * row, row);
+    return out;
+}
+
 } // namespace wwhd

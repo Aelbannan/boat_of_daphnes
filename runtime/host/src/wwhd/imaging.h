@@ -27,4 +27,20 @@ void complete_mips(std::vector<Image>& images);
 // for_gc_format(): GameCube I4/I8 (formats 0 and 1) sample intensity everywhere.
 std::vector<Image> for_gc_format(const std::vector<Image>& images, int gc_format, bool layout_mask);
 
+// Pillow operations the generated HUD and title art use, with Pillow's results.
+// crop(): pixels outside the image are transparent black.
+Image crop(const Image& in, int left, int top, int right, int bottom);
+// paste(src, (x, y)) without a mask: src replaces what it covers (clipped).
+void paste(Image& dst, const Image& src, int x, int y);
+// Image.alpha_composite(dst, src) for two images of one size.
+Image alpha_composite(const Image& dst, const Image& src);
+// dst.alpha_composite(src, (x, y)), in place, as Pillow's method.
+void alpha_composite_at(Image& dst, const Image& src, int x, int y);
+// getbbox() of one 8-bit channel: false when every value is 0.
+struct Box {
+    int left = 0, top = 0, right = 0, bottom = 0;
+};
+bool alpha_bbox(const Image& in, Box& box);
+Image flip_top_bottom(const Image& in);
+
 } // namespace wwhd
