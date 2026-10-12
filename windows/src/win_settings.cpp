@@ -563,7 +563,7 @@ void tab_display(SDL_Window* w) {
     bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Checkbox("Fullscreen   (F11 or Alt+Enter)", &full))
         set_fullscreen(w, full);
-    if (ImGui::Checkbox("Wind Waker HD look", &d.hd_look)) {
+    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
         apply_hd_look();
         changed();
     }
@@ -1514,6 +1514,13 @@ extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
         return 1;
     case VK_F8:
         bluewake_save_state_hotkey(true);
+        return 1;
+    case VK_F2:
+        // The Wind Waker HD look on or off, at once, and kept (#108).
+        g_session.hd_look = !g_session.hd_look;
+        apply_hd_look();
+        changed();
+        std::fprintf(stderr, "[windows] Wind Waker HD look %s (F2)\n", g_session.hd_look ? "on" : "off");
         return 1;
     case VK_F9:
         g_session.show_fps = !g_session.show_fps;

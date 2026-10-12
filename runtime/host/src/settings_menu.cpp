@@ -294,7 +294,7 @@ void display_tab() {
     restart_note();
 
     bool hd_look = env_on("BLUEWAKE_HD_LOOK", false);
-    if (ImGui::Checkbox("Wind Waker HD look", &hd_look)) {
+    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &hd_look)) {
         set_env("BLUEWAKE_HD_LOOK", hd_look ? "1" : "0");
         bluewake_hd_look_reload();
         g_dirty = true;
@@ -1015,6 +1015,15 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
             break;
         if (event->key.scancode == SDL_SCANCODE_F1) {
             g_open ? close_menu() : open_menu();
+            return true;
+        }
+        // F2: the Wind Waker HD look on or off, at once, and kept (#108).
+        if (event->key.scancode == SDL_SCANCODE_F2) {
+            const bool on = !env_on("BLUEWAKE_HD_LOOK", false);
+            set_env("BLUEWAKE_HD_LOOK", on ? "1" : "0");
+            bluewake_hd_look_reload();
+            save();
+            std::fprintf(stderr, "[settings] Wind Waker HD look %s (F2)\n", on ? "on" : "off");
             return true;
         }
         if (event->key.scancode == SDL_SCANCODE_ESCAPE) {

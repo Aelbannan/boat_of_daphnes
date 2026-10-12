@@ -3,8 +3,8 @@
 BlueWake is rebuilding the look of *The Wind Waker HD* (Wii U, 2013) on top of the GameCube game, one piece at a
 time. Each piece is an option, off by default, and one switch turns on every piece that exists so far:
 
-- **Mac and Linux:** F1 › Display › **Wind Waker HD look**. It applies straight away.
-- **Windows:** the settings menu › Display › **Wind Waker HD look**. It applies straight away.
+- **Mac and Linux:** F1 › Display › **Wind Waker HD look**, or **F2** in the game to switch between it and the GameCube look. It applies straight away and is kept.
+- **Windows:** the settings menu › Display › **Wind Waker HD look**, or **F2** in the game. It applies straight away and is kept.
 - **iPhone and iPad:** Mods › **Wind Waker HD Look**, then restart BlueWake.
 - **Android:** not yet (the port is in #93).
 - **From a terminal:** `BLUEWAKE_HD_LOOK=1`.
