@@ -7579,10 +7579,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
                 g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
     }
+    // The game's own cache flushes mark the texture cache's memory changed, so
+    // images it rewrites in place (the Pictobox preview, #13; the sea chart's
+    // island maps, #263) are read again. On by default; =0 turns it off.
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
-    g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
+    g_cache_flush_fallback_enabled = cache_flush == NULL || strcmp(cache_flush, "0") != 0;
     fprintf(stderr, "[texture-cache] fallback writeback=%s\n",
-            g_cache_flush_fallback_enabled ? "on (experimental)" : "off");
+            g_cache_flush_fallback_enabled ? "on" : "off (BLUEWAKE_CACHE_FLUSH_FALLBACK=0)");
     g_archive_reports = 0;
     g_dynamic_load_reports = 0;
     g_dynamic_link_header_reported = false;
