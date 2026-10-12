@@ -201,7 +201,8 @@ game thread was, and instructions and cycles per retrace, and writes them with t
 `build/android/measure`. Instructions per retrace is the number to compare between builds: it holds while the phone
 heats and throttles. `--cool` waits for the phone to cool to under 34 °C at full clocks first; `--apk` installs a
 build first; `--headless` measures without drawing or pacing; `--env` adds launch settings (a test warp, the
-player's display settings). The card is only read.
+player's display settings). `--probe` also logs the player's position, to check the spot; since #297 it keeps
+the full overlap watch on from a card save, so measure speed without it. The card is only read.
 
 ## Files
 
