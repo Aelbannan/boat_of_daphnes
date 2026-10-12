@@ -284,8 +284,8 @@ opens settings). The same tab changes what the mouse buttons and keyboard keys p
 
 If BlueWake doesn't see your controller at all (a generic Bluetooth pad, for example), download
 `gamecontrollerdb.txt` from [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB), put it
-in the folder with your saves (`%APPDATA%\BlueWake` on Windows, or the `user` folder in portable mode;
-`~/Library/Application Support/BlueWake` on a Mac; `~/.local/share/BlueWake` on Linux) and start
+in the folder with your saves (`%APPDATA%\BlueWake` on Windows; `~/Library/Application Support/BlueWake` on a
+Mac; `~/.local/share/BlueWake` on Linux; or the `user` folder in portable mode on Windows and Linux) and start
 BlueWake again.
 
 </details>
