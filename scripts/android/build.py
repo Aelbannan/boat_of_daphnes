@@ -730,12 +730,18 @@ def main():
     parser.add_argument("--conservative", action="store_true",
                         help="build the plain translation, without the Windows builder's default source "
                              "optimizations (its --fixed-cpu, --direct-calls, ... options then add them one at a time)")
-    for name in (*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines", "native_entries"):
+    # Each once, whether or not it is among the defaults (lean memory and lean deadlines are since #277).
+    for name in dict.fromkeys((*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines", "native_entries")):
         parser.add_argument("--" + name.replace("_", "-"), action="store_true",
                             help="as in scripts/windows/build.py")
     parser.add_argument("--no-lean-blocks", action="store_true",
                         help="BlueWake's conservative prepaid block copies instead of the lean ones (as in "
                              "scripts/windows/build.py)")
+    parser.add_argument("--no-lean-memory", action="store_true",
+                        help="loads and stores in the prepaid copies as before lean memory, and so without lean "
+                             "deadlines (as in scripts/windows/build.py)")
+    parser.add_argument("--no-lean-deadlines", action="store_true",
+                        help="keep the deadline test after every lean load and store (as in scripts/windows/build.py)")
     parser.add_argument("--profile", type=Path, help="an optimization profile (.profdata) for the game module")
     parser.add_argument("--device", metavar="SERIAL",
                         help="train the optimization profile on this adb device (the phone the game is for)")
@@ -767,6 +773,10 @@ def main():
         parser.error("--fixed-mem1 requires --fixed-cpu")
     if args.no_lean_blocks:
         args.lean_blocks = False
+    if args.no_lean_memory:
+        args.lean_memory = False
+    if args.no_lean_memory or args.no_lean_deadlines:
+        args.lean_deadlines = False
     if args.lean_blocks:
         args.prepared_blocks = True
     if args.lean_memory and not args.prepared_blocks:
