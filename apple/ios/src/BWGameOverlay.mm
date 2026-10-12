@@ -579,6 +579,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     UIMenu* controllerMenu = [UIMenu menuWithTitle:@"Controller" image:[UIImage systemImageNamed:@"gamecontroller"]
                                         identifier:nil options:0 children:@[
         cameraMenu, buttonMenu, toggle(@"D-pad in Items and Quest Status", BW_DPAD_MENUS_KEY),
+        toggle(@"Gyro Aiming (move the controller to aim)", BW_GYRO_AIM_KEY),
     ]];
 
     UIAction* removeDisc = [UIAction actionWithTitle:@"Remove Disc Image…" image:[UIImage systemImageNamed:@"trash"]
