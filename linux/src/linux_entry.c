@@ -16,10 +16,14 @@
 //   ~/.local/share/BlueWake/GZLE01.card          the memory card (saves)
 //   ~/.local/share/BlueWake/sram.bin             the console's settings
 //   ~/.local/share/BlueWake/logs/session-*.log   the newest eight sessions
+// Portable mode (#64), as on Windows: with a file named portable.txt beside
+// the bluewake executable, the player data goes in a user folder beside it
+// instead (BlueWake/user/...).
 // Every default is only a default: an environment variable that is already
 // set (BLUEWAKE_DISC, BLUEWAKE_CARD_PATH, ...) wins.
 #include <dirent.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +46,7 @@ int bluewake_host_main(int argc, char** argv);
 static char g_exe_dir[4096];
 static char g_data_dir[4096];
 static char g_log_path[4096];
+static int g_portable;
 
 static int file_exists(const char* path) {
     struct stat st;
@@ -66,6 +71,52 @@ static void bw_default_path(const char* name, const char* dir, const char* relat
     bw_default(name, path);
 }
 
+// Aurora's own files: controller button remaps (*.controller), keyboard
+// bindings, the controller port choice and imgui.ini. In portable mode they
+// follow DOL_AURORA_USER_DIR into the user folder; copy the ones it doesn't
+// have yet from the usual folder, so remaps made there carry over, as on
+// Windows (#64). Nothing is moved or replaced.
+static void bw_copy_aurora_files(void) {
+    static const char* const names[] = {"*.controller", "keyboard_bindings.dat", "controller_ports.dat", "imgui.ini"};
+    const char* data_home = getenv("XDG_DATA_HOME");
+    const char* home = getenv("HOME");
+    char usual[4096];
+    if (data_home != NULL && data_home[0] != '\0')
+        snprintf(usual, sizeof usual, "%s/BlueWake/", data_home);
+    else if (home != NULL && home[0] != '\0')
+        snprintf(usual, sizeof usual, "%s/.local/share/BlueWake/", home);
+    else
+        return;
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        char pattern[4096];
+        snprintf(pattern, sizeof pattern, "%s%s", usual, names[i]);
+        glob_t found;
+        if (glob(pattern, 0, NULL, &found) != 0)
+            continue;
+        for (size_t j = 0; j < found.gl_pathc; j++) {
+            const char* from = found.gl_pathv[j];
+            const char* name = strrchr(from, '/') + 1;
+            char to[4096];
+            snprintf(to, sizeof to, "%s%s", g_data_dir, name);
+            if (file_exists(to))
+                continue;
+            FILE* in = fopen(from, "rb");
+            FILE* out = in != NULL ? fopen(to, "wb") : NULL;
+            if (out != NULL) {
+                char buf[16384];
+                size_t n;
+                while ((n = fread(buf, 1, sizeof buf, in)) > 0)
+                    fwrite(buf, 1, n, out);
+                fclose(out);
+                fprintf(stderr, "[portable] copied %s from %s\n", name, usual);
+            }
+            if (in != NULL)
+                fclose(in);
+        }
+        globfree(&found);
+    }
+}
+
 static void resolve_dirs(void) {
     // The executable's own path.
     char link[64];
@@ -78,12 +129,19 @@ static void resolve_dirs(void) {
     } else {
         snprintf(g_exe_dir, sizeof g_exe_dir, "./");
     }
-    // Player data: $XDG_DATA_HOME/BlueWake, else ~/.local/share/BlueWake.
+    // Player data: BLUEWAKE_DATA_DIR, else the user folder beside the
+    // executable with portable.txt (#64), else $XDG_DATA_HOME/BlueWake, else
+    // ~/.local/share/BlueWake.
     const char* override = getenv("BLUEWAKE_DATA_DIR");
     const char* data_home = getenv("XDG_DATA_HOME");
     const char* home = getenv("HOME");
+    char portable[4096];
+    snprintf(portable, sizeof portable, "%sportable.txt", g_exe_dir);
     if (override != NULL && override[0] != '\0') {
         snprintf(g_data_dir, sizeof g_data_dir, "%s/", override);
+    } else if (file_exists(portable)) {
+        snprintf(g_data_dir, sizeof g_data_dir, "%suser/", g_exe_dir);
+        g_portable = 1;
     } else if (data_home != NULL && data_home[0] != '\0') {
         snprintf(g_data_dir, sizeof g_data_dir, "%s/BlueWake/", data_home);
     } else if (home != NULL && home[0] != '\0') {
@@ -98,6 +156,10 @@ static void resolve_dirs(void) {
     char states[4096];
     snprintf(states, sizeof states, "%sstates", g_data_dir);
     mkdir(states, 0755);
+    // Portable mode keeps the settings file there too, instead of
+    // ~/.config/BlueWake/settings.ini (as Windows keeps it in the user folder).
+    if (g_portable)
+        bw_default_path("BLUEWAKE_SETTINGS", g_data_dir, "settings.ini");
 }
 
 // --- session log -----------------------------------------------------------
@@ -243,7 +305,9 @@ static void usage(void) {
             "Mouse: click the game, then move it to turn the camera; Esc releases it.\n"
             "F1 or Esc settings, F11 fullscreen, F10 Smooth Motion, F9 frame rate.\n"
             "The settings menu saves to ~/.config/BlueWake/settings.ini; options given\n"
-            "here win for the session.\n");
+            "here win for the session.\n"
+            "Portable mode: with a file named portable.txt beside bluewake, saves,\n"
+            "settings, logs and caches stay in a user folder beside it instead.\n");
 }
 
 int main(int argc, char** argv) {
@@ -365,6 +429,15 @@ int main(int argc, char** argv) {
     bw_default_path("BLUEWAKE_SRAM", g_data_dir, "sram.bin");
     bw_default_path("BLUEWAKE_CARD_PATH", g_data_dir, "GZLE01.card");
     bw_default("BLUEWAKE_STATE_DIR", g_data_dir);
+    // Aurora's shader and pipeline caches (dawn_cache.db, pipeline_cache.db)
+    // and its own files (controller remaps, keyboard bindings, imgui.ini) go
+    // with the rest of the player's data: the same ~/.local/share/BlueWake as
+    // before (SDL's folder for the app), or the user folder in portable mode,
+    // which otherwise still filled ~/.local/share/BlueWake (#64).
+    bw_default("DOL_AURORA_CACHE_DIR", g_data_dir);
+    bw_default("DOL_AURORA_USER_DIR", g_data_dir);
+    if (g_portable)
+        bw_copy_aurora_files();
     // The stage select's English names, which the builder installs beside the executable.
     char stage_names[4096];
     snprintf(stage_names, sizeof stage_names, "%sstage_select", g_exe_dir);
@@ -420,8 +493,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fprintf(stderr, "[linux] app=%s data=%s module=%s disc=%s\n", g_exe_dir, g_data_dir, module,
-            getenv("BLUEWAKE_DISC"));
+    fprintf(stderr, "[linux] app=%s data=%s%s module=%s disc=%s\n", g_exe_dir, g_data_dir,
+            g_portable ? " (portable)" : "", module, getenv("BLUEWAKE_DISC"));
     bw_crash_install(g_data_dir);
     char* host_argv[3] = {argv[0], module, NULL};
     char launch_marker[4096];

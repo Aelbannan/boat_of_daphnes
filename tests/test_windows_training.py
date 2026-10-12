@@ -168,6 +168,37 @@ class TrainingTest(unittest.TestCase):
                 self.assertEqual(len(groups), expect)
                 self.assertEqual(sorted(p for g in groups for p in g), tour)
 
+    def package_fixture(self):
+        self.b.app_build = self.root / "app";self.b.app_build.mkdir()
+        (self.b.app_build / "BlueWake.exe").write_bytes(b"synthetic host")
+        crt = self.root / "redist/x64/Microsoft.VC.fixture.CRT";crt.mkdir(parents=True)
+        (crt / "msvcp140_atomic_wait.dll").write_bytes(b"synthetic CRT")
+        self.b.env["VCToolsRedistDir"] = str(self.root / "redist")
+        game = self.root / "game";(game / "rels").mkdir(parents=True)
+        (game / "main.dol").write_bytes(b"synthetic input")
+        self.b.recompcore = self.root / "runtime"
+        dsp = self.b.recompcore / "Data/Sys/GC";dsp.mkdir(parents=True)
+        for name in ("dsp_rom.bin", "dsp_coef.bin"): (dsp / name).write_bytes(b"synthetic DSP")
+        self.b.iso.write_bytes(b"synthetic disc")
+        (self.root / "composite-src.digest").write_text("synthetic digest")
+        self.b.git = lambda *args: "" if args[0] == "status" else "test-source"
+        module = self.root / "synthetic.dll";module.write_bytes(b"synthetic module")
+        return module
+
+    def test_portable_option_marks_the_app_folder_and_keeps_user_data(self):
+        module = self.package_fixture()
+        app = self.b.package(module)
+        self.assertFalse((app / "portable.txt").exists())
+        self.b.args.portable = True
+        (app / "user").mkdir();(app / "user/GZLE01.card").write_bytes(b"player saves")
+        app = self.b.package(module)
+        self.assertTrue((app / "portable.txt").exists())
+        self.assertEqual((app / "user/GZLE01.card").read_bytes(), b"player saves")
+        self.b.args.portable = False
+        app = self.b.package(module)
+        self.assertTrue((app / "portable.txt").exists())
+        self.assertEqual((app / "user/GZLE01.card").read_bytes(), b"player saves")
+
     def test_package_includes_atomic_wait_runtime_and_training_identity(self):
         self.b.app_build = self.root / "app";self.b.app_build.mkdir()
         (self.b.app_build / "BlueWake.exe").write_bytes(b"synthetic host")

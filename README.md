@@ -157,8 +157,8 @@ Waker settings or 16:10 until you rebuild it. More in [docs/MODS.md](docs/MODS.m
 ## Your saves
 
 - Saves are in **GZLE01.card**: in Files under **On My iPhone/iPad › BlueWake › BlueWake**,
-  **`%APPDATA%\BlueWake`** on Windows, or **`~/.local/share/BlueWake`** on Linux. Windows also has a
-  [portable mode](docs/WINDOWS.md#your-saves-and-logs).
+  **`%APPDATA%\BlueWake`** on Windows, or **`~/.local/share/BlueWake`** on Linux. Windows and Linux also have
+  a portable mode ([Windows](docs/WINDOWS.md#your-saves-and-logs), [Linux](docs/LINUX.md)).
 - On iPhone and iPad, **⋯ › Game Data & Saves › Back Up Saves…** exports a copy, and
   **Restore Saves…** brings one back.
 - Install updates over the existing app. **Deleting BlueWake deletes its saves**, so back them up first.

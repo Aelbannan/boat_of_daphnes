@@ -77,5 +77,19 @@ The game state is not identical, by design: an event can land a block later. Wha
 - The sound: the audio the game produces over each 2,400-retrace run, captured with `BLUEWAKE_CAPTURE_AUDIO_WAV`, is
   identical sample for sample at both places.
 
-Not checked: played by hand, a PC, the Deck, a phone, a trained build, and long runs (cutscenes with their sound in
-time, a save made and loaded).
+## On an iPad Pro (M2), October 12
+
+Two personal iOS builds from the same commit, both trained, with `--combined-optimizations --lean-blocks --lean-memory
+--lean-deadlines`, one also with `--behaviour-timing` (401,618 block starts always prepaid). The same copied test
+cards, scripted presses and 7,200 retraces; the game thread's share of each frame (median of 85 samples):
+
+| | Installed 0.7.0 build | Prepared | Prepared, behaviour timing |
+| --- | --- | --- | --- |
+| The sea by Outset | 81% | 54% | 52% |
+| Dragon Roost Cavern | 53% | 43% | 41% |
+
+59.9 retraces a second in every run, no crash, no thermal warning, and the player's own save unchanged throughout. On the
+iPad, behaviour timing takes about 4 to 5% of what is left, less than on the Mac.
+
+Not checked: played by hand, a PC, the Deck, a phone, and long runs (cutscenes with their sound in time, a save made and
+loaded).
