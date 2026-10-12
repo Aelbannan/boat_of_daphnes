@@ -4,14 +4,21 @@
 
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
-- [1. Select the builder and profile](#1-select-the-builder-and-profile)
-- [2. Fetch pinned dependencies](#2-fetch-pinned-dependencies)
-- [3. Validate and extract the disc](#3-validate-and-extract-the-disc)
-- [4. Translate PowerPC code](#4-translate-powerpc-code)
-- [5. Generate the composite source](#5-generate-the-composite-source)
-- [6. Prepare mods and optimizations](#6-prepare-mods-and-optimizations)
-- [7. Train profile-guided optimization](#7-train-profile-guided-optimization)
-- [8. Compile and package](#8-compile-and-package)
+- [1. Coordinate](#1-coordinate)
+  - [Select the builder and profile](#select-the-builder-and-profile)
+- [2. Fetch](#2-fetch)
+  - [Pin and retrieve dependencies](#pin-and-retrieve-dependencies)
+- [3. Extract](#3-extract)
+  - [Validate and extract the disc](#validate-and-extract-the-disc)
+- [4. Translate](#4-translate)
+  - [Generate C from PowerPC code](#generate-c-from-powerpc-code)
+- [5. Compose and prepare](#5-compose-and-prepare)
+  - [Generate the composite source](#generate-the-composite-source)
+  - [Apply mods and optimizations](#apply-mods-and-optimizations)
+- [6. Train](#6-train)
+  - [Profile-guided optimization](#profile-guided-optimization)
+- [7. Compile and package](#7-compile-and-package)
+  - [Build the native outputs](#build-the-native-outputs)
   - [Linux](#linux-x86-64)
   - [Windows](#windows-x86-64)
   - [macOS](#macos-apple-silicon)
@@ -45,17 +52,19 @@ host and a separate native module containing the translated game code.
 
 ## Build toolchain overview
 
-| Stage | Main code or tool | Result |
-| --- | --- | --- |
-| Coordinate | [Platform builders](#1-select-the-builder-and-profile) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Ordered build with pinned inputs and provenance |
-| Fetch | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Exact RecompCore and DolRecomp source |
-| Extract | [Platform builders](#3-validate-and-extract-the-disc) | Validated DOL, RELs, and runtime disc |
-| Translate | [DolRecomp](../../ref/recompcore/DolRecomp) | Generated C for PowerPC code |
-| Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Verified composite source and selected variants |
-| Train | [Platform PGO paths](#7-train-profile-guided-optimization) and `llvm-profdata` | Optional local optimization profile |
-| Compile and package | [CMake targets and platform packagers](#8-compile-and-package) | Native module and platform application |
+| Stage | Main code or tool | What it does | Result |
+| --- | --- | --- | --- |
+| [Coordinate](#1-coordinate) | Platform builders and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Reproducible build plan and provenance |
+| [Fetch](#2-fetch) | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves the exact runtime and translator revisions. | Verified RecompCore and DolRecomp source |
+| [Extract](#3-extract) | Platform builders | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc |
+| [Translate](#4-translate) | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated DOL and REL C source |
+| [Compose and prepare](#5-compose-and-prepare) | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source |
+| [Train](#6-train) | Platform PGO paths and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile |
+| [Compile and package](#7-compile-and-package) | CMake, Ninja, compilers, and platform packagers | Produces native binaries and arranges them for the target platform. | Native game module and platform application |
 
-## 1. Select the builder and profile
+## 1. Coordinate
+
+### Select the builder and profile
 
 The target selects [`scripts/linux/build.py`](../../scripts/linux/build.py),
 [`scripts/windows/build.py`](../../scripts/windows/build.py), or
@@ -67,7 +76,9 @@ All builders read BlueWake's revisions from
 [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh).
 Platform options change compilation and packaging, not the supported game.
 
-## 2. Fetch pinned dependencies
+## 2. Fetch
+
+### Pin and retrieve dependencies
 
 The builder checks out exact RecompCore and DolRecomp revisions under
 `ref/recompcore`. It rejects modified dependency source so generated output
@@ -77,7 +88,9 @@ RecompCore supplies the compatibility runtime, GXRuntime, Aurora, DSP sources,
 and DolRecomp. Origins and roles are recorded in
 [`config/dependencies.lock.json`](../../config/dependencies.lock.json).
 
-## 3. Validate and extract the disc
+## 3. Extract
+
+### Validate and extract the disc
 
 The builder verifies the USA revision-0 `GZLE01` disc before the long build.
 It extracts `main.dol` and 415 REL modules for translation; the disc continues
@@ -87,17 +100,22 @@ Linux accepts `.iso` and `.gcm`. Windows also supports its pinned `nodtool`
 conversion path. Apple builds use an uncompressed ISO. See the commands in
 [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
-## 4. Translate PowerPC code
+## 4. Translate
+
+### Generate C from PowerPC code
 
 The builder compiles pinned DolRecomp, then runs its GameCube C backend over
 the DOL and each REL. The result preserves PowerPC operations and guest
 addresses; it is not reconstructed Nintendo source code.
 
-The translator is pinned under
-[`ref/recompcore/DolRecomp`](../../ref/recompcore/DolRecomp). Each platform
-builder records its invocation in the build log.
+The builder checks out the
+[pinned DolRecomp revision](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de)
+under `ref/recompcore/DolRecomp`. Each platform builder records its invocation
+in the build log.
 
-## 5. Generate the composite source
+## 5. Compose and prepare
+
+### Generate the composite source
 
 [`scripts/generate_composite.py`](../../scripts/generate_composite.py) combines
 the DOL and REL translations with shared dispatch and module metadata. The
@@ -107,7 +125,7 @@ result can address code across the original executable and REL boundaries.
 and the profile digest verify the generated base. Unexpected input stops the
 normal build instead of silently producing a different module.
 
-## 6. Prepare mods and optimizations
+### Apply mods and optimizations
 
 [`scripts/mods/build_mod_variants.py`](../../scripts/mods/build_mod_variants.py)
 adds selected widescreen and Better Wind Waker variants. The builder applies
@@ -117,7 +135,9 @@ selected guarded preparations through
 Preparations verify the source shape or digest they expect. If a guard fails,
 the original translated implementation remains in place.
 
-## 7. Train profile-guided optimization
+## 6. Train
+
+### Profile-guided optimization
 
 When enabled, the [Linux builder](../../scripts/linux/build.py) and
 [Windows builder](../../scripts/windows/build.py) run their platform training
@@ -129,7 +149,9 @@ an instrumented module, runs headless playbacks, and merges the results with
 Fingerprints prevent reuse with incompatible inputs. Training output stays in
 the private build directory and is not a public artifact.
 
-## 8. Compile and package
+## 7. Compile and package
+
+### Build the native outputs
 
 CMake and Ninja compile the prepared composite into a native game module. A
 separate build produces the shared host, runtime, renderer, audio, input,
