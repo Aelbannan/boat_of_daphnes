@@ -64,7 +64,13 @@ host and a separate native module containing the translated game code.
 
 - [DOL](https://wiibrew.org/wiki/DOL) — the GameCube's main executable format. BlueWake extracts `main.dol` alongside 415 loadable REL modules before translating either kind of code.
 
+- [File-system table (FST)](https://www.gc-forever.com/yagcd/chap13.html#sec13.4) — the GameCube disc directory: fixed-size file and directory entries followed by their names. The disc header gives BlueWake its offset and size; the importer walks it to locate loose RELs and `RELS.arc` without unpacking the whole disc.
+
 - [REL](https://wiibrew.org/wiki/REL) — a relocatable GameCube executable module, similar in purpose to a dynamic library. Wind Waker loads and unloads these modules as their code and data are needed; BlueWake extracts all 415 RELs, translates each one, and combines them with the DOL translation while retaining their module metadata.
+
+- [RARC](https://wiki.cloudmodding.com/zgcn/ARC) — a Nintendo archive container identified by the `RARC` signature. Wind Waker stores many of its REL modules inside `RELS.arc`; BlueWake reads its file table and extracts only `.rel` members.
+
+- [Yaz0](https://www.gc-forever.com/yagcd/chap16.html#sec16.2) — a Nintendo compression format identified by the `Yaz0` signature. `RELS.arc`, loose RELs, and archive members may use it, so BlueWake decodes each applicable layer before passing uniform module bytes to DolRecomp.
 
 - [DolRecomp](https://github.com/elliotttate/DolRecomp) — the ahead-of-time translator. It converts PowerPC instructions from the DOL and RELs into C while preserving guest CPU and address semantics; it does not reconstruct Nintendo's original source.
 
