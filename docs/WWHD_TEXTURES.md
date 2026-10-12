@@ -6,6 +6,21 @@ them into the same Dolphin-format replacement pack that Aurora loads in
 Dusklight and BlueWake. Your GameCube `GZLE01` revision 0 disc is
 still required to play.
 
+## Where it is in the app
+
+Every build has the same section, first in its Mods tab or menu:
+**Mods › Wind Waker HD textures**. It holds the **HD textures** switch, how
+many textures the chosen pack has, and a way to add a pack:
+
+- **Mac, Linux and Windows:** F1 › Mods › **Choose texture pack folder…**.
+  Windows also has **Open the texture folder**.
+- **iPhone and iPad:** ⋯ › Mods › **Install Texture Pack…**, which copies the
+  pack into the app.
+
+Making the pack from your Wind Waker HD disc still uses the importer below,
+on a Mac, Linux or Windows computer. An importer built into the app, so the
+same section can make the pack on every build, is in progress.
+
 ## Set up the importer
 
 From the repository root:
@@ -95,15 +110,16 @@ On a Mac the default output is
 `--install` selects that folder in the app's settings
 (`~/Library/Application Support/BlueWake/settings.ini`) for the next launch
 and backs up the previous settings. Restart the app to load it. You can also
-omit `--install` and paste the output path into **Display > HD texture pack**.
-Choose a different pack, or **None**, to revert.
+omit `--install` and pick the output folder with **Mods › Wind Waker HD
+textures › Choose texture pack folder…**. Turn **HD textures** off to go back
+to the GameCube textures.
 
 On Linux the default output is `~/.local/share/BlueWake/Load/Textures/WWHD`
 (`$XDG_DATA_HOME` when set), and `--install` writes the same setting to
 `~/.config/BlueWake/settings.ini` (`$XDG_CONFIG_HOME` when set).
 
 On Windows the default output is `%APPDATA%\BlueWake\Load\Textures\WWHD`.
-Close BlueWake first: `--install` turns on **HD texture pack** and points it at
+Close BlueWake first: `--install` turns on **HD textures** and points it at
 that folder in `%APPDATA%\BlueWake\settings.ini` (`hd_textures=1`,
 `texture_pack=...`), keeping a backup of the previous file, and BlueWake
 rewrites that file when its settings change. The settings menu (F1, Mods)
@@ -112,8 +128,8 @@ then names the pack's folder, with a button to go back to
 
 Use `--output /path/to/new-folder` to choose another output folder. Existing
 folders are preserved; the importer requires a new destination. For an
-iPhone/iPad personal build, choose the generated folder with **Mods > Install
-Texture Pack**, enable **HD Texture Pack**, and restart.
+iPhone/iPad personal build, choose the generated folder with **Mods › Install
+Texture Pack…**, turn on **HD Textures**, and restart.
 
 The pack contains PNG textures, `_mipN` mipmaps and `import-report.json` with
 source checksums, tool/dependency records, matches and skipped conflicts.

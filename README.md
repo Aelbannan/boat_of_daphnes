@@ -141,13 +141,13 @@ time you visit an untested area, and busy scenes on iPhone drop below 30 FPS.
 
 ## Mods
 
-Open **⋯ › Mods** on iPhone and iPad, or press **F1 › Mods** on Windows and Linux. Mods apply the next
+Open **⋯ › Mods** on iPhone and iPad, or press **F1 › Mods** on Mac, Windows and Linux. Mods apply the next
 time BlueWake starts and never change your saves.
 
 | Mod | What it does |
 | --- | --- |
 | **Widescreen 16:9 / 16:10 / 21:9** | A wider view with the HUD placed to fit. Built in |
-| **HD Texture Pack** | Replaces the game's textures, for example with Hypatia's HD pack (see the FAQ) |
+| **Wind Waker HD textures** | First in Mods on every build: turn **HD textures** on, see how many textures it found, and choose or install a pack, such as Hypatia's HD pack (see the FAQ) or [the textures from your own Wind Waker HD disc](docs/WWHD_TEXTURES.md) |
 | **Better Wind Waker** | Swift Sail, instant text, faster animations and more, each set separately |
 | **Gameplay extras** | Jump & Sprint, Fast Transitions and Quick Doors, under **⋯ › Gameplay** |
 
@@ -328,11 +328,14 @@ Dolphin's **Tools › Memory Card Manager**.
 
 Extract the pack. Its **`GZL` folder holds the textures**; keep its subfolders and filenames as they are.
 
-- **Windows:** press **F1 › Mods › Open the texture folder** (or open
-  `%APPDATA%\BlueWake\Load\Textures\GZLE01`) and copy `GZL` into it.
+Every build has the same section, **Mods › Wind Waker HD textures**, first in the Mods tab or menu:
+
+- **Mac, Windows and Linux:** press **F1 › Mods › Choose texture pack folder…** and select `GZL`. On
+  Windows you can also use **Open the texture folder** (`%APPDATA%\BlueWake\Load\Textures\GZLE01`)
+  and copy `GZL` into it.
 - **iPhone and iPad:** use **⋯ › Mods › Install Texture Pack…** and select `GZL` in Files.
 
-Then enable **HD Texture Pack** and restart BlueWake. Leave the pack's **Optional Textures** out
+Then turn on **HD textures** and restart BlueWake; the section shows how many textures it found. Leave the pack's **Optional Textures** out
 unless you pick specific ones, since they compete with the main textures. You don't need its
 **WideScreen Patch**; use BlueWake's built-in widescreen. For a smaller pack on iPhone and iPad, see
 [Mods](docs/MODS.md#installing).
