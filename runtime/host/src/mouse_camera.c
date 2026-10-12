@@ -295,6 +295,20 @@ static void gyro_report(const SDL_GamepadSensorEvent* report) {
     bw_gyro_turn(report->data[0], report->data[1], seconds, g_gyro_speed, &g_gyro_yaw, &g_gyro_pitch);
 }
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+// iPhone and iPad: the controllers' gyro alone (their touches are mouse events).
+static void observe_gyro(const void* sdl_event, void* user) {
+    (void)user;
+    const SDL_Event* event = (const SDL_Event*)sdl_event;
+    if (event->type == SDL_EVENT_GAMEPAD_ADDED)
+        gyro_enable(SDL_GetGamepadFromID(event->gdevice.which));
+    else if (event->type == SDL_EVENT_GAMEPAD_REMOVED && event->gdevice.which == g_gyro_pad)
+        g_gyro_pad = 0;
+    else if (event->type == SDL_EVENT_GAMEPAD_SENSOR_UPDATE && event->gsensor.sensor == SDL_SENSOR_GYRO)
+        gyro_report(&event->gsensor);
+}
+#endif
+
 static void observe(const void* sdl_event, void* user) {
     (void)user;
     const SDL_Event* event = (const SDL_Event*)sdl_event;
@@ -416,6 +430,8 @@ static void load_gamepad_mappings(void) {
 void bluewake_mouse_camera_install(void) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     // An iPad's touches arrive as mouse events too; its controls are on screen.
+    // Only a controller's gyro is read (gyro aiming).
+    dol_aurora_set_event_observer(observe_gyro, NULL);
     return;
 #else
     // Installed even with the mouse camera off: the options menu and the
@@ -539,6 +555,11 @@ void bluewake_mouse_camera_attach(CPUState* cpu) {
     if (invert != NULL && invert[0] == '1')
         g_invert_y = -1.0;
     read_stick_settings();
+    // Gyro aiming saved on: the controllers already connected report from now
+    // (their arrival may have come before the setting was read).
+    gyro_enable_all();
+    if (g_gyro_on)
+        fprintf(stderr, "[gyro] gyro aiming on (speed %.2fx)\n", g_gyro_speed);
     if (g_stick_on)
         fprintf(stderr,
                 "[stick] the right stick turns the camera directly (%.0f degrees a second) and aims (%.0f); its "
