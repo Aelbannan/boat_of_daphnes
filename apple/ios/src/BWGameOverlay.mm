@@ -577,7 +577,9 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     UIMenu* buttonMenu = [UIMenu menuWithTitle:@"Button Mapping" image:[UIImage systemImageNamed:@"circle.grid.2x2"]
                                     identifier:nil options:0 children:remaps];
     UIMenu* controllerMenu = [UIMenu menuWithTitle:@"Controller" image:[UIImage systemImageNamed:@"gamecontroller"]
-                                        identifier:nil options:0 children:@[ cameraMenu, buttonMenu ]];
+                                        identifier:nil options:0 children:@[
+        cameraMenu, buttonMenu, toggle(@"D-pad in Items and Quest Status", BW_DPAD_MENUS_KEY),
+    ]];
 
     UIAction* removeDisc = [UIAction actionWithTitle:@"Remove Disc Image…" image:[UIImage systemImageNamed:@"trash"]
                                           identifier:nil handler:^(__kindof UIAction* a) {
