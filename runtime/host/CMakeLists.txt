@@ -40,6 +40,7 @@ add_executable(bluewake_host
     src/edge_intercepts.c
     src/game_options.c
     src/forest_water.c
+    src/hd_look.c
     src/audio_watch.c
     src/fast_load.c
     src/fps_watch.c
