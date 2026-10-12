@@ -158,6 +158,8 @@ void load_file() {
         else if (k == "stick_zoom") d.stick_zoom = parse_bool(v);
         else if (k == "stick_zoom_speed") d.stick_zoom_speed = std::clamp(std::atof(v.c_str()), 0.25, 2.0);
         else if (k == "aim_invert_y") d.aim_invert_y = parse_bool(v);
+        else if (k == "gyro_aim") d.gyro_aim = parse_bool(v);
+        else if (k == "gyro_aim_speed") d.gyro_aim_speed = std::clamp(std::atof(v.c_str()), 0.25, 4.0);
         else if (k == "climb") d.climb = parse_bool(v);
         else if (k == "climb_stamina") d.climb_stamina = std::clamp(std::atoi(v.c_str()), 4, 30);
         else if (k == "forest_water_keep_trees") d.forest_keep_trees = parse_bool(v);
@@ -214,6 +216,7 @@ void save_file() {
                  d.stick_aim_speed);
     std::fprintf(f, "stick_zoom=%d\nstick_zoom_speed=%.3f\n", d.stick_zoom, d.stick_zoom_speed);
     std::fprintf(f, "aim_invert_y=%d\n", d.aim_invert_y);
+    std::fprintf(f, "gyro_aim=%d\ngyro_aim_speed=%.2f\n", d.gyro_aim, d.gyro_aim_speed);
     std::fprintf(f, "climb=%d\nclimb_stamina=%d\n", d.climb, d.climb_stamina);
     std::fprintf(f, "forest_water_keep_trees=%d\nforest_water_30_minutes=%d\n", d.forest_keep_trees,
                  d.forest_30_minutes);
@@ -433,6 +436,8 @@ void apply_stick() {
     _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_X", d.pad_invert_x ? "1" : "0");
     _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_Y", d.pad_invert_y ? "1" : "0");
     _putenv_s("BLUEWAKE_AIM_INVERT_Y", d.aim_invert_y ? "1" : "0");
+    _putenv_s("BLUEWAKE_GYRO_AIM", d.gyro_aim ? "1" : "0");
+    _putenv_s("BLUEWAKE_GYRO_AIM_SPEED", std::to_string(d.gyro_aim_speed).c_str());
     bluewake_mouse_camera_reload();
 }
 
@@ -678,6 +683,16 @@ void tab_controls() {
     bool pad = ImGui::Checkbox("Controller: camera stick left and right inverted", &d.pad_invert_x);
     pad |= ImGui::Checkbox("Controller: camera stick up and down inverted", &d.pad_invert_y);
     stick |= ImGui::Checkbox("Left stick up and down inverted when aiming (first person, items)", &d.aim_invert_y);
+    stick |= ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+                             &d.gyro_aim);
+    ImGui::BeginDisabled(!d.gyro_aim);
+    float gyro_speed = static_cast<float>(d.gyro_aim_speed);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::SliderFloat("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
+        d.gyro_aim_speed = gyro_speed;
+        stick = true;
+    }
+    ImGui::EndDisabled();
     BwButtonMap map;
     const bool remapped = bw_button_map_parse(d.button_map, &map);
     ImGui::BeginDisabled(remapped);

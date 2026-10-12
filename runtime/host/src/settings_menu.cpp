@@ -72,6 +72,7 @@ const char* const kKeys[] = {
     "BLUEWAKE_STICK_CAMERA",    "BLUEWAKE_STICK_CAMERA_SPEED",
     "BLUEWAKE_STICK_CAMERA_INVERT_X", "BLUEWAKE_STICK_CAMERA_INVERT_Y", "BLUEWAKE_STICK_AIM_SPEED",
     "BLUEWAKE_STICK_ZOOM",      "BLUEWAKE_STICK_ZOOM_SPEED", "BLUEWAKE_AIM_INVERT_Y",
+    "BLUEWAKE_GYRO_AIM",        "BLUEWAKE_GYRO_AIM_SPEED",
     "BLUEWAKE_HAPTICS", "BLUEWAKE_HAPTICS_STRENGTH", "BLUEWAKE_HAPTICS_TRIGGERS",
     "BLUEWAKE_CLIMB",           "BLUEWAKE_CLIMB_STAMINA",
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
@@ -653,6 +654,23 @@ void controls_tab() {
         set_env("BLUEWAKE_AIM_INVERT_Y", aim_invert ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
+    bool gyro = env_on("BLUEWAKE_GYRO_AIM", false);
+    if (ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+                        &gyro)) {
+        set_env("BLUEWAKE_GYRO_AIM", gyro ? "1" : "0");
+        bluewake_mouse_camera_reload();
+    }
+    ImGui::BeginDisabled(!gyro);
+    float gyro_speed = static_cast<float>(std::atof(env("BLUEWAKE_GYRO_AIM_SPEED", "1").c_str()));
+    if (!(gyro_speed > 0.f))
+        gyro_speed = 1.f;
+    if (slider("Gyro aim speed", &gyro_speed, 0.25f, 4.f, "%.2fx")) {
+        char text[16];
+        std::snprintf(text, sizeof text, "%.2f", gyro_speed);
+        set_env("BLUEWAKE_GYRO_AIM_SPEED", text);
+        bluewake_mouse_camera_reload();
+    }
+    ImGui::EndDisabled();
     ImGui::PushTextWrapPos();
     ImGui::TextDisabled(stick ? "Click the right stick for first person. When controller zoom is on, hold it and move the stick up/down. In the telescope and Picto Box, the left stick or D-pad zooms."
                               : "The game's right stick: its left and right follow Better Wind Waker's "
