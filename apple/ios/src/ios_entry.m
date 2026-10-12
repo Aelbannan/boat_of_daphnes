@@ -366,6 +366,9 @@ int main(int argc, char** argv) {
                                                        attributes:nil error:nil];
             if ([d boolForKey:@"BlueWake.Mod.HDTextures"])
                 bw_default("DOL_AURORA_TEXTURE_PACK", pack);
+            // The Wind Waker HD look (runtime/host/src/hd_look.h).
+            if ([d boolForKey:@"BlueWake.HDLook"])
+                bw_default("BLUEWAKE_HD_LOOK", @"1");
             // Better Wind Waker's settings (game options: mods/betterww/
             // options.txt, runtime/host/src/game_options.c): the mod carries
             // their code, and each setting the player changed from its default

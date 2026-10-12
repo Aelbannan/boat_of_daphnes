@@ -12,6 +12,7 @@ extern "C" {
 #include "fast_load.h"
 #include "game_options.h"
 #include "forest_water.h"
+#include "hd_look.h"
 #include "haptics.h"
 #include "jump_button.h"
 #include "mouse_camera.h"
@@ -72,7 +73,7 @@ const char* const kKeys[] = {
     "BLUEWAKE_HAPTICS", "BLUEWAKE_HAPTICS_STRENGTH", "BLUEWAKE_HAPTICS_TRIGGERS",
     "BLUEWAKE_CLIMB",           "BLUEWAKE_CLIMB_STAMINA",
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
-    "BLUEWAKE_STAGE_SELECT_TOGGLE",
+    "BLUEWAKE_STAGE_SELECT_TOGGLE", "BLUEWAKE_HD_LOOK",
 };
 
 std::string g_path;                          // the settings file ("" when none)
@@ -288,6 +289,15 @@ void display_tab() {
         g_dirty = g_restart_pending = true;
     }
     restart_note();
+
+    bool hd_look = env_on("BLUEWAKE_HD_LOOK", false);
+    if (ImGui::Checkbox("Wind Waker HD look", &hd_look)) {
+        set_env("BLUEWAKE_HD_LOOK", hd_look ? "1" : "0");
+        bluewake_hd_look_reload();
+        g_dirty = true;
+    }
+    ImGui::TextWrapped("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from "
+                       "further away. Off by default.");
 
     bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
     if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
