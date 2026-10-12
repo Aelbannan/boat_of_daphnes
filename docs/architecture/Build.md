@@ -256,8 +256,7 @@ ISO first; Linux and Apple require the uncompressed input directly.
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
 | Linux preflight | Accepts `.iso` or `.gcm`, reads the GameCube header, and rejects the wrong magic, game ID, or revision before extraction. | Confirmed `GZLE01` revision-0 candidate | Original disc path retained as the runtime disc | [`disc`](../../scripts/linux/build.py#L476-L493) |
-| Windows normalization | Accepts uncompressed images directly; converts `.rvz`, `.wia`, `.gcz`, `.ciso`, `.nfs`, `.wbfs`, or `.tgc` through pinned `nodtool`, caching by source metadata and tool version. | Reusable uncompressed disc image | `OUT/disc/GZLE01.iso` and `OUT/disc/source.json` | [`disc`](../../scripts/windows/build.py#L422-L455), [`nodtool`](../../scripts/windows/build.py#L457-L469) |
-| Windows preflight | Reads the normalized image header and rejects the wrong GameCube magic, game ID, or revision. | Confirmed `GZLE01` revision-0 candidate | Validated ISO path | [Header checks](../../scripts/windows/build.py#L446-L455) |
+| Windows preflight | Accepts `.iso` or `.gcm` directly. As an optional convenience, it converts supported compressed Dolphin formats through pinned `nodtool`; it then rejects the wrong magic, game ID, or revision. | Confirmed uncompressed `GZLE01` revision-0 candidate | Original disc path or cached `OUT/disc/GZLE01.iso` | [`disc`](../../scripts/windows/build.py#L422-L455), [`nodtool`](../../scripts/windows/build.py#L457-L469) |
 | Apple wrapper | Compiles `disc_extract.c` with the shared importer, runs it on the uncompressed ISO, and checks for exactly 415 REL files. | Native extractor and verified extracted set | `OUT/tools/disc_extract` and `OUT/game/` | [`profile_extract`](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
 
 ### Shared extraction
