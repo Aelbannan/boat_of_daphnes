@@ -51,18 +51,6 @@ host and a separate native module containing the translated game code.
 
 ## Build toolchain overview
 
-`OUT` below is the output directory selected for the build.
-
-| Stage | Main code or tool | What it does | Result | Artifact |
-| --- | --- | --- | --- | --- |
-| Coordinate | [Platform builders](#1-coordinate) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Ordered build with pinned inputs and provenance | Build logs under `OUT/logs/` |
-| Fetch | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source | Checkout under `ref/recompcore/` |
-| Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc | `OUT/game/main.dol` and `OUT/game/rels/` |
-| Translate | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated C for PowerPC code | Generated tree under `OUT/translated/` |
-| Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
-| Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile | `OUT/pgo-local/composite.profdata` or `OUT/composite.profdata` |
-| Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application | [Platform artifact paths](#7-compile-and-package) |
-
 ### Concepts
 
 - [RecompCore](https://github.com/chrissotraidis/RecompCore/commit/ee99bbc13c948351f6974c745cad2593a25eacbf) — the pinned static-recompilation runtime inherited from the Wind Waker Recomp lineage. It supplies GXRuntime, Aurora, DSP support, CPU/runtime interfaces, and the DolRecomp submodule; BlueWake supplies the build orchestration, platform applications, and project-specific integration.
@@ -76,6 +64,18 @@ host and a separate native module containing the translated game code.
 - [Profile-guided optimization](../../scripts/linux/build.py#L771-L906) — the final compiler uses recorded execution counts to optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
 
 - [Training](../../scripts/linux/build.py#L979-L1105) — deterministic headless game playbacks used to produce PGO counters, not machine learning. Builders merge the raw counters with `llvm-profdata` and keep game-derived profiles in the private build directory.
+
+`OUT` below is the output directory selected for the build.
+
+| Stage | Main code or tool | What it does | Result | Artifact |
+| --- | --- | --- | --- | --- |
+| Coordinate | [Platform builders](#1-coordinate) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Ordered build with pinned inputs and provenance | Build logs under `OUT/logs/` |
+| Fetch | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source | Checkout under `ref/recompcore/` |
+| Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc | `OUT/game/main.dol` and `OUT/game/rels/` |
+| Translate | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated C for PowerPC code | Generated tree under `OUT/translated/` |
+| Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
+| Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile | `OUT/pgo-local/composite.profdata` or `OUT/composite.profdata` |
+| Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application | [Platform artifact paths](#7-compile-and-package) |
 
 ## 1. Coordinate
 
