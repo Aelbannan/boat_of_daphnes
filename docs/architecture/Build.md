@@ -58,15 +58,34 @@ host and a separate native module containing the translated game code.
 
 ## 1. Coordinate
 
-The target selects [`scripts/linux/build.py`](../../scripts/linux/build.py),
-[`scripts/windows/build.py`](../../scripts/windows/build.py), or
-[`scripts/builder/build.sh`](../../scripts/builder/build.sh). Each builder
-checks its tools, runs the stages, reuses safe intermediates, and records
-provenance.
+```mermaid
+flowchart TD
+    Profile["bluewake.sh<br/>game profile"]
+    Linux["Linux build.py"]
+    Windows["Windows build.py"]
+    Apple["Apple build.sh<br/>macOS / iOS / tvOS"]
 
-All builders read BlueWake's revisions from
-[`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh).
-Platform options change compilation and packaging, not the supported game.
+    Profile -->|pins and verified digest| Linux
+    Profile -->|pins and verified digest| Windows
+    Profile -->|variables and build hooks| Apple
+```
+
+- [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) is the shared
+  game profile. It records dependency pins, the expected composite digest,
+  app metadata, and hooks used by the generic Apple pipeline.
+- [`scripts/linux/build.py`](../../scripts/linux/build.py) coordinates the
+  Linux x86-64 build, local PGO, app folder, and optional AppImage. It reads
+  the shared profile's pins and digest.
+- [`scripts/windows/build.py`](../../scripts/windows/build.py) coordinates the
+  Windows x86-64 build, local PGO, runtime DLLs, and app folder. It reads the
+  same pins and digest.
+- [`scripts/builder/build.sh`](../../scripts/builder/build.sh) is the generic
+  Apple pipeline for macOS, iOS/iPadOS, and tvOS. It sources `bluewake.sh` and
+  calls its game-specific hooks.
+
+Each builder checks its tools, runs its ordered stages, reuses safe
+intermediates, and records provenance. Platform options change compilation and
+packaging, not the supported game revision.
 
 ## 2. Fetch
 
