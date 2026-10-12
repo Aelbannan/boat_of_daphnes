@@ -31,7 +31,8 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
 | Cloud shadows on the sea | Cloud shadows | **In**, with the switch, on the Great Sea (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
 | Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, on the Great Sea, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
-| Edge light, torch light | Character edge light, torch and fire light | Planned | |
+| Edge light | Character edge light | **In**, with the switch, on the Great Sea (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
+| Torch light | Torch and fire light | Planned | |
 
 ### Distant islands
 
@@ -112,4 +113,14 @@ sun, would be the next step. `DOL_AURORA_SUN_SHADOWS_STRENGTH` (0.35) and `_REAC
 
 Checked on an M3 Max from an Outset save state with the sun high: Link casts a soft shadow on the pier away from the
 sun, and the ladder's post and the pier's edges darken; the HUD is unchanged.
+
+### Edge light
+
+HD rims characters with light on their sunlit side. After sun shadows, for anything within 1,500 units of the camera,
+the renderer looks a few pixels toward the sun on screen: where the depth there jumps far behind or there is none, the
+pixel is on a sunlit outline and gets a warm rim. It isn't limited to characters; anything near with sky or something
+far behind it on the sun's side gets it. `DOL_AURORA_EDGE_LIGHT_STRENGTH` (0.4) tunes it.
+
+Checked on an M3 Max from an Outset save state: Link's arm, sleeve and shirt on the sun's side, and the ladder's posts,
+get a warm rim; the HUD is unchanged.
 

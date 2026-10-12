@@ -12,6 +12,8 @@ static int g_clouds = -1;  // cloud shadows: 1, 0, or -1 left to the renderer
 static bool g_clouds_shown;
 static int g_sun = -1;     // sun shadows, the same
 static bool g_sun_shown;
+static int g_edge = -1;    // edge light, the same
+static bool g_edge_shown;
 static bool g_islands_were_on;
 static bool g_trace;
 
@@ -34,15 +36,16 @@ void bluewake_hd_look_reload(void) {
     const int ao = setting("BLUEWAKE_HD_AO") >= 0 ? setting("BLUEWAKE_HD_AO") : all;
     g_clouds = setting("BLUEWAKE_HD_CLOUD_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_CLOUD_SHADOWS") : all;
     g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all;
+    g_edge = setting("BLUEWAKE_HD_EDGE_LIGHT") >= 0 ? setting("BLUEWAKE_HD_EDGE_LIGHT") : all;
     if (bloom >= 0)
         aurora_set_bloom(bloom == 1);
     if (far_blur >= 0)
         aurora_set_far_blur(far_blur == 1);
     if (ao >= 0)
         aurora_set_ambient_occlusion(ao == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, cloud shadows %s, far blur %s, bloom %s\n",
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, edge light %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
-            g_sun == 1 ? "on" : "off", g_clouds == 1 ? "on" : "off",
+            g_sun == 1 ? "on" : "off", g_edge == 1 ? "on" : "off", g_clouds == 1 ? "on" : "off",
             far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }
 
@@ -167,7 +170,7 @@ enum {
 
 static void clouds(CPUState* cpu, unsigned long long retrace) {
     bool show = false;
-    if (g_clouds == 1 || g_sun == 1) {
+    if (g_clouds == 1 || g_sun == 1 || g_edge == 1) {
         char stage[8];
         for (u32 i = 0; i < sizeof stage; ++i)
             stage[i] = (char)mem_read8(cpu, kCurStageName + i);
@@ -195,7 +198,7 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
             }
         }
     }
-    const bool clouds_on = show && g_clouds == 1, sun_on = show && g_sun == 1;
+    const bool clouds_on = show && g_clouds == 1, sun_on = show && g_sun == 1, edge_on = show && g_edge == 1;
     if (clouds_on != g_clouds_shown && g_clouds >= 0) {
         aurora_set_cloud_shadows(clouds_on);
         g_clouds_shown = clouds_on;
@@ -203,6 +206,10 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
     if (sun_on != g_sun_shown && g_sun >= 0) {
         aurora_set_sun_shadows(sun_on);
         g_sun_shown = sun_on;
+    }
+    if (edge_on != g_edge_shown && g_edge >= 0) {
+        aurora_set_edge_light(edge_on);
+        g_edge_shown = edge_on;
     }
 }
 
