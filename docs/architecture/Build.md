@@ -15,6 +15,8 @@
   - [RecompCore and DolRecomp checkout](#recompcore-and-dolrecomp-checkout)
   - [Apple Dawn package](#apple-dawn-package)
 - [3. Extract](#3-extract)
+  - [Input and platform paths](#input-and-platform-paths)
+  - [Shared extraction](#shared-extraction)
 - [4. Translate](#4-translate)
 - [5. Compose and prepare](#5-compose-and-prepare)
   - [Generate the composite source](#generate-the-composite-source)
@@ -222,13 +224,55 @@ prepare the mobile archive during the dependency hook.
 
 ## 3. Extract
 
-The builder verifies the USA revision-0 `GZLE01` disc before the long build.
-It extracts `main.dol` and 415 REL modules for translation; the disc continues
-to supply runtime assets.
+```mermaid
+flowchart TD
+    Disc["Uncompressed GZLE01<br/>ISO / GCM"]
+    Compressed["Supported compressed<br/>Dolphin image"]
+    Linux["Linux builder<br/>header preflight"]
+    Windows["Windows builder<br/>header preflight"]
+    Convert["Pinned nodtool<br/>convert to ISO"]
+    Apple["Apple profile_extract()<br/>build CLI wrapper"]
+    Importer["Shared disc_import.c<br/>validate and prepare"]
+    Output["OUT/game<br/>main.dol + 415 RELs"]
 
-Linux accepts `.iso` and `.gcm`. Windows also supports its pinned `nodtool`
-conversion path. Apple builds use an uncompressed ISO. See the commands in
-[`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
+    Disc --> Linux
+    Disc --> Windows
+    Disc --> Apple
+    Compressed -->|Windows only| Convert --> Windows
+    Linux --> Importer
+    Windows --> Importer
+    Apple --> Importer
+    Importer --> Output
+```
+
+All three builders converge on
+[`apple/ios/src/disc_import.c`](../../apple/ios/src/disc_import.c), the same
+importer used by the Apple first-run flow. Platform code handles accepted input
+formats and builds a suitable command-line wrapper around that shared logic.
+
+### Input and platform paths
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Linux preflight | Accepts `.iso` or `.gcm`, reads the GameCube header, and rejects the wrong magic, game ID, or revision before extraction. | Confirmed `GZLE01` revision-0 candidate | Original disc path retained as the runtime disc | [`disc`](../../scripts/linux/build.py#L476-L493) |
+| Windows normalization | Accepts uncompressed images directly; converts `.rvz`, `.wia`, `.gcz`, `.ciso`, `.nfs`, `.wbfs`, or `.tgc` through pinned `nodtool`, caching by source metadata and tool version. | Reusable uncompressed disc image | `OUT/disc/GZLE01.iso` and `OUT/disc/source.json` | [`disc`](../../scripts/windows/build.py#L422-L455), [`nodtool`](../../scripts/windows/build.py#L457-L469) |
+| Windows preflight | Reads the normalized image header and rejects the wrong GameCube magic, game ID, or revision. | Confirmed `GZLE01` revision-0 candidate | Validated ISO path | [Header checks](../../scripts/windows/build.py#L446-L455) |
+| Apple wrapper | Compiles `disc_extract.c` with the shared importer, runs it on the uncompressed ISO, and checks for exactly 415 REL files. | Native extractor and verified extracted set | `OUT/tools/disc_extract` and `OUT/game/` | [`profile_extract`](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
+
+### Shared extraction
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Check disc identity | Opens the image, verifies the GameCube magic, and requires game ID `GZLE01`. | Supported game image | Validation result or specific error | [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265) |
+| Read the executable | Uses the disc header to locate the DOL, reads its section table, and computes the complete executable size. | In-memory main executable | DOL byte buffer | [DOL extraction](../../apple/ios/src/disc_import.c#L343-L367) |
+| Verify revision | Computes the DOL SHA-1 and compares it with the supported USA revision-0 value. | Exact supported executable, not only a matching disc ID | Verified DOL digest | [Revision check](../../apple/ios/src/disc_import.c#L368-L379) |
+| Extract modules | Walks the disc file-system table, decompresses loose Yaz0 RELs, locates `RELS.arc`, and unpacks its RARC/Yaz0 members. | Complete translated-code input set | Temporary `main.dol` and `rels/*.rel` | [File-system extraction](../../apple/ios/src/disc_import.c#L395-L479), [`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316) |
+| Publish outputs | Replaces the previous prepared files only after extraction succeeds; failures remove the temporary files. | Finished prepared game tree | `OUT/game/main.dol` and `OUT/game/rels/` | [Output swap and cleanup](../../apple/ios/src/disc_import.c#L481-L506) |
+| Verify module count | Each builder requires exactly 415 extracted RELs before translation begins. | Consistent input set on every platform | Successful extraction-stage log | [Linux](../../scripts/linux/build.py#L519-L525), [Windows](../../scripts/windows/build.py#L547-L559), [Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
+
+The extracted DOL and RELs are game-derived private inputs. They remain in the
+local build tree; the original disc continues to provide runtime assets. See
+the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ## 4. Translate
 
