@@ -26,7 +26,8 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | --- | --- | --- | --- |
 | HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)); choosing it in the app's setup is next | `DOL_AURORA_TEXTURE_PACK` |
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
-| Bloom and HD's far-distance blur | Bloom, HD depth of field | Next: passes after the frame in Aurora (RecompCore) | |
+| Bloom | Bloom | Built in RecompCore ([#26](https://github.com/chrissotraidis/RecompCore/pull/26)); joins the switch once BlueWake pins it | `DOL_AURORA_BLOOM` |
+| HD's far-distance blur | HD depth of field | Next: the scene blurred by its depth, with bloom's blur | |
 | Ambient occlusion | Ambient occlusion | Planned: from the depth buffer (RecompCore) | |
 | Cloud shadows on the sea | Cloud shadows | Planned (RecompCore) | |
 | Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
@@ -49,3 +50,15 @@ every 300 retraces, the ones within reach with their distance and whether they'r
 
 Costs: more island models in memory at once (the game's own small models, loaded from `LODALL.arc` in ARAM) and a
 walk over the actor list once a frame while the option is on. Nothing runs while it's off.
+
+### Bloom
+
+Wind Waker draws its 3D scene, copies the finished scene out at full size, and then draws the HUD flat on top. Bloom
+runs in Aurora just before that copy: whatever is brighter than a threshold is blurred at a quarter of the size and
+added back, so clouds, foam and white highlights glow while the HUD stays sharp. It's six small GPU passes a frame
+and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL_AURORA_BLOOM_STRENGTH` (default
+0.35) tune it; `DOL_AURORA_PASS_TRACE=1` logs one frame's passes.
+
+Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
+bloom; Smooth Motion runs with it. Not yet on Windows, Linux, a Deck or a phone.
+
