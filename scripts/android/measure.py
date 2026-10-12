@@ -187,6 +187,11 @@ def main():
         stat = shell(f"simpleperf stat --app {args.package} --per-thread -e cpu-cycles,instructions "
                      f"--duration {args.seconds} 2>/dev/null", False)
         r1, t1 = retrace(), time.time()
+        # Something else stopping the app (another measurement, a reinstall) ends the count early: the
+        # instructions and retraces then cover only the time it ran, and the speed a shorter window.
+        ran_through = bool(shell(f"pidof {args.package}", False).strip())
+        if not ran_through:
+            print("  the game stopped during the count: the result covers only the time it ran", flush=True)
         end_skin, end_caps = skin_temperature(), caps()
     finally:
         shell(f"am force-stop {args.package}", False)
@@ -220,7 +225,7 @@ def main():
     stage = re.findall(r"stage=(\S+) room=(\d+)", text)
 
     result = {
-        "label": args.label, "mode": mode, "log": log,
+        "label": args.label, "mode": mode, "log": log, "game_ran_whole_count": ran_through,
         "retraces": retraces, "seconds": round(t1 - t0, 1),
         "speed_percent": round(rate / RETRACE_HZ * 100, 1),
         "game_thread_busy_percent": round(busy, 1) if busy is not None else None,
