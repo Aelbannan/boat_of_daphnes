@@ -44,6 +44,7 @@ add_executable(bluewake_host
     src/audio_watch.c
     src/fast_load.c
     src/fps_watch.c
+    src/dpad_menus.c
     src/jump_button.c
     src/climb.c
     src/settings_menu.cpp
@@ -851,6 +852,9 @@ set_tests_properties(bluewake_audio_sink_test PROPERTIES TIMEOUT 15)
 add_executable(bluewake_face_button_swap_test ../../tests/face_button_swap_test.c)
 target_include_directories(bluewake_face_button_swap_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_test)
+add_executable(bluewake_dpad_menus_test ../../tests/dpad_menus_test.c)
+target_include_directories(bluewake_dpad_menus_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
 
 add_executable(bluewake_desktop_controller_test ../../tests/desktop_controller_test.cpp)
 target_include_directories(bluewake_desktop_controller_test PRIVATE ${GXRUNTIME_DIR}/graphics/aurora/lib ${CMAKE_CURRENT_SOURCE_DIR}/src)

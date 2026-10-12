@@ -36,6 +36,7 @@
 #include "hd_look.h"
 #include "fast_load.h"
 #include "fps_watch.h"
+#include "dpad_menus.h"
 #include "jump_button.h"
 #include "settings_menu.h"
 #include "sprint.h"
@@ -4413,9 +4414,14 @@ static void host_si_complete_pad_transfer(u32 control) {
     host_note_live_input(&live_pad[0]);
     bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                        &live_pad[channel], &merged_pad);
-    const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    u16 buttons = host_pad_buttons(channel, effective_pad.button);
+    if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+        effective_pad.button = buttons;
+        bluewake_dpad_menus_apply(&effective_pad);
+        buttons = effective_pad.button;
+    }
     const DolPadState* pad = &effective_pad;
-    const u16 buttons = host_pad_buttons(channel, pad->button);
     host_pad_trace(channel, pad, buttons);
     u32 data0 = 0x09000000u; // SI_GC_CONTROLLER
     u32 data1 = 0u;
@@ -4520,9 +4526,14 @@ static void host_si_latch_pad_poll(void) {
         DolPadState merged_pad;
         bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                            &live_pad[channel], &merged_pad);
-        const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        u16 buttons = host_pad_buttons(channel, effective_pad.button);
+        if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+            effective_pad.button = buttons;
+            bluewake_dpad_menus_apply(&effective_pad);
+            buttons = effective_pad.button;
+        }
         const DolPadState* pad = &effective_pad;
-        const u16 buttons = host_pad_buttons(channel, pad->button);
         host_pad_trace(channel, pad, buttons);
         if (g_input_log_enabled && channel == 0u)
             host_input_log_read(pad, buttons);
@@ -8087,6 +8098,7 @@ int main(int argc, char** argv) {
     bluewake_quick_doors_attach(&cpu);
     bluewake_draw_tags_attach(&cpu);
     bluewake_haptics_attach(&cpu);
+    bluewake_dpad_menus_attach(&cpu);
 
     unsigned long long blocks = 0;
     const char* stop_reason = NULL;

@@ -9,6 +9,7 @@
 // The host's modules are C.
 extern "C" {
 #include "climb.h"
+#include "dpad_menus.h"
 #include "fast_load.h"
 #include "game_options.h"
 #include "forest_water.h"
@@ -64,6 +65,7 @@ const char* const kKeys[] = {
     "DOL_AURORA_TEXTURE_PACK",  "BLUEWAKE_MODS",            "BLUEWAKE_OPTIONS",
     "BLUEWAKE_FADE_FRAMES",     "BLUEWAKE_FAST_FORWARD",    "BLUEWAKE_QUICK_DOORS",
     "BLUEWAKE_JUMP_BUTTON", "BLUEWAKE_PAD_SWAP_AB", "BLUEWAKE_PAD_SWAP_XY", "BLUEWAKE_PAD_SWAP_LR",
+    "BLUEWAKE_DPAD_MENUS",
     "BLUEWAKE_BUTTON_MAP",
     "BLUEWAKE_SPRINT_SPEED",    "BLUEWAKE_MOUSE_CAMERA",    "BLUEWAKE_MOUSE_SENSITIVITY",
     "BLUEWAKE_MOUSE_INVERT_Y",  "BLUEWAKE_MOUSE_BUTTONS",   "BLUEWAKE_KEY_MAP",
@@ -539,6 +541,11 @@ void controls_tab() {
     ImGui::EndDisabled();
     bool swap_lr = env_on("BLUEWAKE_PAD_SWAP_LR", false);
     if (ImGui::Checkbox("Swap L and R (the triggers)", &swap_lr)) set_env("BLUEWAKE_PAD_SWAP_LR", swap_lr ? "1" : "0");
+    bool dpad_menus = env_on("BLUEWAKE_DPAD_MENUS", false);
+    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &dpad_menus)) {
+        set_env("BLUEWAKE_DPAD_MENUS", dpad_menus ? "1" : "0");
+        bluewake_dpad_menus_reload();
+    }
     if (ImGui::CollapsingHeader("Controller buttons")) {
         ImGui::TextWrapped("Choose which controller button presses each GameCube button. Picking one that is "
                            "already used swaps the two.%s", remapped ? " The swaps above are off while you use "
