@@ -14,6 +14,7 @@ extern "C" {
 // its water animation, its render-scale and 60 FPS settings and its data
 // importer (BlueWake imports on first run, first_run.m). Pad state and pause
 // reasons go through touch_controls.cpp.
+#include "wwhd/import_job.h"
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <UIKit/UIKit.h>
@@ -735,12 +736,20 @@ static NSUInteger g_packFiles = NSNotFound;
         [weakSelf chooseTexturePack];
     }];
     installPack.subtitle = @"Pick a folder of PNG or DDS textures";
+    UIAction* importHD = [UIAction actionWithTitle:@"Import from Wind Waker HD…"
+                                             image:[UIImage systemImageNamed:@"wand.and.rays"]
+                                        identifier:nil handler:^(__kindof UIAction* a) {
+        (void)a;
+        [weakSelf chooseWindWakerHD];
+    }];
+    importHD.subtitle = @"Make a pack from your own Wind Waker HD dump";
     // Wind Waker HD textures: first, as in the Mods tab of the Mac, Linux and
     // Windows menus, with the same items in the same order.
     UIMenu* hdTextures = [UIMenu menuWithTitle:@"Wind Waker HD Textures" image:nil identifier:nil
                                        options:UIMenuOptionsDisplayInline children:@[
         modToggle(@"HD Textures", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         installPack,
+        importHD,
     ]];
     NSMutableArray<UIMenuElement*>* children = [NSMutableArray arrayWithObjects:hdTextures, toggles, nil];
     UIMenu* bww = [self betterWWSettingsMenu];
@@ -933,6 +942,68 @@ static NSUInteger g_packFiles = NSNotFound;
                                                                                            (unsigned long)failed]
                                                               : @""];
         [weakSelf offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Texture Pack Installed" message:message];
+    }];
+}
+
+// Import from Wind Waker HD: the built-in importer (runtime/host/src/wwhd), as
+// in the desktop menus, with the disc the app plays. The pack goes in a new
+// folder inside Load/Textures/GZLE01, where the renderer finds it.
+- (void)chooseWindWakerHD {
+    __weak BWGameOverlay* weakSelf = self;
+    UIDocumentPickerViewController* picker =
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
+    [self presentPicker:picker handler:^(NSArray<NSURL*>* urls) { [weakSelf importWindWakerHDFrom:urls.firstObject]; }];
+}
+
+- (void)importWindWakerHDFrom:(NSURL*)source {
+    __weak BWGameOverlay* weakSelf = self;
+    const char* disc = getenv("BLUEWAKE_DISC");
+    NSString* textures = [self texturePackDirectory];
+    [[NSFileManager defaultManager] createDirectoryAtPath:textures withIntermediateDirectories:YES attributes:nil
+                                                    error:nil];
+    const BOOL scoped = [source startAccessingSecurityScopedResource];
+    __block std::string failure;
+    __block size_t imported = 0;
+    [self waitTitled:@"Importing from Wind Waker HD" message:@"Reading the GameCube disc…"
+                work:^(UIAlertController* wait) {
+        wwhd::ImportOptions options;
+        options.hd_folder = wwhd::hd_content_folder(source.path.fileSystemRepresentation);
+        options.gc_disc = disc != NULL ? disc : "";
+        options.output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
+        options.threads = 2;
+        options.progress = [wait](const wwhd::ImportProgress& p) {
+            NSString* text = p.files_total
+                ? [NSString stringWithFormat:@"%zu of %zu files, %zu textures so far", p.files_read, p.files_total,
+                                             p.replacements]
+                : @(p.stage.c_str());
+            dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
+        };
+        try {
+            if (options.gc_disc.empty())
+                throw wwhd::FormatError("BlueWake could not find the GameCube disc it plays.");
+            imported = wwhd::import_pack(options).replacements;
+        } catch (const std::exception& ex) {
+            failure = ex.what();
+        }
+    } done:^{
+        if (scoped)
+            [source stopAccessingSecurityScopedResource];
+        g_packFiles = NSNotFound;
+        [weakSelf refreshMenu];
+        if (!failure.empty()) {
+            UIAlertController* alert = [UIAlertController
+                alertControllerWithTitle:@"Import Failed"
+                                 message:[NSString stringWithFormat:@"%s\n\nPick the folder of your own Wind Waker HD "
+                                                                    @"dump (with code, content and meta) or its "
+                                                                    @"content folder.", failure.c_str()]
+                          preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[weakSelf actionTitled:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [weakSelf presentAlert:alert];
+            return;
+        }
+        NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump. HD Textures "
+                                                       @"uses them after BlueWake restarts.", imported];
+        [weakSelf offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Wind Waker HD Textures Ready" message:message];
     }];
 }
 
