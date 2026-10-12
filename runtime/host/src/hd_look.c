@@ -14,6 +14,8 @@ static int g_sun = -1;     // sun shadows, the same
 static bool g_sun_shown;
 static int g_edge = -1;    // edge light, the same
 static bool g_edge_shown;
+static int g_torch = -1;   // torch light, the same (on every stage)
+static bool g_torch_shown;
 static bool g_islands_were_on;
 static bool g_trace;
 
@@ -37,15 +39,17 @@ void bluewake_hd_look_reload(void) {
     g_clouds = setting("BLUEWAKE_HD_CLOUD_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_CLOUD_SHADOWS") : all;
     g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all;
     g_edge = setting("BLUEWAKE_HD_EDGE_LIGHT") >= 0 ? setting("BLUEWAKE_HD_EDGE_LIGHT") : all;
+    g_torch = setting("BLUEWAKE_HD_TORCH_LIGHT") >= 0 ? setting("BLUEWAKE_HD_TORCH_LIGHT") : all;
     if (bloom >= 0)
         aurora_set_bloom(bloom == 1);
     if (far_blur >= 0)
         aurora_set_far_blur(far_blur == 1);
     if (ao >= 0)
         aurora_set_ambient_occlusion(ao == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, edge light %s, cloud shadows %s, far blur %s, bloom %s\n",
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, edge light %s, torch light %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
-            g_sun == 1 ? "on" : "off", g_edge == 1 ? "on" : "off", g_clouds == 1 ? "on" : "off",
+            g_sun == 1 ? "on" : "off", g_edge == 1 ? "on" : "off", g_torch == 1 ? "on" : "off",
+            g_clouds == 1 ? "on" : "off",
             far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }
 
@@ -166,16 +170,70 @@ enum {
     kViewAspect = 0xD4u,
     kViewInvMtx = 0x170u,
     kSunPos = 0x803E5568u,  // g_env_light.mSunPos: the camera's eye plus the way to the sun
+    kPointLights = 0x803E4EACu,  // g_env_light.mpPLights[200] (LIGHT_INFLUENCE*: pos, color s16, power)
 };
+
+// The game's point lights nearest the camera (torches, fires, lanterns, bombs):
+// up to 16 of x, y, z, radius, r, g, b, flicker for the renderer.
+static void point_lights(CPUState* cpu, const float eye[3]) {
+    float found[16 * 8];
+    float distance[16];
+    unsigned count = 0;
+    for (u32 i = 0; i < 200u; ++i) {
+        const u32 light = mem_read32(cpu, kPointLights + i * 4u);
+        if (!guest_pointer(light))
+            continue;
+        const float x = read_float(cpu, light), y = read_float(cpu, light + 4u), z = read_float(cpu, light + 8u);
+        const float radius = read_float(cpu, light + 0x14u);
+        if (!(radius > 1.f && radius < 10000.f))  // the global light is 99,999
+            continue;
+        const float dx = x - eye[0], dy = y - eye[1], dz = z - eye[2];
+        const float d = sqrtf(dx * dx + dy * dy + dz * dz) - radius;
+        if (d > 6000.f)
+            continue;
+        unsigned slot = count < 16u ? count++ : 16u;
+        if (slot == 16u) {  // full: replace the farthest if this one is nearer
+            unsigned far = 0;
+            for (unsigned k = 1; k < 16u; ++k)
+                if (distance[k] > distance[far])
+                    far = k;
+            if (d >= distance[far])
+                continue;
+            slot = far;
+        }
+        distance[slot] = d;
+        float* out = found + slot * 8u;
+        out[0] = x;
+        out[1] = y;
+        out[2] = z;
+        out[3] = radius;
+        for (u32 c = 0; c < 3u; ++c) {
+            const float v = (float)(s16)mem_read16(cpu, light + 0x0Cu + c * 2u) / 255.f;
+            out[4 + c] = v < 0.f ? 0.f : v > 1.f ? 1.f : v;
+        }
+        out[7] = read_float(cpu, light + 0x18u) != 0.f ? 1.f : 0.f;
+    }
+    aurora_set_point_lights(found, count);
+    static unsigned traced;
+    if (g_trace && traced++ % 300u == 0u) {
+        fprintf(stderr, "[hd-look] point lights near the camera: %u", count);
+        for (unsigned k = 0; k < count && k < 4u; ++k)
+            fprintf(stderr, " (%.0f %.0f %.0f r%.0f c%.2f,%.2f,%.2f)", found[k * 8], found[k * 8 + 1], found[k * 8 + 2],
+                    found[k * 8 + 3], found[k * 8 + 4], found[k * 8 + 5], found[k * 8 + 6]);
+        fprintf(stderr, "\n");
+    }
+}
 
 static void clouds(CPUState* cpu, unsigned long long retrace) {
     bool show = false;
-    if (g_clouds == 1 || g_sun == 1 || g_edge == 1) {
+    bool torch_view = false;
+    if (g_clouds == 1 || g_sun == 1 || g_edge == 1 || g_torch == 1) {
         char stage[8];
         for (u32 i = 0; i < sizeof stage; ++i)
             stage[i] = (char)mem_read8(cpu, kCurStageName + i);
         const u32 view = mem_read32(cpu, kCurrentView);
-        if (memcmp(stage, "sea", 4) == 0 && guest_pointer(view)) {
+        const bool sea = memcmp(stage, "sea", 4) == 0;
+        if ((sea || g_torch == 1) && guest_pointer(view)) {
             float inv[12];
             for (u32 i = 0; i < 12; ++i)
                 inv[i] = read_float(cpu, view + kViewInvMtx + i * 4u);
@@ -192,13 +250,23 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
                 const float sy = read_float(cpu, kSunPos + 4u) - inv[7];
                 const float sz = read_float(cpu, kSunPos + 8u) - inv[11];
                 aurora_set_sun_direction(sx, sy, sz);
+                if (g_torch == 1) {
+                    const float eye[3] = {inv[3], inv[7], inv[11]};
+                    point_lights(cpu, eye);
+                    torch_view = true;
+                }
                 if (g_trace && retrace % 300u == 0u)
                     fprintf(stderr, "[hd-look] sun from the eye %.0f %.0f %.0f\n", sx, sy, sz);
-                show = true;
+                show = sea;
             }
         }
     }
     const bool clouds_on = show && g_clouds == 1, sun_on = show && g_sun == 1, edge_on = show && g_edge == 1;
+    const bool torch_on = torch_view && g_torch == 1;
+    if (torch_on != g_torch_shown && g_torch >= 0) {
+        aurora_set_torch_light(torch_on);
+        g_torch_shown = torch_on;
+    }
     if (clouds_on != g_clouds_shown && g_clouds >= 0) {
         aurora_set_cloud_shadows(clouds_on);
         g_clouds_shown = clouds_on;

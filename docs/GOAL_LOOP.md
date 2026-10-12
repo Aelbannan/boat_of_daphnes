@@ -78,7 +78,7 @@ iPad alike. Chris decided:
 | H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **Built** (RecompCore #26, #27), off by default, on the switch in BlueWake #287, a draft that waits for Chris to approve the pin |
 | H4 | Ambient occlusion from the depth buffer | **Built** (RecompCore #28), on the switch in #287 with H3 |
 | H5 | Cloud shadows on the sea | **Built** (RecompCore #29): the game's camera passed to Aurora, the world rebuilt from depth or the sea plane; on the switch in #287 |
-| H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | Sun shadows and edge light **built** from the screen (RecompCore #30, #31, on the switch in #287); a shadow map and torch light still to do |
+| H6 | Sun shadows over the whole scene, edge light on characters, light from torches and fires | **Built** (RecompCore #30 to #32, on the switch in #287): sun shadows and edge light from the screen, torch light from the game's point lights. A full shadow map is a later step |
 | H7 | The Wind Waker HD / GameCube switch that sets them together | **In with H2:** "Wind Waker HD look" in the Mac, Linux, Windows and iOS menus (`BLUEWAKE_HD_LOOK`); Android when #93 lands |
 | T1 | The game-behaviour timing prototype | A switch, measured like every other step. Steps 1 and 2 built October 12, opt-in (`--behaviour-timing`: every block prepaid, the budget checked at loops): 7.0% / 9.1% faster on the Mac, module 8.5% smaller, the same sweep and the same sound ([note](status/BEHAVIOUR_TIMING_2026-10-12.md)). A PC, the Deck and a phone next; Chris decides any default |
 

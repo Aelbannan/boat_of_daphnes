@@ -32,7 +32,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | Cloud shadows on the sea | Cloud shadows | **In**, with the switch, on the Great Sea (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
 | Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, on the Great Sea, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
 | Edge light | Character edge light | **In**, with the switch, on the Great Sea (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
-| Torch light | Torch and fire light | Planned | |
+| Torch light | Torch and fire light | **In**, with the switch, everywhere (RecompCore 0175). Off by default | `BLUEWAKE_HD_TORCH_LIGHT` |
 
 ### Distant islands
 
@@ -123,4 +123,15 @@ far behind it on the sun's side gets it. `DOL_AURORA_EDGE_LIGHT_STRENGTH` (0.4) 
 
 Checked on an M3 Max from an Outset save state: Link's arm, sleeve and shirt on the sun's side, and the ladder's posts,
 get a warm rim; the HUD is unchanged.
+
+### Torch light
+
+On the GameCube, a torch lights the models near it but not the walls and floor. With the switch, the host reads the
+game's own point lights each retrace (`g_env_light.mpPLights`: torches, fires, lanterns, bombs) and passes the 16 nearest
+the camera to Aurora, which lights every surface around them from the depth, with a smooth falloff and a slight flicker
+for the lights the game marks as fluctuating. `DOL_AURORA_TORCH_LIGHT_STRENGTH` (0.35) and `_REACH` (the glow's radius,
+times the game's own, 3) tune it.
+
+Checked on an M3 Max from a Dragon Roost Cavern save state: five lights near the camera, and the wall around the torch
+glows warm; the floor and the HUD are unchanged.
 
