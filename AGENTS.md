@@ -15,8 +15,8 @@ one, this one wins.
 - `docs/DIRECTION.md`: where BlueWake is going: releases without game code, the same app on every platform
   (Android matches the iPhone app), fast contributor reviews, measured performance.
 - `docs/MIGRATION_STATUS.md`: how Wind Waker Recomp became BlueWake, and what is left of that move.
-- `docs/architecture/Overview.md`, `docs/architecture/Build.md`, and `docs/architecture/Runtime.md`: the
-  top-down architecture, build toolchains, and runtime startup/module boundary.
+- `docs/architecture/Overview.md` and `docs/architecture/Build.md`: the top-down architecture and the
+  complete shared and platform-specific build process.
 - `docs/BUILD_YOUR_OWN.md`, `docs/BUILDER.md`, `docs/WINDOWS.md`, `docs/LINUX.md`, `docs/MODS.md`,
   `docs/WWHD_TEXTURES.md`, `docs/WWHD_LOOK.md`, `docs/STAGE_SELECT.md`: how things work. `docs/PROFILING.md` (measuring on the
   Steam Deck), `docs/PERFORMANCE_OPTIMIZATIONS.md` (Smooth Motion and renderer changes, with their switches) and

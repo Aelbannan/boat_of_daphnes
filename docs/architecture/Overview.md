@@ -118,7 +118,4 @@ source, then branch for each platform's compiler, SDK, entry layer, graphics
 backend, signing, and packaging requirements.
 
 For the complete pipeline, component references, output paths, and per-platform
-branches, continue to [Build toolchain](Build.md).
-
-For the launch sequence, native game-module contract, guest initialization,
-and translated execution loop, continue to [Runtime startup](Runtime.md).
+branches, continue to [Build](Build.md).
