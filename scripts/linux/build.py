@@ -18,7 +18,7 @@ Steps, each logged under OUT/logs:
   4 extract      main.dol and the 415 RELs from the disc
   5 translate    the game's PowerPC code to C (DolRecomp)
   6 generate     the composite source, compared with the verified digest
-  7 mods         widescreen 16:9 and 16:10 and Better Wind Waker's options (--no-mods skips)
+  7 mods         widescreen 16:9, 16:10 and 21:9 and Better Wind Waker's options (--no-mods skips)
   8 prepare      the certified native accelerators, fixed CPU, direct calls and
                  gather pipe (--conservative skips them)
   9 train        local optimization profile from headless playbacks (--no-train skips;
@@ -1278,7 +1278,7 @@ This folder is a personal build: gGZLE01_recomp.so is code translated from
 your disc and game/ holds your disc image. Never share or upload it.
 
 Run ./bluewake. Options (./bluewake --help lists them all):
-  --widescreen    16:9 (--aspect 16:10 for 16:10)
+  --widescreen    16:9 (--aspect 16:10 or --aspect 21:9 for those)
   --smooth        Smooth Motion: 60 FPS with in-between frames
   --betterww      Better Wind Waker's settings (--options to change them)
   --fullscreen    start in fullscreen

@@ -146,7 +146,7 @@ time BlueWake starts and never change your saves.
 
 | Mod | What it does |
 | --- | --- |
-| **Widescreen 16:9 / 16:10** | A wider view with the HUD placed to fit. Built in |
+| **Widescreen 16:9 / 16:10 / 21:9** | A wider view with the HUD placed to fit. Built in |
 | **HD Texture Pack** | Replaces the game's textures, for example with Hypatia's HD pack (see the FAQ) |
 | **Better Wind Waker** | Swift Sail, instant text, faster animations and more, each set separately |
 | **Gameplay extras** | Jump & Sprint, Fast Transitions and Quick Doors, under **⋯ › Gameplay** |

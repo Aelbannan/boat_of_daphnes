@@ -372,6 +372,14 @@ void bluewake_mouse_camera_install(void) {
     g_fresh = fresh == NULL || fresh[0] != '0';
     const char* latency = getenv("BLUEWAKE_MOUSE_LATENCY");
     g_latency_log = latency != NULL && latency[0] == '1';
+    // BLUEWAKE_CAMERA_DISTANCE: the follow camera's distance scale to start
+    // from, as if the wheel had set it (21:9 starts a little further back).
+    const char* distance = getenv("BLUEWAKE_CAMERA_DISTANCE");
+    if (distance != NULL && atof(distance) > 0.0) {
+        const double d = atof(distance);
+        g_zoom = d < kZoomMin ? kZoomMin : d > kZoomMax ? kZoomMax : d;
+        fprintf(stderr, "[mouse] camera distance x%.2f\n", g_zoom);
+    }
     load_gamepad_mappings();
     dol_aurora_set_event_observer(observe, NULL);
     bw_handoff_connected_controllers();
