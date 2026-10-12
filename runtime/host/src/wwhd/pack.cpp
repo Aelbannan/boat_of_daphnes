@@ -2,6 +2,7 @@
 // build() and source_textures() in scripts/import_wwhd_textures.py, with the
 // same matching, priorities and conflicts, so the pack holds the same images.
 #include "pack.h"
+#include "filesystem.h"
 
 #include "hd.h"
 #include "imaging.h"
@@ -14,7 +15,6 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <filesystem>
 #include <fstream>
 #include <map>
 #include <random>
@@ -510,7 +510,7 @@ ImportResult import_pack(const ImportOptions& o) {
                                    "Choose this folder in Mods > Wind Waker HD textures, then restart.\n"
                                    "Do not distribute this folder with app builds or source releases.\n";
         write_file(staging / "README.txt", Bytes(readme.begin(), readme.end()));
-        fs::rename(staging, output);
+        (fs::rename)(staging, output);
     } catch (...) {
         fs::remove_all(staging, ec);
         throw;

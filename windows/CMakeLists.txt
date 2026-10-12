@@ -79,7 +79,16 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/audio_watch.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
-    ${BLUEWAKE_HOST_SRC}/mouse_camera.c)
+    ${BLUEWAKE_HOST_SRC}/mouse_camera.c
+    ${BLUEWAKE_HOST_SRC}/texture_pack_menu.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/formats.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/addrlib.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/hd.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/imaging.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp)
 
 # The manifest (DPI awareness, long paths, UTF-8 code page) is merged into the
 # one the linker embeds.
@@ -96,7 +105,7 @@ add_executable(BlueWake
 # owns main() and hands over after setting the defaults.
 set_source_files_properties(${BLUEWAKE_HOST_SRC}/main.c PROPERTIES
     COMPILE_DEFINITIONS "main=bluewake_host_main")
-target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
+target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash ZLIB::ZLIB bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
 if(TARGET imgui)
     target_link_libraries(BlueWake PRIVATE imgui)
 endif()

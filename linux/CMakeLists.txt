@@ -60,6 +60,15 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
     ${BLUEWAKE_HOST_SRC}/settings_menu.cpp
+    ${BLUEWAKE_HOST_SRC}/texture_pack_menu.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/formats.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/addrlib.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/hd.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/imaging.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp
     ${BLUEWAKE_HOST_SRC}/mouse_camera.c)
 
 add_executable(bluewake
@@ -73,7 +82,7 @@ add_executable(bluewake
 # owns main() and hands over after setting the defaults.
 set_source_files_properties(${BLUEWAKE_HOST_SRC}/main.c PROPERTIES
     COMPILE_DEFINITIONS "main=bluewake_host_main")
-target_link_libraries(bluewake PRIVATE gxruntime GXRuntime::aurora xxhash ${CMAKE_DL_LIBS} pthread)
+target_link_libraries(bluewake PRIVATE gxruntime GXRuntime::aurora xxhash ZLIB::ZLIB ${CMAKE_DL_LIBS} pthread)
 if(TARGET imgui)
     target_link_libraries(bluewake PRIVATE imgui)
 endif()

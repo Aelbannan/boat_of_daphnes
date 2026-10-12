@@ -419,6 +419,10 @@ void hd_textures_section() {
     }
     if (ImGui::Button("Choose texture pack folder..."))
         bw_texture_pack::choose_folder(game_window(), g_texture_pack);
+    std::string imported;
+    const std::string textures = std::filesystem::path(importer_pack_folder()).parent_path().string();
+    if (bw_texture_pack::import_controls(game_window(), textures, imported))
+        set_texture_pack(imported);
     const std::string error = bw_texture_pack::picker_error();
     if (!error.empty()) {
         ImGui::TextWrapped("The folder picker did not open (%s). Type the folder instead:", error.c_str());

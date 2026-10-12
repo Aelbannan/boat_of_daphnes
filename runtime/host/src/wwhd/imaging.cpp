@@ -148,11 +148,12 @@ Image decode_bcn(int base_format, const uint8_t* src, size_t size, int width, in
 // --- Resample (Pillow Resample.c, LANCZOS, 8 bits per channel) --------------
 
 constexpr int kPrecisionBits = 32 - 8 - 2;
+constexpr double kPi = 3.14159265358979323846; // M_PI, which MSVC hides
 
 double sinc(double x) {
     if (x == 0.0)
         return 1.0;
-    x = x * M_PI;
+    x = x * kPi;
     return std::sin(x) / x;
 }
 

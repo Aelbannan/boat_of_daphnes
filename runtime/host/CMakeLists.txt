@@ -48,6 +48,15 @@ add_executable(bluewake_host
     src/jump_button.c
     src/climb.c
     src/settings_menu.cpp
+    src/texture_pack_menu.cpp
+    src/wwhd/formats.cpp
+    src/wwhd/addrlib.cpp
+    src/wwhd/hd.cpp
+    src/wwhd/imaging.cpp
+    src/wwhd/sha256.cpp
+    src/wwhd/ui.cpp
+    src/wwhd/pack.cpp
+    src/wwhd/import_job.cpp
     src/sprint.c
     src/quick_doors.c
     src/haptics.c

@@ -65,10 +65,14 @@ class Counter {
 
 // The system's folder picker (SDL_ShowOpenFolderDialog). SDL may answer on
 // another thread, so the answer waits here for the menu's next frame.
+// What the picker is choosing.
+enum class Pick { pack, wind_waker_hd };
+
 struct Picker {
     std::mutex lock;
     bool showing = false;
     bool answered = false;
+    Pick purpose = Pick::pack;
     std::string folder; // the folder picked, when answered
     std::string error;  // why the picker could not open ("" when it did)
 };
@@ -78,13 +82,14 @@ inline Picker& picker() {
     return p;
 }
 
-inline void choose_folder(SDL_Window* window, const std::string& start) {
+inline void choose_folder(SDL_Window* window, const std::string& start, Pick purpose = Pick::pack) {
     Picker& p = picker();
     {
         std::lock_guard<std::mutex> hold(p.lock);
         if (p.showing)
             return;
         p.showing = true;
+        p.purpose = purpose;
         p.error.clear();
     }
     const auto answer = [](void*, const char* const* files, int) {
@@ -103,11 +108,11 @@ inline void choose_folder(SDL_Window* window, const std::string& start) {
     SDL_ShowOpenFolderDialog(answer, nullptr, window, start.empty() ? nullptr : start.c_str(), false);
 }
 
-// The folder the player picked since the last call, if any.
-inline bool take_folder(std::string& folder) {
+// The folder the player picked for this purpose since the last call, if any.
+inline bool take_folder(std::string& folder, Pick purpose = Pick::pack) {
     Picker& p = picker();
     std::lock_guard<std::mutex> hold(p.lock);
-    if (!p.answered)
+    if (!p.answered || p.purpose != purpose)
         return false;
     p.answered = false;
     folder = p.folder;
@@ -120,5 +125,11 @@ inline std::string picker_error() {
     std::lock_guard<std::mutex> hold(p.lock);
     return p.error;
 }
+
+// Import from Wind Waker HD (texture_pack_menu.cpp): the button, and while an
+// import runs, its progress and a Cancel button. textures_dir is the app's
+// Load/Textures folder; the new pack is made in a new folder there. True once,
+// when an import has finished, with the new pack's folder in folder.
+bool import_controls(SDL_Window* window, const std::string& textures_dir, std::string& folder);
 
 } // namespace bw_texture_pack

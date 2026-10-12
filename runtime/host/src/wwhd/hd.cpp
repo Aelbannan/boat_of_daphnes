@@ -3,12 +3,12 @@
 // and import_wwhd_textures.py's hd_files. BFRES v3/v4 FTEX layout follows
 // AboodXD's BFRES-Tool, the BFLIM footer BFLIM-Tool (both GPL-3.0-or-later).
 #include "hd.h"
+#include "filesystem.h"
 
 #include "addrlib.h"
 
 #include <algorithm>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 
 namespace wwhd {
