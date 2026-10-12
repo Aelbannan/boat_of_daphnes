@@ -17,6 +17,7 @@
   - [Windows](#windows-x86-64)
   - [macOS](#macos-apple-silicon)
   - [iPhone and iPad](#iphone-and-ipad-iosipados-arm64)
+  - [Android (in progress)](#android-in-progress)
   - [Apple TV](#apple-tv-tvos-arm64-experimental)
 
 This chapter expands the build-time half of the
@@ -126,10 +127,11 @@ development.
 
 ### 6. Mods and source preparation
 
-The builders can add widescreen and Better Wind Waker variants to the composite
-source. Platform builders also expose selected preparation passes and certified
-native helpers. These changes are maintained as repeatable scripts and inputs,
-not as manual edits to generated files.
+The builders can add 16:9, 16:10, and the 21:9 widescreen variant added in
+[PR #279](https://github.com/chrissotraidis/bluewake/pull/279), plus Better Wind
+Waker variants, to the composite source. Platform builders also expose selected
+preparation passes and certified native helpers. These changes are maintained
+as repeatable scripts and inputs, not as manual edits to generated files.
 
 A guarded optimization verifies the source shape or hash it was designed for.
 If the expected input does not match, that optimization leaves the translated
@@ -235,6 +237,13 @@ The IPA packaging step excludes the disc and extracted DOL/REL files. The
 player supplies the disc to the installed app, which validates and prepares it
 inside the app container. The builder can also create an app-only IPA without
 translated game code for the PadMint workflow.
+
+### Android (in progress)
+
+An Android arm64 build is under development in
+[PR #93](https://github.com/chrissotraidis/bluewake/pull/93). It is not yet a
+current build path, so its proposed toolchain and artifacts are not documented
+as part of the architecture above.
 
 ### Apple TV (tvOS, arm64; experimental)
 

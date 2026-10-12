@@ -5,6 +5,10 @@ own supported *The Wind Waker* disc. (On Windows you can instead download the re
 [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest).) The game's code is translated from your disc during the build,
 so **the app you build is yours alone: never share or upload it.**
 
+For how disc translation, the shared runtime and each platform build fit
+together, see the [architecture overview](architecture/Overview.md) and
+[build toolchain](architecture/Build.md).
+
 Windows players who prefer to build their own: see [BlueWake on Windows](WINDOWS.md).
 
 ## Mac personal app

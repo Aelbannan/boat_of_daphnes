@@ -109,6 +109,10 @@ All supported platforms share the same broad pipeline:
 | Compile | Prepared game source, BlueWake host, and runtime sources | Native game module and platform application |
 | Package | Native outputs and required support files | Linux, Windows, macOS, iOS/iPadOS, or tvOS deliverable |
 
+Android support is in progress in
+[PR #93](https://github.com/chrissotraidis/bluewake/pull/93), so it is not yet
+shown as a current platform branch.
+
 The builders share pinned translator/runtime inputs and the verified composite
 source, then branch for each platform's compiler, SDK, entry layer, graphics
 backend, signing, and packaging requirements.
