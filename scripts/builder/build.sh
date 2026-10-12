@@ -36,7 +36,8 @@
 #   --lean-deadlines          with --lean-memory: the deadline test after a load or store only on
 #                             its way out of RAM, where the deadline can move (lean_deadlines.py)
 #   --behaviour-timing        with --combined-optimizations: every block prepaid, a timer or
-#                             interrupt lands at the next block's start (a prototype, behaviour_timing.py)
+#                             interrupt lands at the next block's start, the budget checked at loops
+#                             (a prototype, behaviour_timing.py --loop-checks)
 #   --identity NAME           codesign identity, e.g. "Apple Development: You (TEAMID)"
 #   --profile FILE            device provisioning profile (with --identity)
 #   --install DEVICE          install with devicectl after signing (needs --identity)

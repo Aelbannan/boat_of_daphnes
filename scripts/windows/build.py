@@ -829,10 +829,11 @@ int main(void) {
                                          o / "composite-src"])
         # Game-behaviour timing (behaviour_timing.py; a prototype, off by default):
         # every block runs its prepaid copy, so a device event lands at the next
-        # block's start instead of on its exact instruction. Last, on the final source.
+        # block's start instead of on its exact instruction, and the turn's budget is
+        # checked where control can loop (and at calls). Last, on the final source.
         if getattr(self.args, "behaviour_timing", False):
             self.run("behaviour-timing", [sys.executable, ROOT / "scripts/windows/behaviour_timing.py",
-                                           o / "composite-src"])
+                                           o / "composite-src", "--loop-checks"])
         digest = tree_digest(o / "composite-src")
         receipt = {"enabled": self.args.prepared_blocks,
                    "fixed_cpu": self.args.fixed_cpu,
@@ -1488,8 +1489,9 @@ def main():
                         help="keep the deadline test after every lean load and store: about 4%% slower")
     parser.add_argument("--behaviour-timing", action="store_true",
                         help="game-behaviour timing, a prototype: every block runs its prepaid copy, so a timer or "
-                             "interrupt lands at the next block's start rather than its exact instruction. About 6 "
-                             "to 7%% faster on an M3 Max and a smaller module; off by default (needs --prepared-blocks)")
+                             "interrupt lands at the next block's start rather than its exact instruction, and the turn's "
+                             "budget is checked at loops and calls. About 7 to 9%% faster on an M3 Max, a smaller "
+                             "module and a quicker build; off by default (needs --prepared-blocks)")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")

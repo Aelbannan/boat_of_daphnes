@@ -51,7 +51,7 @@ def steps(lean=False, lean_memory=False, lean_deadlines=False, behaviour_timing=
             if lean_deadlines:
                 out.append(("scripts/windows/lean_deadlines.py",))
     if behaviour_timing:
-        out.append(("scripts/windows/behaviour_timing.py",))
+        out.append(("scripts/windows/behaviour_timing.py", "--loop-checks"))
     return tuple(out)
 
 
@@ -110,7 +110,7 @@ def main():
     parser.add_argument("--lean-memory", action="store_true", help="lean_memory.py after the direct calls")
     parser.add_argument("--lean-deadlines", action="store_true", help="lean_deadlines.py after lean_memory.py")
     parser.add_argument("--behaviour-timing", action="store_true",
-                        help="behaviour_timing.py last: every block prepaid (a prototype)")
+                        help="behaviour_timing.py --loop-checks last: every block prepaid, the budget checked at loops (a prototype)")
     args = parser.parse_args()
     if args.lean_memory and not args.lean:
         parser.error("--lean-memory needs --lean")
