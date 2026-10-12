@@ -203,14 +203,22 @@ void save() {
     std::fprintf(stderr, "[settings] %s %s\n", ok ? "saved" : "save failed; retry pending for", g_path.c_str());
 }
 
-// The launch-time choices as they are now (the environment after the launch
-// and the settings file, and the options the game started with).
+// The launch-time choices (the environment after the launch and the settings
+// file, and the options the game started with), read the first time the menu
+// opens. Later openings keep what the player chose since: reading them again
+// would show, and then save, the launch values over the player's changes.
 void capture_launch_choices() {
-    g_aspect = env("BLUEWAKE_ASPECT", "4:3");
-    const std::string mods = env("BLUEWAKE_MODS");
-    g_betterww = mods.find("betterww") != std::string::npos;
-    std::snprintf(g_texture_pack, sizeof g_texture_pack, "%s", env("DOL_AURORA_TEXTURE_PACK").c_str());
-    g_options.clear();
+    static bool captured = false;
+    if (!captured) {
+        captured = true;
+        g_aspect = env("BLUEWAKE_ASPECT", "4:3");
+        const std::string mods = env("BLUEWAKE_MODS");
+        g_betterww = mods.find("betterww") != std::string::npos;
+        std::snprintf(g_texture_pack, sizeof g_texture_pack, "%s", env("DOL_AURORA_TEXTURE_PACK").c_str());
+    }
+    // Better Wind Waker's options are listed once the game has started.
+    if (!g_options.empty())
+        return;
     g_option_titles.clear();
     for (u32 i = 0;; ++i) {
         const char* title = nullptr;
