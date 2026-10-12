@@ -65,6 +65,9 @@ enum {
     kScaleZ = 0x21Cu,
     kActorHeap = 0xF0u,
     kLodBg = 0x01C3u,  // fpcNm_LODBG_e, d_a_lod_bg
+    kModelData = 0x2ACu, // daLodbg_c::mModelData
+    kDataSize = 0x2BCu,  // mDataSize, then mDataSize2 (a second model on Windfall and the Forsaken Fortress)
+    kDataSize2 = 0x2C0u,
     kMaxActors = 4096u,
 };
 
@@ -92,36 +95,140 @@ static void write_float(CPUState* cpu, u32 address, float value) {
     mem_write32(cpu, address, bits);
 }
 
-static void islands(CPUState* cpu, bool on, unsigned long long retrace) {
-    unsigned count = 0, changed = 0, loaded = 0;
+// The island models' own heap. d_a_lod_bg keeps every far model in one
+// 128 KB heap (JKRCreateExpHeap(0x20000, the archive heap)), which the game's
+// distances fill only so far; a model that does not fit there takes the largest
+// free block of the archive heap instead (loadModelData), and a long sail with
+// more models shown left that heap in pieces, until a big archive such as
+// Puppet Ganon's no longer found room and the game waited for it forever (#308).
+// So the islands shown further out are only as many as fit: the game's own
+// first, then the nearest of the others, up to kModelsBudget models loaded; and
+// if a model is ever found outside that heap, the budget drops below the count
+// at which it happened, and the farthest further-out islands are let go.
+enum {
+    kModelHeap = 0x2C4u,      // daLodbg_c::mDataHeap (JKRSolidHeap*)
+    kHeapTreeList = 0x50u,    // JKRHeap::mChildTree's link: the parent heap's child list
+    kHeapTree = 0x40u,        // ... which is the parent's mChildTree
+    kHeapSize = 0x38u,        // JKRHeap::mSize
+    kModelsBudget = 15u,      // 17 fitted where the most were loaded (sea room 20, October 12)
+    kMaxIslands = 64u,
+};
+static unsigned g_models_budget = kModelsBudget;
+
+// The heap a loaded model's data heap was made in.
+static u32 parent_heap(CPUState* cpu, u32 heap) {
+    if (!guest_pointer(heap))
+        return 0u;
+    const u32 list = mem_read32(cpu, heap + kHeapTreeList);
+    return guest_pointer(list) ? list - kHeapTree : 0u;
+}
+
+static bool player_position(CPUState* cpu, float* x, float* z) {
     u32 node = mem_read32(cpu, kActorQueue);
     for (u32 n = 0; n < kMaxActors && guest_pointer(node); ++n, node = mem_read32(cpu, node + kNodeNext)) {
         const u32 actor = mem_read32(cpu, node + kTagActor);
+        if (guest_pointer(actor) && mem_read16(cpu, actor + kProcName) == 0x00A9u) {  // fpcNm_PLAYER_e
+            *x = read_float(cpu, actor + 0x1F8u);
+            *z = read_float(cpu, actor + 0x200u);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void islands(CPUState* cpu, bool on, unsigned long long retrace) {
+    struct Island {
+        u32 actor;
+        float base, distance;
+        bool extended, loaded;
+        u32 parent;
+    } island[kMaxIslands];
+    unsigned count = 0, loaded = 0, spilled = 0, changed = 0;
+    u32 bytes = 0;
+    float px = 0.0f, pz = 0.0f;
+    const bool player = player_position(cpu, &px, &pz);
+    u32 node = mem_read32(cpu, kActorQueue);
+    for (u32 n = 0; n < kMaxActors && guest_pointer(node) && count < kMaxIslands;
+         ++n, node = mem_read32(cpu, node + kNodeNext)) {
+        const u32 actor = mem_read32(cpu, node + kTagActor);
         if (!guest_pointer(actor) || mem_read16(cpu, actor + kProcName) != kLodBg)
             continue;
-        count++;
-        loaded += mem_read32(cpu, actor + kActorHeap) != 0u;
+        struct Island* it = &island[count++];
         const float x = read_float(cpu, actor + kScaleX);
         const float gap = read_float(cpu, actor + kScaleZ) - x;
-        if (on && gap == kGap) {
-            write_float(cpu, actor + kScaleX, x + kExtra);
-            write_float(cpu, actor + kScaleZ, x + kExtra + kChangedGap);
+        it->actor = actor;
+        it->extended = gap == kChangedGap;
+        it->base = it->extended ? x - kExtra : x;
+        const float dx = read_float(cpu, actor + 0x1F8u) - px, dz = read_float(cpu, actor + 0x200u) - pz;
+        it->distance = player ? sqrtf(dx * dx + dz * dz) : 0.0f;
+        it->loaded = mem_read32(cpu, actor + kModelData) != 0u;
+        it->parent = it->loaded ? parent_heap(cpu, mem_read32(cpu, actor + kModelHeap)) : 0u;
+        if (it->loaded) {
+            loaded++;
+            bytes += mem_read32(cpu, actor + kDataSize) + mem_read32(cpu, actor + kDataSize2);
+        }
+    }
+    // The island heap is the 128 KB one; a model whose heap was made elsewhere spilled.
+    for (unsigned i = 0; i < count; ++i) {
+        if (island[i].loaded && island[i].parent != 0u &&
+            mem_read32(cpu, island[i].parent + kHeapSize) > 0x20000u)
+            spilled++;
+    }
+    if (on && spilled != 0u && loaded > spilled && loaded - spilled - 1u < g_models_budget) {
+        g_models_budget = loaded - spilled - 1u;
+        fprintf(stderr, "[hd-look] %u island model(s) outside the island heap with %u loaded: up to %u from now on\n",
+                spilled, loaded, g_models_budget);
+    }
+    // The game's own islands first (within their own distance), then the
+    // nearest of the others, while the budget lasts.
+    unsigned budget_left = g_models_budget;
+    for (unsigned i = 0; i < count; ++i)
+        if (island[i].distance < island[i].base + kGap && budget_left > 0u)
+            budget_left--;
+    for (;;) {
+        int best = -1;
+        for (unsigned i = 0; i < count; ++i) {
+            const struct Island* it = &island[i];
+            if (it->distance < it->base + kGap || it->distance >= it->base + kExtra + kChangedGap || it->base < 0.0f)
+                continue;  // the game's own, or too far even for HD
+            if (it->actor == 0u)
+                continue;  // already placed in this pass
+            if (best < 0 || it->distance < island[best].distance)
+                best = (int)i;
+        }
+        if (best < 0)
+            break;
+        struct Island* it = &island[best];
+        const bool want = on && player && budget_left > 0u;
+        if (want)
+            budget_left--;
+        if (want != it->extended) {
+            write_float(cpu, it->actor + kScaleX, want ? it->base + kExtra : it->base);
+            write_float(cpu, it->actor + kScaleZ, want ? it->base + kExtra + kChangedGap : it->base + kGap);
             changed++;
-            if (g_trace)
-                fprintf(stderr, "[hd-look] island model 0x%08X (room %u): shown within %.0f, now %.0f\n", actor,
-                        mem_read32(cpu, actor + 0xB0u), x, x + kExtra);
-        } else if (!on && gap == kChangedGap) {
-            write_float(cpu, actor + kScaleX, x - kExtra);
-            write_float(cpu, actor + kScaleZ, x - kExtra + kGap);
+        }
+        it->actor = 0u;
+    }
+    // The rest: within the game's own distances an island keeps the one it
+    // has (taking it away there would hide a model the player sees); off, or
+    // past even the further distance, it goes back to the game's.
+    for (unsigned i = 0; i < count; ++i) {
+        struct Island* it = &island[i];
+        if (it->actor != 0u && it->extended && (!on || it->distance >= it->base + kExtra + kChangedGap)) {
+            write_float(cpu, it->actor + kScaleX, it->base);
+            write_float(cpu, it->actor + kScaleZ, it->base + kGap);
             changed++;
         }
     }
-    static unsigned last_count = ~0u, last_loaded = ~0u;
-    if (g_trace && (count != last_count || loaded != last_loaded || changed)) {
-        fprintf(stderr, "[hd-look] retrace=%llu island models: %u, loaded %u, changed now %u\n", retrace, count,
-                loaded, changed);
+    static unsigned last_count = ~0u, last_loaded = ~0u, last_spilled = ~0u;
+    if (g_trace && (count != last_count || loaded != last_loaded || spilled != last_spilled || changed)) {
+        fprintf(stderr,
+                "[hd-look] retrace=%llu island models: %u, loaded %u (%u bytes of model data, %u outside the island "
+                "heap), changed now %u, budget %u\n",
+                retrace, count, loaded, bytes, spilled, changed, g_models_budget);
         last_count = count;
         last_loaded = loaded;
+        last_spilled = spilled;
     }
 }
 
@@ -151,10 +258,10 @@ static void trace_islands(CPUState* cpu, unsigned long long retrace) {
         const float dist = sqrtf(dx * dx + dz * dz), shown = read_float(cpu, actor + kScaleX);
         const u32 model = mem_read32(cpu, actor + 0x29Cu);
         if (dist < shown || model != 0u)
-            fprintf(stderr, "[hd-look] retrace=%llu room %u: %.0f away, shown within %.0f, %s, fade %u, pause %u mount 0x%08X step 0x%08X\n", retrace,
+            fprintf(stderr, "[hd-look] retrace=%llu room %u: %.0f away, shown within %.0f, %s, fade %u, pause %u mount 0x%08X step 0x%08X heap 0x%08X\n", retrace,
                     mem_read32(cpu, actor + 0xB0u), dist, shown, model ? "loaded" : "not loaded",
                     mem_read8(cpu, actor + 0x2A8u), mem_read8(cpu, actor + 0x0Bu), mem_read32(cpu, actor + 0x2B4u),
-                    mem_read32(cpu, actor + 0x298u));
+                    mem_read32(cpu, actor + 0x298u), mem_read32(cpu, actor + 0x2C4u));
     }
 }
 
@@ -288,7 +395,7 @@ void bluewake_hd_look_retrace(CPUState* cpu) {
     retrace++;
     if (cpu == NULL || cpu->ram == NULL)
         return;
-    if (bluewake_hd_distant_islands || g_islands_were_on)
+    if (bluewake_hd_distant_islands || g_islands_were_on || g_trace)
         islands(cpu, bluewake_hd_distant_islands, retrace);
     g_islands_were_on = bluewake_hd_distant_islands;
     clouds(cpu, retrace);
