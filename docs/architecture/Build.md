@@ -4,6 +4,7 @@
 
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
+  - [Concepts](#concepts)
 - [1. Coordinate](#1-coordinate)
   - [`bluewake.sh` game profile](#bluewakesh-game-profile)
   - [Linux builder](#linux-builder)
@@ -61,6 +62,17 @@ host and a separate native module containing the translated game code.
 | Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
 | Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile | `OUT/pgo-local/composite.profdata` or `OUT/composite.profdata` |
 | Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application | [Platform artifact paths](#7-compile-and-package) |
+
+### Concepts
+
+| Concept | Meaning in BlueWake | Reference |
+| --- | --- | --- |
+| RecompCore | The pinned static-recompilation runtime inherited from the Wind Waker Recomp lineage. It supplies GXRuntime, Aurora, DSP support, the CPU/runtime interfaces, and the DolRecomp submodule; BlueWake supplies the game profile, build orchestration, platform applications, and project-specific integration. | [Dependency record](../../config/dependencies.lock.json), [pinned RecompCore revision](https://github.com/chrissotraidis/RecompCore/commit/ee99bbc13c948351f6974c745cad2593a25eacbf) |
+| Build profile | A game-specific configuration and hook contract, not performance data. `bluewake.sh` defines the supported game, dependency pins, expected generated-source digest, output names, and Apple build hooks. | [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) |
+| DOL | The GameCube's main executable format. BlueWake extracts `main.dol` from the supported disc alongside 415 loadable REL modules before translating either kind of code. | [`profile_extract`](../../scripts/builder/profiles/bluewake.sh#L122-L132) |
+| DolRecomp | The ahead-of-time translator. It converts PowerPC instructions from the DOL and RELs into C while preserving guest CPU and address semantics; it does not reconstruct Nintendo's original source. | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de), [`profile_translate`](../../scripts/builder/profiles/bluewake.sh#L133-L145) |
+| PGO | Profile-guided optimization: the final compiler uses recorded execution counts to optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above. | [Linux profile consumption](../../scripts/linux/build.py#L771-L906) |
+| Training | Deterministic headless game playbacks used to produce PGO counters; it is compiler training, not machine learning. Builders merge the raw counters with `llvm-profdata` and keep game-derived profiles in the private build directory. | [Linux training flow](../../scripts/linux/build.py#L979-L1105), [Apple training hook](../../scripts/builder/profiles/bluewake.sh#L204-L215) |
 
 ## 1. Coordinate
 
