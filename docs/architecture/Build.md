@@ -59,6 +59,8 @@ host and a separate native module containing the translated game code.
 
 - [DOL](https://wiibrew.org/wiki/DOL) — the GameCube's main executable format. BlueWake extracts `main.dol` alongside 415 loadable REL modules before translating either kind of code.
 
+- [REL](https://wiibrew.org/wiki/REL) — a relocatable GameCube executable module, similar in purpose to a dynamic library. Wind Waker loads and unloads these modules as their code and data are needed; BlueWake extracts all 415 RELs, translates each one, and combines them with the DOL translation while retaining their module metadata.
+
 - [DolRecomp](https://github.com/elliotttate/DolRecomp) — the ahead-of-time translator. It converts PowerPC instructions from the DOL and RELs into C while preserving guest CPU and address semantics; it does not reconstruct Nintendo's original source.
 
 - [Profile-guided optimization](../../scripts/linux/build.py#L771-L906) — the final compiler uses recorded execution counts to optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
