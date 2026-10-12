@@ -281,7 +281,6 @@ int main(int argc, char** argv) {
     bw_default("BLUEWAKE_MAX_BLOCKS", "100000000000");
     bw_default("BLUEWAKE_DSP_MODE", "hle");
     bw_default("BLUEWAKE_CLOCK", "now");
-    bw_default("BLUEWAKE_OVERLAP_OBSERVATION", "0");
     bw_default("BLUEWAKE_NATIVE_MATH", "1");
     bw_default("DOL_AURORA_FULLSCREEN", "1");
     // A phone's screen is never 4:3: keep the game's shape, as on iOS (Display

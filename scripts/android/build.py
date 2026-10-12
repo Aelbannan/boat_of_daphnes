@@ -566,9 +566,11 @@ class AndroidBuilder(wb.Builder):
             "BLUEWAKE_MAX_RETRACES": str(retraces or self.TRAINING_RETRACES),
             "BLUEWAKE_WALL_PACE": "" if rendered else "0",
             "BLUEWAKE_PLAYER_PROBE": "1", "BLUEWAKE_PAD_BUTTONS": "0x0100",
-            # The player-control milestone waits on the overlap phase this
-            # observation latches (as in the Windows builder's training).
-            "BLUEWAKE_OVERLAP_OBSERVATION": "1",
+            # The player-control milestone waits for the scene overlap phase to
+            # reach 6, which lasts only a moment: the lazy overlap watch, sampling
+            # once a turn, misses it, so it is off here (as in the Windows builder's
+            # training, #281).
+            "BLUEWAKE_LAZY_OVERLAP": "0",
             "BLUEWAKE_PAD_PULSE_ON_TITLE_READY": "1", "BLUEWAKE_PAD_PULSE_LENGTH": "2",
             "BLUEWAKE_PAD_CONFIRM_EVENT": "any",
             "BLUEWAKE_PAD_SCRIPT": ",".join([f"{n}:0x0100:2" for n in range(17800, 22001, 150)] + self.TRAINING_RUN),
