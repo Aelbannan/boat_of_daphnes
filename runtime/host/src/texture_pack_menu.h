@@ -8,7 +8,12 @@
 
 #include <cctype>
 #include <cstddef>
+// The Windows host's POSIX shim (windows/compat/bw_posix_compat.h) defines
+// rename() as a macro, which breaks <filesystem>'s own rename; set it aside here.
+#pragma push_macro("rename")
+#undef rename
 #include <filesystem>
+#pragma pop_macro("rename")
 #include <mutex>
 #include <string>
 #include <system_error>
