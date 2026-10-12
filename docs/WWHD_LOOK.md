@@ -30,7 +30,8 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
 | Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
 | Cloud shadows on the sea | Cloud shadows | **In**, with the switch, on the Great Sea (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
-| Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
+| Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, on the Great Sea, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
+| Edge light, torch light | Character edge light, torch and fire light | Planned | |
 
 ### Distant islands
 
@@ -99,4 +100,16 @@ and fades out with distance. `DOL_AURORA_CLOUD_SHADOWS_STRENGTH` (0.28) and `_SC
 Checked on an M3 Max from an Outset save state: the grid sits square on the pier and the cliffs, and the shadows show
 on the open sea and the cove. Because the camera is read once a retrace, the pattern may trail by a frame in a fast
 turn; not checked by hand.
+
+### Sun shadows
+
+HD casts sun shadows across the whole scene. On the Great Sea, the host also passes the direction to the sun
+(`g_env_light.mSunPos`, which the game keeps at the camera's eye plus that direction). After ambient occlusion, from each
+pixel's place in view space, 24 steps go toward the sun; a step that lands behind a surface in the depth buffer is in
+shadow. It's drawn at a quarter of the size, blurred and multiplied in, and fades with distance and when the sun is low.
+Because it works from the screen, something off screen casts nothing; a full shadow map, the scene drawn again from the
+sun, would be the next step. `DOL_AURORA_SUN_SHADOWS_STRENGTH` (0.35) and `_REACH` (world units, 1,500) tune it.
+
+Checked on an M3 Max from an Outset save state with the sun high: Link casts a soft shadow on the pier away from the
+sun, and the ladder's post and the pier's edges darken; the HUD is unchanged.
 

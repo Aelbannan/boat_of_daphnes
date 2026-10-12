@@ -10,6 +10,8 @@
 bool bluewake_hd_distant_islands;
 static int g_clouds = -1;  // cloud shadows: 1, 0, or -1 left to the renderer
 static bool g_clouds_shown;
+static int g_sun = -1;     // sun shadows, the same
+static bool g_sun_shown;
 static bool g_islands_were_on;
 static bool g_trace;
 
@@ -31,15 +33,16 @@ void bluewake_hd_look_reload(void) {
     const int far_blur = setting("BLUEWAKE_HD_FAR_BLUR") >= 0 ? setting("BLUEWAKE_HD_FAR_BLUR") : all;
     const int ao = setting("BLUEWAKE_HD_AO") >= 0 ? setting("BLUEWAKE_HD_AO") : all;
     g_clouds = setting("BLUEWAKE_HD_CLOUD_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_CLOUD_SHADOWS") : all;
+    g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all;
     if (bloom >= 0)
         aurora_set_bloom(bloom == 1);
     if (far_blur >= 0)
         aurora_set_far_blur(far_blur == 1);
     if (ao >= 0)
         aurora_set_ambient_occlusion(ao == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, cloud shadows %s, far blur %s, bloom %s\n",
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
-            g_clouds == 1 ? "on" : "off",
+            g_sun == 1 ? "on" : "off", g_clouds == 1 ? "on" : "off",
             far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }
 
@@ -159,11 +162,12 @@ enum {
     kViewFovy = 0xD0u,
     kViewAspect = 0xD4u,
     kViewInvMtx = 0x170u,
+    kSunPos = 0x803E5568u,  // g_env_light.mSunPos: the camera's eye plus the way to the sun
 };
 
 static void clouds(CPUState* cpu, unsigned long long retrace) {
     bool show = false;
-    if (g_clouds == 1) {
+    if (g_clouds == 1 || g_sun == 1) {
         char stage[8];
         for (u32 i = 0; i < sizeof stage; ++i)
             stage[i] = (char)mem_read8(cpu, kCurStageName + i);
@@ -181,13 +185,24 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
                             inv[7], inv[11], fovy, aspect, near_plane);
                 aurora_set_world_view(inv, tanf(fovy * 0.5f * 3.14159265f / 180.f), aspect, near_plane, 0.f,
                                       (float)retrace / 59.94f);
+                const float sx = read_float(cpu, kSunPos) - inv[3];
+                const float sy = read_float(cpu, kSunPos + 4u) - inv[7];
+                const float sz = read_float(cpu, kSunPos + 8u) - inv[11];
+                aurora_set_sun_direction(sx, sy, sz);
+                if (g_trace && retrace % 300u == 0u)
+                    fprintf(stderr, "[hd-look] sun from the eye %.0f %.0f %.0f\n", sx, sy, sz);
                 show = true;
             }
         }
     }
-    if (show != g_clouds_shown && g_clouds >= 0) {
-        aurora_set_cloud_shadows(show);
-        g_clouds_shown = show;
+    const bool clouds_on = show && g_clouds == 1, sun_on = show && g_sun == 1;
+    if (clouds_on != g_clouds_shown && g_clouds >= 0) {
+        aurora_set_cloud_shadows(clouds_on);
+        g_clouds_shown = clouds_on;
+    }
+    if (sun_on != g_sun_shown && g_sun >= 0) {
+        aurora_set_sun_shadows(sun_on);
+        g_sun_shown = sun_on;
     }
 }
 
