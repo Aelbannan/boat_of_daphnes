@@ -347,6 +347,11 @@ static u32 g_overlap_last_phase = UINT32_MAX;
 // tested at every direct call and block edge, where it was about 7% of the game
 // thread. The guest runs the same; only when the host notices a phase changes.
 static bool g_lazy_overlap;
+// With the lazy watch, the player probe's control milestone (which the builders'
+// training openings must reach) still needs the overlap phase 6 that lasts only a
+// moment at the handover: the full watch stays on until control is admitted, and
+// the lazy path runs from there on, as in play.
+static bool g_overlap_watch_until_control;
 static u32 g_overlap_terminal_phase = UINT32_MAX;
 static bool g_name_character_jut_hold_reported;
 static bool g_name_character_jut_trigger_reported;
@@ -1974,7 +1979,7 @@ static void host_actor_search_native(CPUState* cpu) {
 // The scene part of the dynamic test: an overlap phase change interrupt flags
 // alone do not describe.
 static inline bool host_chassis_overlap_requires_full(void) {
-    if (!g_lazy_overlap && g_name_scene_object >= 0x80000000u &&
+    if ((!g_lazy_overlap || g_overlap_watch_until_control) && g_name_scene_object >= 0x80000000u &&
         (g_file_start_pulse.triggered || !g_file_start_pulse.configured)) {
         if (g_ppc_guest_alias_generation != g_overlap_cached_alias_state ||
             g_overlap_slot_ptr == NULL)
@@ -2036,7 +2041,8 @@ static void host_skip_fast_refresh(void) {
     g_skip_fast.range_span[0] = BLUEWAKE_PARTICLE_DRAW_LAST - BLUEWAKE_PARTICLE_DRAW_FIRST;
     g_skip_fast.range_first[1] = BLUEWAKE_WAKE_DRAW_FIRST;
     g_skip_fast.range_span[1] = BLUEWAKE_WAKE_DRAW_LAST - BLUEWAKE_WAKE_DRAW_FIRST;
-    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed;
+    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed &&
+                         !g_overlap_watch_until_control;
 }
 static u64 g_direct_call_queries, g_direct_call_allowed;
 
@@ -7580,8 +7586,10 @@ int main(int argc, char** argv) {
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
         g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
-        fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
-                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
+        g_overlap_watch_until_control = g_lazy_overlap && player_probe && getenv("BLUEWAKE_LOAD_STATE") == NULL;
+        fprintf(stderr, "[chassis] lazy overlap watch: %s%s\n",
+                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)",
+                g_overlap_watch_until_control ? " (full until player control)" : "");
     }
     // The game's own cache flushes mark the texture cache's memory changed, so
     // images it rewrites in place (the Pictobox preview, #13; the sea chart's
@@ -8629,6 +8637,10 @@ int main(int argc, char** argv) {
                 if (!player_control_admitted &&
                     player_control_hold_retraces >= 8u) {
                     player_control_admitted = true;
+                    if (g_overlap_watch_until_control) {
+                        g_overlap_watch_until_control = false;
+                        host_skip_fast_refresh();
+                    }
                     fprintf(stderr,
                             "[player-milestone] control-admitted retrace=%llu "
                             "event_mode=%u demo_type=%u demo_mode=%u ovl=%u "
