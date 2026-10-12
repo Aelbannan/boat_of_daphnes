@@ -5,6 +5,10 @@
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
 - [1. Coordinate](#1-coordinate)
+  - [`bluewake.sh` game profile](#bluewakesh-game-profile)
+  - [Linux builder](#linux-builder)
+  - [Windows builder](#windows-builder)
+  - [Apple builder](#apple-builder)
 - [2. Fetch](#2-fetch)
 - [3. Extract](#3-extract)
 - [4. Translate](#4-translate)
@@ -67,27 +71,53 @@ flowchart TD
     Windows["Windows build.py"]
     Apple["Apple build.sh<br/>macOS / iOS / tvOS"]
 
-    Profile -->|pins and verified digest| Linux
-    Profile -->|pins and verified digest| Windows
+    Profile -->|reads pins and digest| Linux
+    Profile -->|reads pins and digest| Windows
     Profile -->|variables and build hooks| Apple
 ```
 
-- [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) is the shared
-  game profile. It records dependency pins, the expected composite digest,
-  app metadata, and hooks used by the generic Apple pipeline.
-- [`scripts/linux/build.py`](../../scripts/linux/build.py) coordinates the
-  Linux x86-64 build, local PGO, app folder, and optional AppImage. It reads
-  the shared profile's pins and digest.
-- [`scripts/windows/build.py`](../../scripts/windows/build.py) coordinates the
-  Windows x86-64 build, local PGO, runtime DLLs, and app folder. It reads the
-  same pins and digest.
-- [`scripts/builder/build.sh`](../../scripts/builder/build.sh) is the generic
-  Apple pipeline for macOS, iOS/iPadOS, and tvOS. It sources `bluewake.sh` and
-  calls its game-specific hooks.
+### `bluewake.sh` game profile
 
-Each builder checks its tools, runs its ordered stages, reuses safe
-intermediates, and records provenance. Platform options change compilation and
-packaging, not the supported game revision.
+[`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh)
+is the shared game-specific build contract. It records application metadata,
+the exact RecompCore and DolRecomp revisions, the expected composite digest,
+and default optimization profiles.
+
+It also defines the dependency, extraction, translation, generation, mod,
+compile, and app hooks used by the generic Apple pipeline. Linux and Windows
+read its common pins and digest without executing those Apple-oriented hooks.
+
+### Linux builder
+
+[`scripts/linux/build.py`](../../scripts/linux/build.py) owns the Linux x86-64
+pipeline. It checks the Linux toolchain, runs every source stage, trains local
+PGO, compiles the module and host, and assembles the runnable app folder.
+
+It can run natively or through the shared CI container. AppImage creation is
+an optional final packaging step over the same build outputs.
+
+### Windows builder
+
+[`scripts/windows/build.py`](../../scripts/windows/build.py) provides the
+equivalent pipeline for Windows x86-64 with Visual Studio's LLVM/Clang and the
+Windows SDK. It also handles supported compressed-disc conversion and required
+runtime DLLs.
+
+The builder trains the Windows module profile, compiles the module and host,
+and packages the directly runnable `BlueWake` folder.
+
+### Apple builder
+
+[`scripts/builder/build.sh`](../../scripts/builder/build.sh) is the generic
+pipeline for macOS, iOS/iPadOS, and tvOS. It selects the Apple SDK and target,
+then sources `bluewake.sh` and calls its game-specific hooks in order.
+
+It coordinates module and app compilation, local PGO, bundle assembly,
+signing, optional IPA output, and device installation where supported.
+
+All three builders validate their tools, reuse safe intermediates, and record
+provenance. Platform options change compilation and packaging, not the
+supported game revision.
 
 ## 2. Fetch
 
