@@ -247,3 +247,23 @@ registers), so it waits with the alias change for Chris.
 Another RecompCore one: `bw_inline_gpr_memory_ready` (1.5%, `inline_gpr.h`) checks each of up to 18 saved
 registers' words with `get_ram_ptr`, so each inline register save or restore asks the alias resolver up to 18
 times; one "does any alias overlap this span" query from `cpu.c`'s sorted index would answer for the whole frame.
+
+## October 12: the module's per-call check
+
+`bw_direct_call_ready` (direct_calls.h) runs before each direct call and again on its return; it is inlined at
+500,773 call sites. Two experiments, M3 Max, untrained lean-deadlines modules from the same prepared source, the same
+app, alternated, 3 rounds of 2,400 retraces from save states:
+
+| Build | Outset (s) | Dragon Roost Cavern (s) | __text |
+| --- | --- | --- | --- |
+| Inlined (as in `main`) | 28.16, 27.82, 28.08 | 16.75, 16.35, 16.77 | 360.7 MB |
+| One out-of-line function (`noinline`, `preserve_most`) | 31.02, 27.77, 28.07 | 16.36, 16.61, 16.40 | 361.8 MB |
+
+Identical checkpoints. No gain on this Mac, and the module's code grows slightly, so the inlined check wasn't the
+code bloat it looked like (the compiler shares most of it). Not proposed.
+
+Hidden symbols are off in the Android build (#93), so each global the check reads goes through the GOT. Compiled
+with the NDK (r29, API 33) at -O2, the busiest chunk (`chunk_0091_text1_8016D6E0`, 2,872 call sites) has 6,491 GOT
+loads with the declarations as they are and 5,055 with only direct_calls.h's globals declared hidden (146,805 against
+145,363 instructions). Worth measuring on the Fold 7; it changes nothing where hidden symbols are on.
+

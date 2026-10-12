@@ -1,0 +1,43 @@
+# Game-behaviour timing (T1): what's left to take out
+
+October 12, 2026. A design note for the prototype in [GOAL_LOOP.md](../GOAL_LOOP.md) (T1), from the prepared source of
+an untrained lean-deadlines Mac build. Nothing here is built yet.
+
+## Where a block's time goes now
+
+With lean blocks, lean memory and lean deadlines (on by default in the Windows, Linux and Android builders), every
+block has two copies. The fast copy (`bwfast_N`) runs the block's instructions with no per-instruction bookkeeping;
+the precise copy (a `ctx->pc` store and `dolrecomp_charge_precise` before each instruction) only runs when the
+cycle budget is nearly spent. What every block still pays on the fast path:
+
+- `ctx->pc` stored at the block's start;
+- `dolrecomp_block_can_precharge`, the turn's cycle budget compared, `ctx->downcount` decremented;
+- the guest's registers read from and written to `ctx->gpr[]` in memory at almost every instruction;
+- at each direct call, `bw_direct_call_ready` before the call and on the return (inlined at 500,773 sites; moving it
+  out of line was no faster on the M3 Max, see [SPEED_PROFILE](SPEED_PROFILE_2026-10-11.md)).
+
+## What "behaviour timing" would change
+
+The HD recomp reproduces what the game does each frame, not how many cycles the console took, which is where its
+speed comes from. The equivalent here, behind a translator switch:
+
+1. **Cycles charged per block from a table, checked only at loop back-edges and calls.** Today's per-block budget check
+   becomes a check where control can loop. The decrementer, the audio DMA and VI keep their own time from the
+   charged cycles, so the game's clock still advances; it advances in larger steps.
+2. **Guest registers kept in host registers inside a block,** written back to `ctx` only at the block's exits, at
+   calls into the host and before memory instructions that can reach MMIO. This is the largest remaining cost and
+   needs the translator to know which instructions can leave the block.
+3. **No `ctx->pc` store on the fast path;** the exit sets it.
+
+## How it would be judged
+
+The same as every speed step: headless from save states at Outset, the bird scene and Dragon Roost Cavern, guest
+checkpoints compared, then by hand. Unlike the earlier steps the checkpoints *will* differ (the clock moves in larger
+steps), so the bar is that the game behaves the same: the 468-place stage select sweep, cutscenes with their sound in
+time, the audio stream without starving, a save made and loaded. Build time measured too: fewer copies of each block
+is also what a first-start build in minutes needs ([DIRECTION.md](../DIRECTION.md)).
+
+## Where it lives
+
+DolRecomp (the translator, a submodule of RecompCore) and the composite's preparation scripts. A prototype is a
+DolRecomp branch plus a `--behaviour-timing` builder option, off by default; Chris decides any default.
