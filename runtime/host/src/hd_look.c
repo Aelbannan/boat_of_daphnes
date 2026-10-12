@@ -158,17 +158,18 @@ static void trace_islands(CPUState* cpu, unsigned long long retrace) {
     }
 }
 
-// Cloud shadows: on the Great Sea only (stage "sea"), with the game's camera.
+// Sun shadows, edge light and cloud shadows: outdoors (the stage's type, from
+// its STAG info: outdoors 0 or the sea 7), with the game's camera.
 // GZLE01: g_dComIfG_gameInfo.play is at 0x803C5EA8; its mCurStage (the stage's
 // name first) at +0x3E94 and mCurrentView (view_class*) at +0x4A58. In the
 // view: mNear +0xC8, mFovy (degrees) +0xD0, mAspect +0xD4, mInvViewMtx +0x170.
 enum {
-    kCurStageName = 0x803C9D3Cu,
     kCurrentView = 0x803CA900u,
     kViewNear = 0xC8u,
     kViewFovy = 0xD0u,
     kViewAspect = 0xD4u,
     kViewInvMtx = 0x170u,
+    kStagInfo = 0x803C9DA0u,  // g_dComIfG_gameInfo.play.mStageData.mpStagInfo
     kSunPos = 0x803E5568u,  // g_env_light.mSunPos: the camera's eye plus the way to the sun
     kPointLights = 0x803E4EACu,  // g_env_light.mpPLights[200] (LIGHT_INFLUENCE*: pos, color s16, power)
 };
@@ -228,12 +229,13 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
     bool show = false;
     bool torch_view = false;
     if (g_clouds == 1 || g_sun == 1 || g_edge == 1 || g_torch == 1) {
-        char stage[8];
-        for (u32 i = 0; i < sizeof stage; ++i)
-            stage[i] = (char)mem_read8(cpu, kCurStageName + i);
+        const u32 info = mem_read32(cpu, kStagInfo);
+        const u32 type = guest_pointer(info) ? (mem_read32(cpu, info + 0x0Cu) >> 16) & 7u : 2u;
         const u32 view = mem_read32(cpu, kCurrentView);
-        const bool sea = memcmp(stage, "sea", 4) == 0;
-        if ((sea || g_torch == 1) && guest_pointer(view)) {
+        const bool outdoors = type == 0u || type == 7u;
+        if (g_trace && retrace % 300u == 0u)
+            fprintf(stderr, "[hd-look] stage type %u (%s)\n", type, outdoors ? "outdoors" : "indoors");
+        if ((outdoors || g_torch == 1) && guest_pointer(view)) {
             float inv[12];
             for (u32 i = 0; i < 12; ++i)
                 inv[i] = read_float(cpu, view + kViewInvMtx + i * 4u);
@@ -257,7 +259,7 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
                 }
                 if (g_trace && retrace % 300u == 0u)
                     fprintf(stderr, "[hd-look] sun from the eye %.0f %.0f %.0f\n", sx, sy, sz);
-                show = sea;
+                show = outdoors;
             }
         }
     }

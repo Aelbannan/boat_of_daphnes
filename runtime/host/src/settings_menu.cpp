@@ -297,7 +297,7 @@ void display_tab() {
         g_dirty = true;
     }
     ImGui::TextWrapped("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from "
-                       "further away, soft shading, sun and cloud shadows and edge light on the sea, torch light, a soft distance "
+                       "further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance "
                        "and bloom. Off by default.");
 
     bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);

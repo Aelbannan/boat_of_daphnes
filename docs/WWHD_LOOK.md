@@ -29,9 +29,9 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
 | Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
-| Cloud shadows on the sea | Cloud shadows | **In**, with the switch, on the Great Sea (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
-| Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, on the Great Sea, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
-| Edge light | Character edge light | **In**, with the switch, on the Great Sea (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
+| Cloud shadows on the sea | Cloud shadows | **In**, with the switch, outdoors (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
+| Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, outdoors, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
+| Edge light | Character edge light | **In**, with the switch, outdoors (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
 | Torch light | Torch and fire light | **In**, with the switch, everywhere (RecompCore 0175). Off by default | `BLUEWAKE_HD_TORCH_LIGHT` |
 
 ### Distant islands
@@ -91,7 +91,7 @@ creases; the pier's deck and the sea unchanged.
 
 ### Cloud shadows
 
-Soft shadows drift over the sea and the islands, as in HD. On the Great Sea, the host reads the game's camera once a
+Soft shadows drift over the sea and the islands, as in HD. Outdoors (the stages the game marks as outdoors or the sea), the host reads the game's camera once a
 retrace (the current view's inverse view matrix, field of view, aspect and near plane) and passes it to Aurora. After
 ambient occlusion, each pixel's place in the world comes from that camera and the scene's depth, or, below the horizon
 where there is no depth, from where the view ray meets the sea. Smooth noise in world X/Z, drifting slowly, darkens it
@@ -104,7 +104,7 @@ turn; not checked by hand.
 
 ### Sun shadows
 
-HD casts sun shadows across the whole scene. On the Great Sea, the host also passes the direction to the sun
+HD casts sun shadows across the whole scene. Outdoors (the stages the game marks as outdoors or the sea), the host also passes the direction to the sun
 (`g_env_light.mSunPos`, which the game keeps at the camera's eye plus that direction). After ambient occlusion, from each
 pixel's place in view space, 24 steps go toward the sun; a step that lands behind a surface in the depth buffer is in
 shadow. It's drawn at a quarter of the size, blurred and multiplied in, and fades with distance and when the sun is low.
