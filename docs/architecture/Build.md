@@ -169,29 +169,26 @@ flowchart TD
     Linux["Linux build.py<br/>dependencies()"]
     Windows["Windows build.py<br/>dependencies()"]
     Apple["Apple build.sh<br/>profile_dependencies()"]
-    AppleTarget{"Apple target"}
-    RecompCore["ref/recompcore<br/>exact detached revision"]
-    DolRecomp["ref/recompcore/DolRecomp<br/>exact submodule revision"]
+    LinuxGit["Pinned RecompCore<br/>and DolRecomp checkout"]
+    WindowsGit["Pinned RecompCore<br/>and DolRecomp checkout"]
+    AppleGit["Pinned RecompCore<br/>and DolRecomp checkout"]
     Dawn["build/deps<br/>verified mobile Dawn archive"]
-    MacDawn["Desktop Aurora resolves<br/>macOS Dawn later"]
 
     Profile --> Linux
     Profile --> Windows
     Profile --> Apple
-    Linux -->|fetch and verify| RecompCore
-    Windows -->|fetch and verify| RecompCore
-    Apple -->|fetch and verify| RecompCore
-    RecompCore -->|sync pinned submodule| DolRecomp
-    Apple -->|choose renderer package path| AppleTarget
-    AppleTarget -->|iOS / tvOS| Dawn
-    AppleTarget -->|macOS| MacDawn
+    Linux -->|fetch and verify| LinuxGit
+    Windows -->|fetch and verify| WindowsGit
+    Apple -->|fetch and verify| AppleGit
+    AppleGit -. "iOS / tvOS only: fetch additionally" .-> Dawn
     Lock -. "records origins and roles" .-> Profile
 ```
 
-Linux and Windows have separate implementations that produce the same pinned
-Git checkout. Apple performs that same checkout, then selects a second,
-target-specific renderer path: iOS/tvOS prepare the verified mobile Dawn
-archive here, while macOS leaves Dawn resolution to desktop Aurora.
+Each platform has a separate implementation that produces the same pinned
+RecompCore and DolRecomp checkout. Apple completes that checkout first; iOS
+and tvOS then fetch the verified mobile Dawn archive as an additional
+dependency. macOS performs no additional Dawn fetch in this stage because
+desktop Aurora resolves its macOS package later.
 
 ### Dependency declarations
 
