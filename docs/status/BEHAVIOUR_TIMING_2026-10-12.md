@@ -12,7 +12,10 @@ cycle budget is nearly spent. What every block still pays on the fast path:
 
 - `ctx->pc` stored at the block's start;
 - `dolrecomp_block_can_precharge`, the turn's cycle budget compared, `ctx->downcount` decremented;
-- the guest's registers read from and written to `ctx->gpr[]` in memory at almost every instruction;
+- the guest's registers in `ctx->gpr[]`; with `BLUEWAKE_FIXED_CPU` the CPU state and guest RAM are separate
+  globals, so the compiler already keeps most of them in host registers inside a block (the busiest chunk compiled
+  for the Mac: about 6,400 32-bit loads and 9,300 stores at an offset in 233,000 lines of assembly, many of them
+  the `ctx->pc` store at offset 640);
 - at each direct call, `bw_direct_call_ready` before the call and on the return (inlined at 500,773 sites; moving it
   out of line was no faster on the M3 Max, see [SPEED_PROFILE](SPEED_PROFILE_2026-10-11.md)).
 
@@ -24,9 +27,9 @@ speed comes from. The equivalent here, behind a translator switch:
 1. **Cycles charged per block from a table, checked only at loop back-edges and calls.** Today's per-block budget check
    becomes a check where control can loop. The decrementer, the audio DMA and VI keep their own time from the
    charged cycles, so the game's clock still advances; it advances in larger steps.
-2. **Guest registers kept in host registers inside a block,** written back to `ctx` only at the block's exits, at
-   calls into the host and before memory instructions that can reach MMIO. This is the largest remaining cost and
-   needs the translator to know which instructions can leave the block.
+2. **Guest registers kept in host registers across blocks,** not only inside one: the compiler already does it
+   inside a block (see above), so what's left is the write-back and reload at every block boundary and call. Needs
+   the translator to know which instructions can leave the block.
 3. **No `ctx->pc` store on the fast path;** the exit sets it.
 
 ## How it would be judged
