@@ -404,4 +404,4 @@ TBD.
 
 TBD.
 
-[build-details-follow-up]: FOLLOW_UP_PR_URL
+[build-details-follow-up]: https://github.com/cforain/bluewake/pull/1
