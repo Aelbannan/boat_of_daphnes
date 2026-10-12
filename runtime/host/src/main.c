@@ -340,7 +340,7 @@ static u64 g_opening_complete_retrace;
 static bool g_outset_room_requested;
 static u64 g_outset_room_request_retrace;
 static u32 g_overlap_last_phase = UINT32_MAX;
-// BLUEWAKE_LAZY_OVERLAP=1 (off by default): the scene overlap watch below
+// The lazy overlap watch (on by default since October 12; BLUEWAKE_LAZY_OVERLAP=0 turns it off): the scene overlap watch below
 // (g_overlap_last_phase, g_overlap_terminal_phase, read only by diagnostics and
 // test routes) is sampled by the edge service and once a turn, instead of being
 // tested at every direct call and block edge, where it was about 7% of the game
@@ -2019,6 +2019,7 @@ static bool g_direct_call_trace;
 // the draw tags' addresses whether or not those features are on.
 static BwHostSkipFast g_skip_fast = {0u, {0u, 0u}, {0xFFFFFFFFu, 0xFFFFFFFFu}, {0u, 0u}};
 static bool g_skip_fast_on;
+static bool g_skip_verify; // BLUEWAKE_DIRECT_SKIP_VERIFY=1: the counts at exit
 static void host_skip_fast_refresh(void) {
     if (!g_skip_fast_on)
         return;
@@ -7561,9 +7562,9 @@ int main(int argc, char** argv) {
             deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
-        g_lazy_overlap = lazy != NULL && strcmp(lazy, "1") == 0;
-        if (g_lazy_overlap)
-            fprintf(stderr, "[chassis] lazy overlap watch: on (BLUEWAKE_LAZY_OVERLAP)\n");
+        g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
+        fprintf(stderr, "[chassis] lazy overlap watch: %s\n",
+                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)");
     }
     const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
     g_cache_flush_fallback_enabled = cache_flush != NULL && strcmp(cache_flush, "1") == 0;
@@ -7979,6 +7980,7 @@ int main(int argc, char** argv) {
         want_fast = false;
 #endif
         const bool verify = verify_env != NULL && strcmp(verify_env, "1") == 0;
+        g_skip_verify = verify;
         bool enabled;
         if (want_fast) {
             g_skip_fast_on = true;
@@ -15781,7 +15783,7 @@ int main(int argc, char** argv) {
 
     printf("[run] stopped: %s after %llu blocks at pc=%#010x\n",
            stop_reason ? stop_reason : "normal", blocks, cpu.pc);
-    if (g_skip_fast_on) {
+    if (g_skip_fast_on && g_skip_verify) {
         typedef void (*SkipCountsFn)(unsigned long long*, unsigned long long*, unsigned long long*);
         SkipCountsFn skip_counts = (SkipCountsFn)dlsym(lib, "bluewake_composite_direct_skip_counts");
         unsigned long long unsafe = 0ull, conservative = 0ull, inline_answers = 0ull;

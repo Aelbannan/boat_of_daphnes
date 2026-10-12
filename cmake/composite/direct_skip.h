@@ -5,7 +5,8 @@
  * direct call answers the host's per-call question (host_direct_can_skip)
  * itself, without a call into the host. Shared by the host and the module.
  *
- * Only with the lazy overlap watch (BLUEWAKE_LAZY_OVERLAP=1, main.c), when the
+ * Only with the lazy overlap watch (on by default, BLUEWAKE_LAZY_OVERLAP=0 turns it
+ * off; main.c), when the
  * host's answer depends on the address alone. simple is nonzero only while no
  * diagnostic is on and the jump button is not armed; the host refreshes it
  * where either can change, and with it off the module asks the host as before.
