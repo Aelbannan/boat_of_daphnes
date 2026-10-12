@@ -30,37 +30,43 @@ source code.
 
 ## High-level view
 
-The build produces two principal native components: the BlueWake platform
-executable and a translated game module. On Linux these are `bluewake` and
-`gGZLE01_recomp.so`. They are separate files, but the executable loads the game
-module into the same application process at runtime.
+Every supported target produces two principal native components: a BlueWake
+platform application and a translated game module. Their file formats and
+packaging differ by platform, but the application loads the module into the
+same process at runtime.
 
 ```mermaid
 flowchart TD
     subgraph Build["Build time"]
         Disc["Supported GameCube disc"]
-        Extract["Validate and extract<br/>DOL, REL modules, and required data"]
+        Extract["Validate and extract<br/>DOL and REL modules"]
         Translator["DolRecomp<br/>PowerPC translation"]
-        Generated["Generated C<br/>plus repeatable preparations and patches"]
+        Generated["Generated C<br/>composite source tree"]
+        Prepared["Mods and verified<br/>source preparations"]
+        Training["Optional local PGO training"]
         HostSource["BlueWake host and<br/>platform source"]
         RuntimeSource["RecompCore / GXRuntime<br/>and Aurora"]
-        Training["Optional local PGO training<br/>instrumented headless playbacks"]
-        GameCompiler["Host compiler"]
-        AppCompiler["Host compiler"]
-        GameModule["Native translated game module<br/>gGZLE01_recomp.*"]
-        Executable["BlueWake platform executable"]
-        Package["Personal runnable app folder"]
-        AppImage["Optional Linux AppImage<br/>disc data excluded"]
+        Target{"Target platform"}
+        LinuxBuild["Linux x86-64 build"]
+        WindowsBuild["Windows x86-64 build"]
+        MacBuild["macOS arm64 build"]
+        IOSBuild["iOS / iPadOS arm64 build"]
+        TVBuild["tvOS arm64 build<br/>experimental"]
+        LinuxPackage["bluewake + .so<br/>app folder or AppImage"]
+        WindowsPackage["BlueWake.exe + .dll<br/>app folder"]
+        MacPackage["BlueWake.app + .dylib"]
+        IOSPackage["BlueWake.app / IPA + .dylib"]
+        TVPackage["BlueWake.app / IPA + .dylib"]
 
-        Disc --> Extract --> Translator --> Generated --> GameCompiler --> GameModule
-        Generated --> Training --> GameCompiler
-        HostSource --> AppCompiler
-        RuntimeSource --> AppCompiler
-        AppCompiler --> Executable
-        Extract --> Package
-        GameModule --> Package
-        Executable --> Package
-        Package -->|"select and bundle redistributable files"| AppImage
+        Disc --> Extract --> Translator --> Generated --> Prepared --> Target
+        Prepared --> Training --> Target
+        HostSource --> Target
+        RuntimeSource --> Target
+        Target --> LinuxBuild --> LinuxPackage
+        Target --> WindowsBuild --> WindowsPackage
+        Target --> MacBuild --> MacPackage
+        Target --> IOSBuild --> IOSPackage
+        Target --> TVBuild --> TVPackage
     end
 
     subgraph Runtime["Runtime — one application process"]
@@ -84,9 +90,12 @@ flowchart TD
         Assets -->|"loaded into guest state"| Guest
     end
 
-    Package --> Startup
-    AppImage --> Startup
-    GameModule -. "loaded at startup" .-> Game
+    LinuxPackage --> Startup
+    WindowsPackage --> Startup
+    MacPackage --> Startup
+    IOSPackage --> Startup
+    TVPackage --> Startup
+    Startup -. "loads the target's native game module" .-> Game
     Disc -. "supplies runtime game data" .-> Assets
 ```
 
@@ -97,90 +106,135 @@ architectural model.
 
 ### Build toolchain
 
-The diagram deliberately groups many commands into a few components. The list
-below expands its **Build time** subgraph using the current Linux builder as the
-concrete reference. Windows and Apple builds preserve the same broad boundary
-between translated game code and the host application, but use their own build
-and packaging scripts.
+The **Build time** subgraph has a shared front half and a platform-specific
+back half. The numbered components below use the same names as the diagram.
 
-1. **Build coordinator — the complete `Build time` subgraph.**
-   [`scripts/linux/build.py`](../../scripts/linux/build.py) validates the tools
-   and target CPU, selects the build options, runs each stage, records logs and
-   writes build provenance. A native build uses the tools installed on the
-   developer's machine. `--ci-container` runs the same builder inside the
-   environment defined by
-   [`scripts/linux/Dockerfile`](../../scripts/linux/Dockerfile).
+1. **Build coordination — the complete `Build time` subgraph.**
+   The [Apple builder](../../scripts/builder/build.sh),
+   [Linux builder](../../scripts/linux/build.py), and
+   [Windows builder](../../scripts/windows/build.py) validate their host tools,
+   run the stages in order, retain reusable work, write logs, and record build
+   provenance. They implement the same broad pipeline with target-specific
+   compilation and packaging.
 
-2. **Pinned dependencies — `Translator` and `RuntimeSource`.**
-   The builder reads the exact RecompCore and DolRecomp revisions from
-   [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh),
-   checks them out under `ref/recompcore`, and refuses a modified dependency
-   tree. [`config/dependencies.lock.json`](../../config/dependencies.lock.json)
-   records their origins and roles. RecompCore supplies the compatibility
-   runtime, GXRuntime, Aurora, DSP sources, and the pinned DolRecomp submodule.
+2. **Pinned inputs — `Translator` and `RuntimeSource`.**
+   [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh)
+   is the source used by all three builders for the exact RecompCore,
+   DolRecomp, and verified composite revisions. RecompCore supplies GXRuntime,
+   Aurora, the DSP implementation, and its DolRecomp submodule.
+   [`config/dependencies.lock.json`](../../config/dependencies.lock.json)
+   records dependency origins and roles.
 
-3. **Disc validation and extraction — `Disc` → `Extract`.**
-   The builder accepts an uncompressed `.iso` or `.gcm`, verifies `GZLE01`
-   revision 0, and builds the extractor declared in
-   [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt). The extractor produces
-   `main.dol` and 415 REL modules. The original disc remains the source of the
-   game's runtime data and assets.
+3. **Game extraction — `Disc` → `Extract`.**
+   Each builder verifies the supported `GZLE01` revision-0 disc and extracts
+   `main.dol` plus 415 REL modules. The DOL is the game's main executable; the
+   REL files are loadable game modules. The disc remains the source of the
+   original runtime data and assets.
 
-4. **PowerPC translation — `Extract` → `Translator` → `Generated`.**
-   The builder first compiles the pinned
-   [DolRecomp](../../ref/recompcore/DolRecomp) tool. It then invokes DolRecomp's
-   GameCube/Gekko C backend for the main DOL and every REL. This output is a
-   mechanical representation of the original instructions, not reconstructed
-   game source.
+4. **Static translation — `Extract` → `Translator` → `Generated`.**
+   The pinned [DolRecomp](../../ref/recompcore/DolRecomp) tool translates the
+   PowerPC code from the DOL and RELs with its GameCube/Gekko C backend. The
+   result mechanically represents the original instructions; it is not
+   reconstructed Nintendo source code.
 
-5. **Composite generation and preparation — `Generated`.**
+5. **Composite source — `Generated`.**
    [`scripts/generate_composite.py`](../../scripts/generate_composite.py)
-   combines the translated DOL and REL outputs into one source tree with the
-   module metadata and dispatch structures needed at runtime. The builder
-   verifies that tree against the profile's expected digest, then applies the
-   selected mods and repeatable, source-verified preparation steps. The
-   original translation remains in place wherever an optimization's checks do
-   not permit a replacement.
+   combines the translated DOL and REL output with module metadata and dispatch
+   structures. Every builder checks this source tree against the same expected
+   digest before continuing.
 
-6. **Profile-guided optimization — `Generated` → `Training` → `GameCompiler`.**
-   Unless disabled, the builder compiles an instrumented module, runs private
-   headless playbacks, merges their LLVM profiles with `llvm-profdata`, and
-   supplies the resulting profile to the final module compilation. Training
-   data stays in the local build directory.
+6. **Build-time modifications — `Generated` → `Prepared`.**
+   The builders add selected widescreen and Better Wind Waker variants, then
+   apply enabled source preparations and certified native helpers. These are
+   repeatable transformations rather than manual edits to generated files; a
+   guarded optimization leaves the translated implementation in place when its
+   expected input does not match.
 
-7. **Game-module compilation — `Generated` → `GameCompiler` → `GameModule`.**
-   CMake and Ninja drive Clang and LLD over the prepared composite source and
-   the required runtime interfaces. On Linux the result is
-   `gGZLE01_recomp.so`: native machine code that still operates on guest CPU
-   state and guest memory.
+7. **Optimization training — `Prepared` → `Training` → `Target`.**
+   The normal personal-build paths can compile an instrumented module, run
+   isolated headless playbacks, merge the resulting LLVM profiles, and feed
+   them into the final compilation. Training is optional and platform-aware;
+   its private profiles remain in the local build directory.
 
-8. **Host application compilation — `HostSource` + `RuntimeSource` →
-   `AppCompiler` → `Executable`.**
-   [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt) combines the Linux entry
-   layer, the shared host, RecompCore/GXRuntime, Aurora, SDL, and the DSP
-   implementation. CMake and Ninja drive Clang and the configured system
-   linker, producing the Linux `bluewake` executable separately from the
-   translated game module.
+8. **Target build — `HostSource` + `RuntimeSource` + `Prepared` → `Target`.**
+   CMake and Ninja build the prepared game source as a native dynamic module
+   and compile the shared host with the selected platform entry layer,
+   GXRuntime/Aurora, SDL, audio support, and native operating-system APIs. The
+   target branches below identify the concrete builders and artifacts.
 
-9. **Runnable package — `Extract` + `GameModule` + `Executable` → `Package`.**
-   The builder assembles `build/linux/BlueWake/` by default. This personal app
-   folder contains the executable, translated module, required support files,
-   prepared DOL and REL data, and the user's disc image. It must not be shared.
+#### Linux (x86-64)
 
-10. **Optional AppImage — `Package` → `AppImage`.**
-    [`scripts/linux/make_appimage.sh`](../../scripts/linux/make_appimage.sh)
-    selects the host, translated module, DSP files, desktop metadata, and
-    redistributable libraries. It deliberately excludes the disc image and
-    extracted DOL/REL data; the AppImage setup flow obtains those from the
-    player's disc on first launch. The script then creates the AppImage and its
-    `.zsync` metadata, and the builder runs the
-    [ABI check](../../scripts/linux/check_appimage_abi.py).
+**Diagram path:** `Target` → `LinuxBuild` → `LinuxPackage`.
+
+[`scripts/linux/build.py`](../../scripts/linux/build.py) drives Clang, CMake,
+Ninja, and LLD, while [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt)
+builds the shared host with the Linux entry and setup layers. The principal
+artifacts are `bluewake` and `gGZLE01_recomp.so`, assembled by default in
+`build/linux/BlueWake/`. The optional
+[`make_appimage.sh`](../../scripts/linux/make_appimage.sh) path bundles those
+artifacts but excludes the disc and extracted DOL/REL files; first-run setup
+imports them from the player's disc. `--ci-container` uses the shared
+[`scripts/linux/Dockerfile`](../../scripts/linux/Dockerfile) environment.
+
+#### Windows (x86-64)
+
+**Diagram path:** `Target` → `WindowsBuild` → `WindowsPackage`.
+
+[`scripts/windows/build.py`](../../scripts/windows/build.py) drives the Visual
+Studio LLVM/Clang toolchain, CMake, and Ninja.
+[`windows/CMakeLists.txt`](../../windows/CMakeLists.txt) adds the Windows entry,
+settings, crash handling, resources, and POSIX compatibility layer to the
+shared host. Dawn targets Direct3D 12 or Vulkan. The builder packages
+`BlueWake.exe`, `gGZLE01_recomp.dll`, their runtime DLLs, and the personal game
+inputs under `build/windows/BlueWake/` by default.
+
+#### macOS (Apple silicon)
+
+**Diagram path:** `Target` → `MacBuild` → `MacPackage`.
+
+[`scripts/builder/build.sh`](../../scripts/builder/build.sh) with
+`--platform macos` uses the Xcode macOS SDK and Apple Clang for arm64. It builds
+the shared host and `gGZLE01_recomp.dylib`, then
+[`package_macos.py`](../../scripts/builder/package_macos.py) creates and signs
+`build/macos/packaged/BlueWake.app`. A personal Mac app includes the translated
+module, extracted DOL/REL files, and disc, while player saves remain outside the
+application bundle.
+
+#### iPhone and iPad (iOS/iPadOS, arm64)
+
+**Diagram path:** `Target` → `IOSBuild` → `IOSPackage`.
+
+The default [`scripts/builder/build.sh`](../../scripts/builder/build.sh) target
+uses the iPhoneOS SDK and Apple Clang. [`apple/ios/CMakeLists.txt`](../../apple/ios/CMakeLists.txt)
+adds the UIKit lifecycle, touch controls, controller support, first-run import,
+and mobile platform services to the shared host. The translated
+`gGZLE01_recomp.dylib` is embedded under the app's `Frameworks` directory. The
+builder can produce a signed `.app` or an unsigned IPA for a sideloading tool;
+the IPA excludes the player's disc and extracted game files, which are imported
+on the device.
+
+#### Apple TV (tvOS, arm64; experimental)
+
+**Diagram path:** `Target` → `TVBuild` → `TVPackage`.
+
+[`scripts/tvos/build_device.sh`](../../scripts/tvos/build_device.sh) selects the
+tvOS branch of the Apple builder. It uses the AppleTVOS SDK, the controller-first
+entry path in [`apple/ios/CMakeLists.txt`](../../apple/ios/CMakeLists.txt), and a
+currently retagged pinned Dawn iOS archive as a development bridge. It produces
+a tvOS `.app` with the translated dylib and can sign, install, transfer the
+player's disc into the app container, and launch it through `devicectl`. This
+target remains experimental and does not include the iPhone/iPad touch shell.
 
 ### Source anchors
 
-- [Linux build pipeline](../../scripts/linux/build.py)
-- [Linux application composition](../../linux/CMakeLists.txt)
-- [Linux startup and default paths](../../linux/src/linux_entry.c)
+- [Shared Apple build pipeline](../../scripts/builder/build.sh)
+- [BlueWake build profile and revision pins](../../scripts/builder/profiles/bluewake.sh)
 - [Composite DOL and REL generation](../../scripts/generate_composite.py)
 - [Shared host runtime](../../runtime/host/src/main.c)
 - [Pinned build dependencies](../../config/dependencies.lock.json)
+- [Linux builder](../../scripts/linux/build.py) and
+  [application composition](../../linux/CMakeLists.txt)
+- [Windows builder](../../scripts/windows/build.py) and
+  [application composition](../../windows/CMakeLists.txt)
+- [Apple application composition](../../apple/ios/CMakeLists.txt) and
+  [macOS packaging](../../scripts/builder/package_macos.py)
