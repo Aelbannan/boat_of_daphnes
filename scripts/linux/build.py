@@ -1062,10 +1062,9 @@ int main(void) {{
             "BLUEWAKE_DSP_COEF": str(self.recompcore / "Data/Sys/GC/dsp_coef.bin"),
             "BLUEWAKE_MAX_RETRACES": str(tour_end), "BLUEWAKE_WALL_PACE": "0",
             "BLUEWAKE_PLAYER_PROBE": "1", "BLUEWAKE_PAD_BUTTONS": "0x0100",
-            # The player-control milestone below waits for the scene overlap
-            # phase to reach 6, which lasts only a moment: the lazy overlap
-            # watch, sampling once a turn, misses it, so it is off here.
-            "BLUEWAKE_LAZY_OVERLAP": "0",
+            # The lazy overlap watch stays on (the app's default): with the player
+            # probe, the app keeps the full watch until the player-control milestone
+            # below, then trains the lazy path as it runs in play.
             "BLUEWAKE_PAD_PULSE_ON_TITLE_READY": "1", "BLUEWAKE_PAD_PULSE_LENGTH": "2",
             "BLUEWAKE_PAD_CONFIRM_EVENT": "any",
             "BLUEWAKE_PAD_SCRIPT": ",".join(opening + tour_moves),
