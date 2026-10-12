@@ -112,7 +112,7 @@ final class Overlay extends FrameLayout implements TouchControlsView.Listener, M
         launchRatio = settings.bool(Settings.MOD_WIDESCREEN_1610, false) ? 1.6f
                 : settings.bool(Settings.MOD_WIDESCREEN, false) ? 16f / 9f : 4f / 3f;
         for (String key : new String[] {Settings.MOD_WIDESCREEN, Settings.MOD_WIDESCREEN_1610,
-                Settings.MOD_HD_TEXTURES, Settings.MOD_BETTERWW})
+                Settings.MOD_HD_TEXTURES, Settings.MOD_BETTERWW, Settings.HD_LOOK})
             launchMods.put(key, settings.bool(key, false));
 
         touch = new TouchControlsView(activity, settings);
@@ -804,7 +804,8 @@ final class Overlay extends FrameLayout implements TouchControlsView.Listener, M
                 modToggle("Widescreen 16:9", "Shows more of the world on wide screens", Settings.MOD_WIDESCREEN),
                 modToggle("Widescreen 16:10", "For 16:10 screens, such as a tablet", Settings.MOD_WIDESCREEN_1610),
                 modToggle("HD Texture Pack", packDetail, Settings.MOD_HD_TEXTURES),
-                modToggle("Better Wind Waker", "Swift Sail, instant text and more", Settings.MOD_BETTERWW)))));
+                modToggle("Better Wind Waker", "Swift Sail, instant text and more", Settings.MOD_BETTERWW),
+                modToggle("Wind Waker HD Look", "Far islands, shading, cloud shadows, bloom", Settings.HD_LOOK)))));
         MenuView.Item bww = betterWWSettingsMenu();
         if (bww != null) children.add(bww);
         children.add(MenuView.Item.inline(new ArrayList<>(Arrays.asList(
@@ -870,7 +871,8 @@ final class Overlay extends FrameLayout implements TouchControlsView.Listener, M
             settings.remapReset();
             settings.applyNow();
         }));
-        return menu("Controller", camera, MenuView.Item.menu("Button Mapping", remaps));
+        return menu("Controller", camera, MenuView.Item.menu("Button Mapping", remaps),
+                controllerToggle("D-pad in Items and Quest Status", Settings.DPAD_MENUS));
     }
 
     private MenuView.Item controllerToggle(String title, String key) {

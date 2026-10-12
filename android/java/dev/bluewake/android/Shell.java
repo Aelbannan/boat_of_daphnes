@@ -29,6 +29,8 @@ final class Shell {
     static native void nativeApplySettings(int renderScale, int anisotropy, boolean invertX, boolean invertY,
                                            int[] natives, int smoothMotion);
     static native void nativeThermal(int status);
+    /** The D-pad in Items and Quest Status (runtime/host/src/dpad_menus.h), applied at once. */
+    static native void nativeSetDpadMenus(boolean on);
     static native boolean nativeGameRunning();
     /** Better Wind Waker's option at a position: {name, title, default_on, on} ("1" or "0"), or null. */
     static native String[] nativeGameOption(int position);

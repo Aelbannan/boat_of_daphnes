@@ -36,6 +36,9 @@ extern "C" {
 #include "dolphin_save_import.h"
 #include "touch_controls.h"
 
+// runtime/host/src/dpad_menus.h, declared here: that header brings in the
+// guest CPU's, which this file has no use for (as controller_settings.mm does).
+extern "C" void bluewake_dpad_menus_reload(void);
 extern "C" const char* bluewake_game_options_describe(uint32_t position, const char** title, bool* default_on,
                                                       bool* on);
 
@@ -199,6 +202,24 @@ JNIEXPORT void SHELL(nativeApplySettings)(JNIEnv* env, jclass, jint render_scale
 }
 
 JNIEXPORT void SHELL(nativeThermal)(JNIEnv*, jclass, jint status) { g_thermal = status; }
+
+// The D-pad in Items and Quest Status, as controller_settings.mm sets it: the
+// environment, then dpad_menus.c reads it again. On SDL's thread, where the other
+// settings apply (bluewake_settings_changed); before the game starts the launch
+// environment carries it (Settings.launchEnvironment).
+static std::atomic<int> g_dpad_menus{-1};
+static void SDLCALL apply_dpad_menus(void*) {
+    const int on = g_dpad_menus.load();
+    if (on < 0)
+        return;
+    setenv("BLUEWAKE_DPAD_MENUS", on ? "1" : "0", 1);
+    bluewake_dpad_menus_reload();
+}
+JNIEXPORT void SHELL(nativeSetDpadMenus)(JNIEnv*, jclass, jboolean on) {
+    g_dpad_menus = on == JNI_TRUE ? 1 : 0;
+    if (g_shell_ready.load() && !SDL_RunOnMainThread(apply_dpad_menus, nullptr, false))
+        std::fprintf(stderr, "[android] D-pad menus change not handed to SDL: %s\n", SDL_GetError());
+}
 
 JNIEXPORT jboolean SHELL(nativeGameRunning)(JNIEnv*, jclass) { return g_shell_ready.load() ? JNI_TRUE : JNI_FALSE; }
 

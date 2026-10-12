@@ -44,6 +44,8 @@ final class Settings {
     static final String MOD_WIDESCREEN_1610 = "BlueWake.Mod.Widescreen1610";
     static final String MOD_HD_TEXTURES = "BlueWake.Mod.HDTextures";
     static final String MOD_BETTERWW = "BlueWake.Mod.BetterWW";
+    static final String HD_LOOK = "BlueWake.HDLook";           // applies at launch (runtime/host/src/hd_look.h)
+    static final String DPAD_MENUS = "BlueWake.DpadMenus";     // applies at once (runtime/host/src/dpad_menus.h)
     static final String OPTION_PREFIX = "BlueWake.Option.";
     private static final String MIGRATED = "BlueWake.Android.MigratedSettingsIni";
 
@@ -131,6 +133,9 @@ final class Settings {
         }
         Shell.nativeApplySettings(renderScale(), integer(ANISOTROPY, 0), bool(INVERT_X, false),
                 bool(INVERT_Y, false), natives, smoothMotion());
+        // The D-pad in Items and Quest Status: once the player has chosen, the choice wins over the environment
+        // (controller_settings.mm).
+        if (has(DPAD_MENUS)) Shell.nativeSetDpadMenus(bool(DPAD_MENUS, false));
     }
 
     // ------------------------------------------------------------ touch layout
@@ -181,6 +186,9 @@ final class Settings {
         //noinspection ResultOfMethodCallIgnored
         pack.mkdirs();
         if (bool(MOD_HD_TEXTURES, false)) env.put("DOL_AURORA_TEXTURE_PACK", pack.getAbsolutePath());
+        // The Wind Waker HD look (runtime/host/src/hd_look.h), as ios_entry.m sets it.
+        if (bool(HD_LOOK, false)) env.put("BLUEWAKE_HD_LOOK", "1");
+        if (has(DPAD_MENUS)) env.put("BLUEWAKE_DPAD_MENUS", bool(DPAD_MENUS, false) ? "1" : "0");
         if (bool(MOD_BETTERWW, false)) {
             // android_entry.c keeps it only if the game module was built with
             // Better Wind Waker's options (bluewake_composite_option_count).
