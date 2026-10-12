@@ -96,7 +96,7 @@ class TrainingTest(unittest.TestCase):
                     self.assertEqual(env["BLUEWAKE_DATA_DIR"], str(run))
                     self.assertEqual(env["BLUEWAKE_RENDERER"], "headless")
                     self.assertEqual(env["DOL_AURORA_FRAME_INTERP"], "0")
-                    self.assertEqual(env["BLUEWAKE_OVERLAP_OBSERVATION"], "1")
+                    self.assertEqual(env["BLUEWAKE_LAZY_OVERLAP"], "0")
                     self.assertTrue(env["LLVM_PROFILE_FILE"].startswith(str(run)))
                     if profile: (run / "fixture.profraw").write_bytes(b"fixture")
                     log = self.b.logs / "playback.log"
