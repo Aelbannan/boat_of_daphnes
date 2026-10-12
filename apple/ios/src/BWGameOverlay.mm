@@ -270,6 +270,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
             @BW_MOD_WIDESCREEN_1610_KEY : @([d boolForKey:@BW_MOD_WIDESCREEN_1610_KEY]),
             @BW_MOD_HD_TEXTURES_KEY : @([d boolForKey:@BW_MOD_HD_TEXTURES_KEY]),
             @BW_MOD_BETTERWW_KEY : @([d boolForKey:@BW_MOD_BETTERWW_KEY]),
+            @BW_HD_LOOK_KEY : @([d boolForKey:@BW_HD_LOOK_KEY]),
         };
         _buttons = [NSMutableArray array];
         _editGestures = [NSMutableArray array];
@@ -720,6 +721,7 @@ static NSUInteger g_packFiles = NSNotFound;
                   @BW_MOD_WIDESCREEN_1610_KEY),
         modToggle(@"HD Texture Pack", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         modToggle(@"Better Wind Waker", bwwDetail, @"sailboat", @BW_MOD_BETTERWW_KEY),
+        modToggle(@"Wind Waker HD Look", @"Islands on the horizon from further away", @"sparkles", @BW_HD_LOOK_KEY),
     ]];
     UIAction* installPack = [UIAction actionWithTitle:@"Install Texture Pack…"
                                                 image:[UIImage systemImageNamed:@"square.and.arrow.down"]

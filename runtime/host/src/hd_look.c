@@ -1,5 +1,6 @@
 #include "hd_look.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +96,39 @@ static void islands(CPUState* cpu, bool on, unsigned long long retrace) {
     }
 }
 
+// BLUEWAKE_HD_TRACE=1: every 300 retraces, each island model within its show
+// distance or loaded: its room, Link's distance, the distance, whether it is
+// loaded and its fade (0 to 255).
+static void trace_islands(CPUState* cpu, unsigned long long retrace) {
+    float px = 0.0f, pz = 0.0f;
+    bool player = false;
+    u32 node = mem_read32(cpu, kActorQueue);
+    for (u32 n = 0; n < kMaxActors && guest_pointer(node) && !player; ++n, node = mem_read32(cpu, node + kNodeNext)) {
+        const u32 actor = mem_read32(cpu, node + kTagActor);
+        if (guest_pointer(actor) && mem_read16(cpu, actor + kProcName) == 0x00A9u) {  // fpcNm_PLAYER_e
+            px = read_float(cpu, actor + 0x1F8u);
+            pz = read_float(cpu, actor + 0x200u);
+            player = true;
+        }
+    }
+    if (!player)
+        return;
+    node = mem_read32(cpu, kActorQueue);
+    for (u32 n = 0; n < kMaxActors && guest_pointer(node); ++n, node = mem_read32(cpu, node + kNodeNext)) {
+        const u32 actor = mem_read32(cpu, node + kTagActor);
+        if (!guest_pointer(actor) || mem_read16(cpu, actor + kProcName) != kLodBg)
+            continue;
+        const float dx = read_float(cpu, actor + 0x1F8u) - px, dz = read_float(cpu, actor + 0x200u) - pz;
+        const float dist = sqrtf(dx * dx + dz * dz), shown = read_float(cpu, actor + kScaleX);
+        const u32 model = mem_read32(cpu, actor + 0x29Cu);
+        if (dist < shown || model != 0u)
+            fprintf(stderr, "[hd-look] retrace=%llu room %u: %.0f away, shown within %.0f, %s, fade %u, pause %u mount 0x%08X step 0x%08X\n", retrace,
+                    mem_read32(cpu, actor + 0xB0u), dist, shown, model ? "loaded" : "not loaded",
+                    mem_read8(cpu, actor + 0x2A8u), mem_read8(cpu, actor + 0x0Bu), mem_read32(cpu, actor + 0x2B4u),
+                    mem_read32(cpu, actor + 0x298u));
+    }
+}
+
 void bluewake_hd_look_retrace(CPUState* cpu) {
     static unsigned long long retrace;
     retrace++;
@@ -103,4 +137,6 @@ void bluewake_hd_look_retrace(CPUState* cpu) {
     if (bluewake_hd_distant_islands || g_islands_were_on)
         islands(cpu, bluewake_hd_distant_islands, retrace);
     g_islands_were_on = bluewake_hd_distant_islands;
+    if (g_trace && retrace % 300u == 0u)
+        trace_islands(cpu, retrace);
 }

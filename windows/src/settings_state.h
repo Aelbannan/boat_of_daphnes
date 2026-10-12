@@ -42,6 +42,8 @@ struct Settings {
     // water runs out, and a 30-minute timer for the next scoop. Both off.
     bool forest_keep_trees = false;
     bool forest_30_minutes = false;
+    // The Wind Waker HD look (hd_look.h): islands seen from further away. Off.
+    bool hd_look = false;
     // Elliott Tate's controller feedback: off, classic, enhanced.
     int haptics = 2;
     int haptics_strength = 80;
@@ -97,6 +99,7 @@ inline void bw_settings_keep_edits(Settings& saved, const Settings& before, cons
     if (before.climb_stamina != session.climb_stamina) saved.climb_stamina = session.climb_stamina;
     if (before.forest_keep_trees != session.forest_keep_trees) saved.forest_keep_trees = session.forest_keep_trees;
     if (before.forest_30_minutes != session.forest_30_minutes) saved.forest_30_minutes = session.forest_30_minutes;
+    if (before.hd_look != session.hd_look) saved.hd_look = session.hd_look;
     if (before.haptics != session.haptics) saved.haptics = session.haptics;
     if (before.haptics_strength != session.haptics_strength) saved.haptics_strength = session.haptics_strength;
     if (before.haptics_triggers != session.haptics_triggers) saved.haptics_triggers = session.haptics_triggers;
