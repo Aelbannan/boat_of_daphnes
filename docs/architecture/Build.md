@@ -11,6 +11,9 @@
   - [Windows builder](#windows-builder)
   - [Apple builder](#apple-builder)
 - [2. Fetch](#2-fetch)
+  - [Dependency declarations](#dependency-declarations)
+  - [RecompCore and DolRecomp checkout](#recompcore-and-dolrecomp-checkout)
+  - [Apple Dawn package](#apple-dawn-package)
 - [3. Extract](#3-extract)
 - [4. Translate](#4-translate)
 - [5. Compose and prepare](#5-compose-and-prepare)
@@ -74,7 +77,7 @@ host and a separate native module containing the translated game code.
 | Stage | Main code or tool | What it does | Result | Artifact |
 | --- | --- | --- | --- | --- |
 | Coordinate | [Platform builders](#1-coordinate) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Ordered build with pinned inputs and provenance | Build logs under `OUT/logs/` |
-| Fetch | Git and [`dependencies.lock.json`](../../config/dependencies.lock.json) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source | Checkout under `ref/recompcore/` |
+| Fetch | Git and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source | Checkout under `ref/recompcore/` |
 | Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc | `OUT/game/main.dol` and `OUT/game/rels/` |
 | Translate | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated C for PowerPC code | Generated tree under `OUT/translated/` |
 | Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
@@ -159,13 +162,56 @@ supported game revision.
 
 ## 2. Fetch
 
-The builder checks out exact RecompCore and DolRecomp revisions under
-`ref/recompcore`. It rejects modified dependency source so generated output
-can be traced to the recorded inputs.
+```mermaid
+flowchart TD
+    Profile["bluewake.sh<br/>executable pins"]
+    Lock["dependencies.lock.json<br/>dependency record"]
+    Desktop["Linux / Windows<br/>dependencies()"]
+    Apple["Apple<br/>profile_dependencies()"]
+    RecompCore["ref/recompcore<br/>exact detached revision"]
+    DolRecomp["ref/recompcore/DolRecomp<br/>exact submodule revision"]
+    Dawn["build/deps<br/>verified Dawn archive"]
 
-RecompCore supplies the compatibility runtime, GXRuntime, Aurora, DSP sources,
-and DolRecomp. Origins and roles are recorded in
-[`config/dependencies.lock.json`](../../config/dependencies.lock.json).
+    Profile --> Desktop
+    Profile --> Apple
+    Desktop --> RecompCore
+    Apple --> RecompCore
+    RecompCore --> DolRecomp
+    Apple -->|iOS / tvOS| Dawn
+    Lock -. "records origins and roles" .-> Profile
+```
+
+### Dependency declarations
+
+The build profile is the source builders execute or parse. The lock file is a
+repository-wide provenance and audit record; it does not drive these fetches.
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Declare executable pins | Records the RecompCore URL and revision, DolRecomp revision, and Dawn URL/checksum used by the builders. | One dependency selection across platforms | `RECOMPCORE_*`, `DOLRECOMP_SHA`, `DAWN_*` | [Build-profile pins](../../scripts/builder/profiles/bluewake.sh#L37-L44) |
+| Record dependency provenance | Documents dependency origins, licenses, roles, exact revisions, local paths, and patch history for audits. | Reviewable dependency inventory | `config/dependencies.lock.json` | [Dependency lock](../../config/dependencies.lock.json) |
+
+### RecompCore and DolRecomp checkout
+
+Linux, Windows, and Apple implement the same guarded checkout sequence.
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Initialize | Creates `ref/recompcore` as a Git checkout only when the path is absent or empty; refuses to replace unrelated files. | Safe checkout location | `ref/recompcore/.git/` | [Linux](../../scripts/linux/build.py#L439-L448), [Windows](../../scripts/windows/build.py#L375-L390), [Apple](../../scripts/builder/profiles/bluewake.sh#L56-L66) |
+| Fetch RecompCore | Fetches only the pinned SHA without recursively fetching submodules, then checks out `FETCH_HEAD` detached. | Exact runtime source | `ref/recompcore/` at `RECOMPCORE_SHA` | [Linux](../../scripts/linux/build.py#L449-L460), [Windows](../../scripts/windows/build.py#L390-L400), [Apple](../../scripts/builder/profiles/bluewake.sh#L67-L81) |
+| Fetch DolRecomp | Synchronizes the parent's DolRecomp submodule and initializes its pinned revision with a shallow update. | Exact translator source | `ref/recompcore/DolRecomp/` at `DOLRECOMP_SHA` | [Linux](../../scripts/linux/build.py#L461-L469), [Windows](../../scripts/windows/build.py#L401-L415), [Apple](../../scripts/builder/profiles/bluewake.sh#L82-L86) |
+| Verify | Checks both HEAD revisions and rejects tracked local modifications before building. | Clean, attributable dependency tree | Successful dependency-stage log | [Linux](../../scripts/linux/build.py#L459-L473), [Windows](../../scripts/windows/build.py#L399-L419), [Apple](../../scripts/builder/profiles/bluewake.sh#L81-L91) |
+
+### Apple Dawn package
+
+macOS lets desktop Aurora resolve its own pinned Dawn package. iOS and tvOS
+prepare the mobile archive during the dependency hook.
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Download and verify | Reuses the cached iOS arm64 archive only when its SHA-256 matches; otherwise downloads it and verifies the new file. | Trusted renderer package | `build/deps/dawn-ios-arm64.tar.gz` | [Archive fetch](../../scripts/builder/profiles/bluewake.sh#L93-L101) |
+| Extract | Expands the verified archive when its CMake package is absent. | Dawn headers, libraries, and CMake configuration | `build/deps/dawn-ios/` | [iOS extraction](../../scripts/builder/profiles/bluewake.sh#L102-L106) |
+| Prepare tvOS | Copies the iOS archive, retags its Mach-O platform as tvOS, rebuilds its index, and records the source checksum. | Development tvOS Dawn archive | `build/deps/dawn-tvos/` | [tvOS preparation](../../scripts/builder/profiles/bluewake.sh#L107-L119) |
 
 ## 3. Extract
 
