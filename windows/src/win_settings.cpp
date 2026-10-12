@@ -39,6 +39,7 @@
 #include "button_remap.h"
 #include "input_remap.h"
 #include "option_notes.h"
+#include "texture_pack_menu.h"
 
 #include <algorithm>
 #include <climits>
@@ -91,6 +92,7 @@ namespace {
 Settings g_saved;     // as in the file, changed by the menu and hotkeys
 Settings g_session, g_before_edit;
 Settings g_launched;  // as this session started (what a restart would change)
+bw_texture_pack::Counter g_pack_count; // textures in the chosen pack, counted once per menu opening
 std::string g_data_dir, g_path;
 std::vector<wchar_t> g_environment;  // as BlueWake was started, for Restart
 
@@ -488,6 +490,8 @@ void set_menu_open(bool open) {
     if (open == g_menu_open)
         return;
     g_menu_open = open;
+    if (open)
+        g_pack_count.forget();
     if (!open && g_stage_select_question) {
         g_stage_select_question = false;
         bluewake_stage_select_answer(false); // closed without an answer: cancel
@@ -778,8 +782,48 @@ void tab_controls() {
     ImGui::TextDisabled("Game controllers work as they are plugged in (Xbox, PlayStation, Switch Pro, ...).");
 }
 
+// Wind Waker HD textures: the same section, in the same order, as the Mac and
+// Linux Mods tab and the iPhone and iPad Mods menu (texture_pack_menu.h).
+void hd_textures_section(Settings& d) {
+    std::string picked;
+    if (bw_texture_pack::take_folder(picked)) {
+        d.texture_pack = picked == texture_folder() ? "" : picked;
+        d.hd_textures = true;
+        changed();
+    }
+    ImGui::SeparatorText("Wind Waker HD textures");
+    if (ImGui::Checkbox("HD textures", &d.hd_textures))
+        changed();
+    restart_note(d.hd_textures != g_launched.hd_textures || d.texture_pack != g_launched.texture_pack);
+    const std::string folder = texture_pack_folder(d);
+    const size_t textures = g_pack_count.get(folder);
+    if (textures > 0)
+        ImGui::TextDisabled("    %zu textures in %s", textures, folder.c_str());
+    else
+        ImGui::TextDisabled("    No .png or .dds textures in %s yet. A Dolphin-format pack for GZLE01 goes there.",
+                            folder.c_str());
+    if (ImGui::SmallButton("Choose texture pack folder..."))
+        bw_texture_pack::choose_folder(nullptr, folder);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Open the texture folder"))
+        open_folder(folder);
+    if (!d.texture_pack.empty()) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Use Load\\Textures\\GZLE01 instead")) {
+            d.texture_pack.clear();
+            changed();
+        }
+    }
+    const std::string error = bw_texture_pack::picker_error();
+    if (!error.empty())
+        ImGui::TextWrapped("The folder picker did not open (%s). Put the pack in the texture folder instead.",
+                           error.c_str());
+    ImGui::Spacing();
+}
+
 void tab_enhancements() {
     Settings& d = g_session;
+    hd_textures_section(d);
     ImGui::SeparatorText("Gameplay (after restart)");
     if (ImGui::Checkbox("Jump and Run", &d.movement_extras))
         changed();
@@ -861,25 +905,6 @@ void tab_enhancements() {
         ImGui::TextDisabled("This build has no Better Wind Waker options (build with mods).");
     ImGui::Unindent();
     ImGui::EndDisabled();
-    ImGui::Spacing();
-    if (ImGui::Checkbox("HD texture pack", &d.hd_textures))
-        changed();
-    restart_note(d.hd_textures != g_launched.hd_textures);
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Open the texture folder"))
-        open_folder(texture_pack_folder(d));
-    if (d.texture_pack.empty()) {
-        ImGui::TextDisabled("    A Dolphin-format pack for GZLE01 (its folder of .png or .dds files) goes in that folder.");
-    } else {
-        ImGui::TextDisabled("    The pack in %s", d.texture_pack.c_str());
-        restart_note(d.texture_pack != g_launched.texture_pack);
-        ImGui::Indent();
-        if (ImGui::SmallButton("Use Load\\Textures\\GZLE01 instead")) {
-            d.texture_pack.clear();
-            changed();
-        }
-        ImGui::Unindent();
-    }
     ImGui::Spacing();
     if (ImGui::Checkbox("Developers' stage select (F7)", &d.stage_select))
         changed();
