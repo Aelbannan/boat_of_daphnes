@@ -8,6 +8,8 @@
 #include <string.h>
 
 bool bluewake_hd_distant_islands;
+static int g_clouds = -1;  // cloud shadows: 1, 0, or -1 left to the renderer
+static bool g_clouds_shown;
 static bool g_islands_were_on;
 static bool g_trace;
 
@@ -28,14 +30,16 @@ void bluewake_hd_look_reload(void) {
     const int bloom = setting("BLUEWAKE_HD_BLOOM") >= 0 ? setting("BLUEWAKE_HD_BLOOM") : all;
     const int far_blur = setting("BLUEWAKE_HD_FAR_BLUR") >= 0 ? setting("BLUEWAKE_HD_FAR_BLUR") : all;
     const int ao = setting("BLUEWAKE_HD_AO") >= 0 ? setting("BLUEWAKE_HD_AO") : all;
+    g_clouds = setting("BLUEWAKE_HD_CLOUD_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_CLOUD_SHADOWS") : all;
     if (bloom >= 0)
         aurora_set_bloom(bloom == 1);
     if (far_blur >= 0)
         aurora_set_far_blur(far_blur == 1);
     if (ao >= 0)
         aurora_set_ambient_occlusion(ao == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, far blur %s, bloom %s\n",
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
+            g_clouds == 1 ? "on" : "off",
             far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }
 
@@ -144,6 +148,49 @@ static void trace_islands(CPUState* cpu, unsigned long long retrace) {
     }
 }
 
+// Cloud shadows: on the Great Sea only (stage "sea"), with the game's camera.
+// GZLE01: g_dComIfG_gameInfo.play is at 0x803C5EA8; its mCurStage (the stage's
+// name first) at +0x3E94 and mCurrentView (view_class*) at +0x4A58. In the
+// view: mNear +0xC8, mFovy (degrees) +0xD0, mAspect +0xD4, mInvViewMtx +0x170.
+enum {
+    kCurStageName = 0x803C9D3Cu,
+    kCurrentView = 0x803CA900u,
+    kViewNear = 0xC8u,
+    kViewFovy = 0xD0u,
+    kViewAspect = 0xD4u,
+    kViewInvMtx = 0x170u,
+};
+
+static void clouds(CPUState* cpu, unsigned long long retrace) {
+    bool show = false;
+    if (g_clouds == 1) {
+        char stage[8];
+        for (u32 i = 0; i < sizeof stage; ++i)
+            stage[i] = (char)mem_read8(cpu, kCurStageName + i);
+        const u32 view = mem_read32(cpu, kCurrentView);
+        if (memcmp(stage, "sea", 4) == 0 && guest_pointer(view)) {
+            float inv[12];
+            for (u32 i = 0; i < 12; ++i)
+                inv[i] = read_float(cpu, view + kViewInvMtx + i * 4u);
+            const float fovy = read_float(cpu, view + kViewFovy);
+            const float aspect = read_float(cpu, view + kViewAspect);
+            const float near_plane = read_float(cpu, view + kViewNear);
+            if (fovy > 1.f && fovy < 170.f && aspect > 0.1f && near_plane > 0.f) {
+                if (g_trace && retrace % 300u == 0u)
+                    fprintf(stderr, "[hd-look] camera eye %.0f %.0f %.0f fovy %.1f aspect %.3f near %.2f\n", inv[3],
+                            inv[7], inv[11], fovy, aspect, near_plane);
+                aurora_set_world_view(inv, tanf(fovy * 0.5f * 3.14159265f / 180.f), aspect, near_plane, 0.f,
+                                      (float)retrace / 59.94f);
+                show = true;
+            }
+        }
+    }
+    if (show != g_clouds_shown && g_clouds >= 0) {
+        aurora_set_cloud_shadows(show);
+        g_clouds_shown = show;
+    }
+}
+
 void bluewake_hd_look_retrace(CPUState* cpu) {
     static unsigned long long retrace;
     retrace++;
@@ -152,6 +199,7 @@ void bluewake_hd_look_retrace(CPUState* cpu) {
     if (bluewake_hd_distant_islands || g_islands_were_on)
         islands(cpu, bluewake_hd_distant_islands, retrace);
     g_islands_were_on = bluewake_hd_distant_islands;
+    clouds(cpu, retrace);
     if (g_trace && retrace % 300u == 0u)
         trace_islands(cpu, retrace);
 }

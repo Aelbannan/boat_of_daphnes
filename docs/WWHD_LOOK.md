@@ -29,7 +29,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
 | Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
-| Cloud shadows on the sea | Cloud shadows | Planned (RecompCore) | |
+| Cloud shadows on the sea | Cloud shadows | **In**, with the switch, on the Great Sea (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
 | Sun shadows, edge light, torch light | Sun shadows (resolution, strength), character edge light, torch and fire light | Planned; the hardest, since the scene has to be drawn from the sun | |
 
 ### Distant islands
@@ -86,4 +86,17 @@ steps (a silhouette in front of the background) nothing is darkened. `DOL_AURORA
 
 Checked on an M3 Max from an Outset save state: darker under Link's feet, round the pier's posts and in the cliffs'
 creases; the pier's deck and the sea unchanged.
+
+### Cloud shadows
+
+Soft shadows drift over the sea and the islands, as in HD. On the Great Sea, the host reads the game's camera once a
+retrace (the current view's inverse view matrix, field of view, aspect and near plane) and passes it to Aurora. After
+ambient occlusion, each pixel's place in the world comes from that camera and the scene's depth, or, below the horizon
+where there is no depth, from where the view ray meets the sea. Smooth noise in world X/Z, drifting slowly, darkens it
+and fades out with distance. `DOL_AURORA_CLOUD_SHADOWS_STRENGTH` (0.28) and `_SCALE` (world units across a cloud,
+7,000) tune it; `DOL_AURORA_CLOUD_SHADOWS_DEBUG=1` paints a 1,000-unit world grid to check the camera.
+
+Checked on an M3 Max from an Outset save state: the grid sits square on the pier and the cliffs, and the shadows show
+on the open sea and the cove. Because the camera is read once a retrace, the pattern may trail by a frame in a fast
+turn; not checked by hand.
 

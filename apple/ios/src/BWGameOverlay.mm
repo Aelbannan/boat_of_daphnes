@@ -721,7 +721,7 @@ static NSUInteger g_packFiles = NSNotFound;
                   @BW_MOD_WIDESCREEN_1610_KEY),
         modToggle(@"HD Texture Pack", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         modToggle(@"Better Wind Waker", bwwDetail, @"sailboat", @BW_MOD_BETTERWW_KEY),
-        modToggle(@"Wind Waker HD Look", @"Far islands, shading, soft distance, bloom", @"sparkles", @BW_HD_LOOK_KEY),
+        modToggle(@"Wind Waker HD Look", @"Far islands, shading, cloud shadows, bloom", @"sparkles", @BW_HD_LOOK_KEY),
     ]];
     UIAction* installPack = [UIAction actionWithTitle:@"Install Texture Pack…"
                                                 image:[UIImage systemImageNamed:@"square.and.arrow.down"]
