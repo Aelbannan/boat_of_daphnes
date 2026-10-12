@@ -1,5 +1,24 @@
 # BlueWake build toolchain
 
+## Contents
+
+- [End-to-end build](#end-to-end-build)
+- [Shared pipeline](#shared-pipeline)
+  - [1. Builders and build profile](#1-builders-and-build-profile)
+  - [2. Runtime and translator inputs](#2-runtime-and-translator-inputs)
+  - [3. Disc validation and extraction](#3-disc-validation-and-extraction)
+  - [4. PowerPC translation](#4-powerpc-translation)
+  - [5. Composite generation](#5-composite-generation)
+  - [6. Mods and source preparation](#6-mods-and-source-preparation)
+  - [7. Profile-guided optimization](#7-profile-guided-optimization)
+  - [8. Target compilation](#8-target-compilation)
+- [Platform branches](#platform-branches)
+  - [Linux](#linux-x86-64)
+  - [Windows](#windows-x86-64)
+  - [macOS](#macos-apple-silicon)
+  - [iPhone and iPad](#iphone-and-ipad-iosipados-arm64)
+  - [Apple TV](#apple-tv-tvos-arm64-experimental)
+
 This chapter expands the build-time half of the
 [architecture overview](Overview.md). It follows the current builders from the
 player's disc to the native application and translated game module, then shows

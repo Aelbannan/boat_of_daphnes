@@ -1,5 +1,11 @@
 # BlueWake architecture overview
 
+## Contents
+
+- [Introduction](#introduction)
+- [High-level view](#high-level-view)
+- [Build toolchain](#build-toolchain)
+
 ## Introduction
 
 BlueWake runs *The Legend of Zelda: The Wind Waker* on modern platforms by
