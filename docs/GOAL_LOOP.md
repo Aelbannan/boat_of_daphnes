@@ -43,10 +43,22 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   Linux and Windows with progress; on the Mac it made the pack from the menu in about 25 seconds and the next launch
   loaded all 3,546. On iPhone and iPad the same entry is built and installed on Chris's iPad, not yet tried there.
   Still to do: WUX/WUD images, a leaner run for phones (1.07 GB peak on the Mac), Android.
-- **iOS menu switches keep the menu open** (#316, #104), installed on the iPad, waiting for a tap test.
+- **iOS menu switches keep the menu open** (#316, #104). Chris's tap test on the iPad, recorded over QuickTime, showed
+  the first version sending the menu back to the top level after every tap. It's fixed: the open submenu keeps its
+  identity and only its items change. A test app driven by a UI test on the iPad simulator confirms it. The fix is
+  installed on the iPad and still needs a tap there. An automated tap test on the iPad itself needs UI Automation
+  turned on once, with the passcode, on the iPad.
+- **The HD look looked darker than the GameCube's** (Chris, on the iPad): long dark streaks across Outset's grass
+  from the screen-space sun shadows, a dark smudge under Link and a green tint. #321 (draft, needs Chris's OK)
+  leaves sun shadows out of the HD look switch and starts ambient occlusion, cloud shadows, bloom and the far blur
+  softer. Compared on the Mac (Outset pier, cavern) and installed on the iPad.
+- **#314 is merged.** pdale-boop asked in #320 for the same hotkeys and settings on every build. The answer: their
+  hotkey table everywhere, with Windows' F6 kept as a second save key, the Windows-only settings brought to Linux and
+  the Mac, and controller navigation for the Linux/Mac menu. #318 (Wind Temple R04/R08 crash at a stage load) got the
+  list of host timing switches to rule out.
 - **#313** (Greatfish merchant under his raft): the merchant and his raft load separate archives, and when the
   merchant's finishes first his one ground check misses the raft. Waiting for the reporter's details before a fix.
-- Merged: #312 (the release draft), #300 (cforain's build-process docs). Waiting on Chris as on October 12.
+- Merged: #312 (the release draft), #300 (cforain's build-process docs), #314. Waiting on Chris as on October 12, and on #321.
 
 ## Where things stand on October 12
 
