@@ -958,35 +958,34 @@ void draw(void*) {
     if (ImGui::Begin("BlueWake settings", &open,
                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::SetWindowFontScale(1.f / g_font_dpi);
-        bluewake_ui::heading("Play your way", "Game paused. F1 or Esc returns you to the adventure.");
+        bluewake_ui::heading("Play your way", "Game paused. F1, Esc or a controller's B returns you to the adventure.");
+        // The bumpers switch tabs. Each tab's body scrolls on its own but is
+        // flattened for navigation, so the D-pad moves from the tabs through the
+        // options to the buttons below without A to enter it and B to leave it.
+        struct Tab { const char* label; const char* body; void (*draw)(); };
+        static const Tab kTabs[] = {{"Display", "##display-body", display_tab},
+                                    {"Gameplay", "##gameplay-body", gameplay_tab},
+                                    {"Mods", "##mods-body", mods_tab},
+                                    {"Controls", "##controls-body", controls_tab}};
+        constexpr int kTabCount = static_cast<int>(sizeof kTabs / sizeof kTabs[0]);
+        static int shown = 0;
+        int request = -1;
+        if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) request = (shown + kTabCount - 1) % kTabCount;
+        if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) request = (shown + 1) % kTabCount;
         if (ImGui::BeginTabBar("##tabs")) {
-            if (ImGui::BeginTabItem("Display")) {
-                ImGui::BeginChild("##display-body", ImVec2(0, -110.f), false);
-                display_tab();
-                ImGui::EndChild();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Gameplay")) {
-                ImGui::BeginChild("##gameplay-body", ImVec2(0, -110.f), false);
-                gameplay_tab();
-                ImGui::EndChild();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Mods")) {
-                ImGui::BeginChild("##mods-body", ImVec2(0, -110.f), false);
-                mods_tab();
-                ImGui::EndChild();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Controls")) {
-                ImGui::BeginChild("##controls-body", ImVec2(0, -110.f), false);
-                controls_tab();
+            for (int i = 0; i < kTabCount; ++i) {
+                if (!ImGui::BeginTabItem(kTabs[i].label, nullptr, i == request ? ImGuiTabItemFlags_SetSelected : 0))
+                    continue;
+                shown = i;
+                ImGui::BeginChild(kTabs[i].body, ImVec2(0, -132.f), ImGuiChildFlags_NavFlattened);
+                kTabs[i].draw();
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
         }
         ImGui::Separator();
+        ImGui::TextDisabled("Controller: D-pad or left stick moves, A chooses, B closes, LB and RB change tabs.");
         if (g_restart_pending)
             ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Some changes take effect at the next launch.");
         if (!g_path.empty()) {
@@ -1020,6 +1019,12 @@ void draw(void*) {
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
         }
+        // B closes the menu, unless it is closing a dropdown or ending an edit:
+        // ImGui handles those first, so look at how things were a frame ago.
+        static bool busy_before = false;
+        if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && !busy_before)
+            open = false;
+        busy_before = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) || ImGui::IsAnyItemActive();
     }
     ImGui::End();
     if (g_menu_font != nullptr) ImGui::PopFont();
