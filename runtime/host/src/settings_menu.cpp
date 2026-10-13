@@ -5,6 +5,7 @@
 #include "fps_position.h"
 #include "controller_face_swap.h"
 #include "atomic_file.h"
+#include "launch_marker.h"
 
 // The host's modules are C.
 extern "C" {
@@ -101,6 +102,9 @@ char g_texture_pack[1024];
 std::string g_last_pack;             // the folder before HD textures went off (this session)
 bw_texture_pack::Counter g_pack_count; // textures in g_texture_pack, counted once per menu opening
 bool g_restart_pending = false;
+bool g_restart_requested = false;  // Restart now: linux_entry.c starts the game again
+bool g_safe_mode = false;          // this launch is in safe mode (BLUEWAKE_SAFE_MODE)
+Uint64 g_safe_mode_since = 0;
 // BLUEWAKE_SETTINGS_TEST_OPEN=at:for (seconds after the menu is installed;
 // testing only): opens the menu, and closes it after `for` seconds.
 double g_test_open_at = -1.0, g_test_open_for = 0.0;
@@ -299,6 +303,29 @@ bool shader_wait_holds() {
         return false;
     }
     return true;
+}
+
+// Safe mode's note, for the first fifteen seconds, as on Windows.
+void draw_safe_mode_note(Uint64 now) {
+    if (!g_safe_mode)
+        return;
+    if (g_safe_mode_since == 0)
+        g_safe_mode_since = now;
+    if (now - g_safe_mode_since > 15000)
+        return;
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    if (ImGui::Begin("Launch recovery", nullptr,
+                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+        // A fixed wrap width: in an auto-resizing window, wrapping to the
+        // window's own width collapses it to a narrow column.
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.f);
+        ImGui::TextUnformatted("BlueWake didn't finish starting last time, so this time it starts with Fast sound, "
+                               "4:3, in a window and with the mods off. Your earlier settings were saved beside "
+                               "settings.ini. You can turn things back on in the settings (F1).");
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
 }
 
 void draw_shader_wait() {
@@ -1137,6 +1164,7 @@ void draw(void*) {
     draw_climb_wheel();
     draw_renderer_notice(now);
     bluewake_ui::draw_status_line(now);
+    draw_safe_mode_note(now);
     draw_shader_wait();
     if (bluewake_stage_select_take_question()) {
         open_menu();
@@ -1226,7 +1254,8 @@ void draw(void*) {
         for (const char* label : kButtons)
             buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.f + style.ItemSpacing.x;
         const int button_rows = buttons > ImGui::GetContentRegionAvail().x ? 2 : 1;
-        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() * (g_restart_pending ? 2.f : 1.f) +
+        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
+                             (g_restart_pending ? ImGui::GetFrameHeightWithSpacing() : 0.f) +
                              ImGui::GetFrameHeightWithSpacing() * button_rows;
         if (ImGui::BeginTabBar("##tabs")) {
             // The window has no title bar, so the close button for the mouse sits at the end of the tabs.
@@ -1252,8 +1281,24 @@ void draw(void*) {
         }
         ImGui::Separator();
         ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
-        if (g_restart_pending)
+        if (g_restart_pending) {
+            ImGui::AlignTextToFramePadding();
             ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Some changes take effect at the next launch.");
+#if defined(__linux__)
+            // Linux's launcher (linux_entry.c) starts the game again after a
+            // clean exit; the Mac app has no relaunch yet.
+            ImGui::SameLine();
+            if (ImGui::Button("Restart now")) {
+                g_dirty = true;
+                save();
+                g_restart_requested = true;
+                close_menu();
+                SDL_Event quit{};
+                quit.type = SDL_EVENT_QUIT;
+                SDL_PushEvent(&quit);
+            }
+#endif
+        }
         if (ImGui::Button(kButtons[0]))
             open = false;
         if (!g_path.empty() && ImGui::IsItemHovered())
@@ -1309,6 +1354,38 @@ void draw(void*) {
         close_menu();
 }
 
+// Safe mode (BLUEWAKE_SAFE_MODE: --safe-mode, or a launch that never got to a
+// clean exit, from linux_entry.c), as on Windows: the settings file is copied
+// aside, then this session and the file get the safe choices: Fast sound,
+// 4:3, in a window, no mods, options or texture pack, and the gameplay extras
+// off. If the copy fails the file is left alone and only this session is safe.
+void apply_safe_mode() {
+    const char* asked = std::getenv("BLUEWAKE_SAFE_MODE");
+    if (asked == nullptr || asked[0] == '\0' || asked[0] == '0')
+        return;
+    g_safe_mode = true;
+    const bool backed_up = !g_path.empty() && bw_launch_backup(g_path.c_str());
+    if (!backed_up)
+        std::fprintf(stderr, "[safe-mode] settings backup failed; only this session is reset\n");
+    static const char* const kSafe[][2] = {
+        {"BLUEWAKE_DSP_MODE", "hle"},        {"BLUEWAKE_MODS", "none"},
+        {"BLUEWAKE_OPTIONS", "none"},        {"BLUEWAKE_ASPECT", "4:3"},
+        {"DOL_AURORA_ASPECT_FIT", ""},       {"DOL_AURORA_TEXTURE_PACK", ""},
+        {"DOL_AURORA_FULLSCREEN", "0"},      {"BLUEWAKE_JUMP_BUTTON", "0"},
+        {"BLUEWAKE_SPRINT_SPEED", "1"},      {"BLUEWAKE_FAST_FORWARD", "0"},
+        {"BLUEWAKE_FADE_FRAMES", "0"},       {"BLUEWAKE_QUICK_DOORS", "0"},
+        {"BLUEWAKE_STAGE_SELECT_TOGGLE", "0"},
+    };
+    for (const auto& pair : kSafe)
+        setenv(pair[0], pair[1], 1);
+    std::fprintf(stderr, "[safe-mode] Fast sound, 4:3, a window, no mods or options%s\n",
+                 backed_up ? "; the earlier settings were copied beside settings.ini" : "");
+    if (backed_up) {
+        g_dirty = true;
+        save();
+    }
+}
+
 } // namespace
 
 extern "C" void bluewake_settings_load(void) {
@@ -1332,8 +1409,10 @@ extern "C" void bluewake_settings_load(void) {
             file = std::fopen(legacy.c_str(), "r");
         }
     }
-    if (file == nullptr)
+    if (file == nullptr) {
+        apply_safe_mode();
         return;
+    }
     char line[2048];
     int count = 0;
     while (std::fgets(line, sizeof line, file) != nullptr) {
@@ -1352,7 +1431,10 @@ extern "C" void bluewake_settings_load(void) {
     }
     std::fclose(file);
     std::fprintf(stderr, "[settings] %d settings from %s\n", count, g_path.c_str());
+    apply_safe_mode();
 }
+
+extern "C" bool bluewake_settings_restart_requested(void) { return g_restart_requested; }
 
 extern "C" void bluewake_settings_menu_install(void) {
     g_installed_ms = SDL_GetTicks();
