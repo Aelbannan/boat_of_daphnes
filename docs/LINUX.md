@@ -173,6 +173,15 @@ that are new on Linux are off until you turn them on. The widescreen choice is u
 textures. Under **Gameplay**, Jump & Sprint (with a **Sprint speed**) and Fast transitions are one
 switch each, as on the iPad.
 
+A setting that applies at the next launch shows **Restart now** beside its note: BlueWake saves your
+settings, closes and starts again by itself.
+
+**Safe mode:** if the last launch never reached a clean exit (it crashed or was killed), the next one starts
+in safe mode, as on Windows: Fast sound, 4:3, in a window, with the mods, Better Wind Waker's settings, the
+texture pack, the gameplay extras and the stage select off. Your earlier `settings.ini` is copied beside it
+first (`settings.ini.before-safe-mode-...`), and a note says so for fifteen seconds. Turn things back
+on in the settings menu. `--safe-mode` starts in safe mode on purpose.
+
 Your saves and session logs live in `~/.local/share/BlueWake`, outside the
 build, so rebuilding never touches them. The settings menu (Esc or F1) saves
 preferences separately to `~/.config/BlueWake/settings.ini`.
