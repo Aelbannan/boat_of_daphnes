@@ -234,13 +234,17 @@ static DolAudioDma g_audio_dma;
 static BluewakeAudioCapture g_audio_capture;
 // SRAM on EXI channel 0 (ipl_sram.h); off unless BLUEWAKE_SRAM is set.
 static BluewakeIplSram g_ipl_sram;
-// EFB depth peeks (GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2)) answered
+// EFB peeks. GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2) and is answered
 // from Aurora's asynchronous depth snapshot. Wind Waker's sun counts as visible
 // only where the peeked depth is far (0xFFFFFF); every peek used to read 0, so
 // the sun was always hidden and its glare and lens flare never drew. On with
 // the Aurora renderer (BLUEWAKE_EFB_PEEK=0 turns it off); Dolphin with EFB
 // access on, its setting for this game, draws the same glare (CURRENT.md,
 // 2026-09-24). The headless renderer, which the certified route uses, keeps 0.
+// GXPeekARGB reads 0xC8000000 + (y << 12) + (x << 2). The Picto Box paints each
+// actor's slot into that alpha and reads it back in the same frame; a read of 0
+// credits every pixel to whoever was registered first, so Lenzo is handed the
+// wrong person. The first peek of a frame drains the FIFO and copies the EFB.
 static bool g_efb_peek_enabled;
 static unsigned g_efb_peek_reports;
 static bool g_audio_capture_failure_reported;
@@ -3437,6 +3441,18 @@ static u64 host_mmio_read(CPUState* ctx, u32 address, u8 size) {
         return memory_value;
     if (bluewake_ipl_sram_contains(&g_ipl_sram, address) && size == 4u)
         return bluewake_ipl_sram_read(&g_ipl_sram, address);
+    if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
+        (address & 0x00C00000u) == 0u) {
+        const u16 x = (u16)((address >> 2) & 0x3FFu);
+        const u16 y = (u16)((address >> 12) & 0x3FFu);
+        // The id pass is still in the FIFO until this drain. One copy serves
+        // the rest of the viewfinder.
+        if (!aurora_color_peek_ready())
+            dol_platform_gx_flush();
+        u32 argb = 0u;
+        (void)aurora_peek_argb(x, y, &argb);
+        return argb;
+    }
     if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
         (address & 0x00C00000u) == 0x00400000u) {
         const u16 x = (u16)((address >> 2) & 0x3FFu);
