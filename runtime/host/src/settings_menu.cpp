@@ -29,6 +29,7 @@ extern "C" {
 #include <SDL3/SDL.h>
 #include <aurora/aurora.h>
 #include <aurora/imgui.h>
+#include <aurora/gfx.h>
 #include <imgui.h>
 #include <imgui_internal.h> // FindWindowByName: the menu's position before Begin draws it
 #include "button_remap.h"
@@ -80,6 +81,7 @@ const char* const kKeys[] = {
     "BLUEWAKE_CLIMB",           "BLUEWAKE_CLIMB_STAMINA",
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
     "BLUEWAKE_STAGE_SELECT_TOGGLE", "BLUEWAKE_HD_LOOK",
+    "DOL_AURORA_ASPECT_FIT",    "BLUEWAKE_PAUSE_UNFOCUSED", "BLUEWAKE_SHADERS_FIRST",
 };
 
 std::string g_path;                          // the settings file ("" when none)
@@ -272,7 +274,54 @@ void close_menu() {
     std::fprintf(stderr, "[settings] menu closed\n");
 }
 
-bool hold(void*) { return g_open; }
+// Compile shaders before playing (BLUEWAKE_SHADERS_FIRST=1), as on Windows: at
+// start the game waits until the shaders from earlier play are ready, at most
+// two minutes, with a progress box.
+bool g_shader_wait = false;
+Uint64 g_shader_wait_since = 0;
+uint32_t g_shader_wait_first = 0;
+
+bool shader_wait_holds() {
+    if (!g_shader_wait)
+        return false;
+    const AuroraStats* stats = aurora_get_stats();
+    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
+    if (g_shader_wait_since == 0) {
+        g_shader_wait_since = SDL_GetTicks();
+        g_shader_wait_first = left;
+    }
+    const Uint64 waited = SDL_GetTicks() - g_shader_wait_since;
+    if (left == 0u || waited > 120000) {
+        g_shader_wait = false;
+        std::fprintf(stderr, "[settings] shaders compiled before play: %u in %.1f s%s\n", g_shader_wait_first,
+                     waited / 1000.0, left != 0u ? " (stopped waiting)" : "");
+        return false;
+    }
+    return true;
+}
+
+void draw_shader_wait() {
+    if (!g_shader_wait)
+        return;
+    const AuroraStats* stats = aurora_get_stats();
+    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.75f);
+    if (ImGui::Begin("##bluewake-shaders", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                         ImGuiWindowFlags_NoNav)) {
+        ImGui::Text("Compiling shaders: %u to go", left);
+        if (g_shader_wait_first > 0u)
+            ImGui::ProgressBar(1.f - static_cast<float>(left) / static_cast<float>(g_shader_wait_first),
+                               ImVec2(260.f, 0.f), "");
+    }
+    ImGui::End();
+}
+
+// The game waits while the menu is open or the shaders are compiling.
+bool hold(void*) { return g_open || shader_wait_holds(); }
 
 // A setting that the game takes at the next launch.
 void restart_note() {
@@ -372,8 +421,15 @@ void refresh_smooth_rate() {
 
 // Fullscreen, the frame rate and Smooth Motion, from the Display tab or their
 // keys (F11 or Alt+Enter, F9, F10), the same keys as on Windows (#320).
+// Fullscreen here is for this session only; whether the game starts in
+// fullscreen is its own setting (DOL_AURORA_FULLSCREEN, read at launch), so
+// trying fullscreen never changes how the game starts.
+bool is_fullscreen() {
+    SDL_Window* window = game_window();
+    return window != nullptr && (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
 void set_fullscreen(bool on) {
-    set_env("DOL_AURORA_FULLSCREEN", on ? "1" : "0");
     if (SDL_Window* window = game_window())
         SDL_SetWindowFullscreen(window, on);
 }
@@ -390,6 +446,24 @@ void set_smooth_motion(const char* steps) {
         set_env("DOL_AURORA_FRAME_INTERP_STEPS", steps);
     refresh_smooth_rate();
     aurora_set_frame_interpolation(steps != nullptr);
+}
+
+// Out of fullscreen, at the size the window starts at (DOL_AURORA_WINDOW, or
+// 720 tall in the picture's shape), in the middle of the screen.
+void reset_window() {
+    SDL_Window* window = game_window();
+    if (window == nullptr)
+        return;
+    set_fullscreen(false);
+    int width = 0, height = 0;
+    const std::string chosen = env("DOL_AURORA_WINDOW");
+    if (std::sscanf(chosen.c_str(), "%dx%d", &width, &height) != 2 || width < 320 || height < 240) {
+        const float ratio = std::strtof(env("DOL_AURORA_ASPECT_RATIO", "0").c_str(), nullptr);
+        height = 720;
+        width = static_cast<int>(height * (ratio > 1.f && ratio < 4.f ? ratio : 4.f / 3.f) + 0.5f);
+    }
+    SDL_SetWindowSize(window, width, height);
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
 
 void display_tab() {
@@ -415,9 +489,15 @@ void display_tab() {
                        "further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance "
                        "and bloom. Off by default.");
 
-    bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
+    bool fullscreen = is_fullscreen();
     if (checkbox("Fullscreen   (F11)", &fullscreen))
         set_fullscreen(fullscreen);
+    bool start_fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
+    if (checkbox("Start in fullscreen", &start_fullscreen)) {
+        set_env("DOL_AURORA_FULLSCREEN", start_fullscreen ? "1" : "0");
+        g_dirty = true;
+    }
+    restart_note();
 
     static const char* const kScales[] = {"The window's pixels", "1x (480 lines)", "2x (960)", "3x (1440)",
                                           "4x (1920)"};
@@ -458,6 +538,40 @@ void display_tab() {
         set_env("DOL_AURORA_FORCE_ANISO", std::to_string(kAnisoValues[aniso]));
         aurora_set_forced_anisotropy(kAnisoValues[aniso]);
     }
+
+    // When the window isn't the picture's shape: black bars, or the picture
+    // stretched to fill it. A widened picture (16:10, 16:9, 21:9) always keeps
+    // its shape, so the choice is only for 4:3.
+    if (g_aspect == "4:3") {
+        bool keep_shape = env_on("DOL_AURORA_ASPECT_FIT", false);
+        if (checkbox("Keep the picture's shape (black bars rather than stretching)", &keep_shape)) {
+            set_env("DOL_AURORA_ASPECT_FIT", keep_shape ? "1" : "0");
+            g_dirty = g_restart_pending = true;
+        }
+        restart_note();
+    } else {
+        ImGui::TextDisabled("Widened pictures always keep their shape (black bars rather than stretching).");
+    }
+
+    bool pause = env_on("BLUEWAKE_PAUSE_UNFOCUSED", false);
+    if (checkbox("Pause while the window is in the background", &pause)) {
+        set_env("BLUEWAKE_PAUSE_UNFOCUSED", pause ? "1" : "0");
+        aurora_set_pause_on_focus_lost(pause);
+    }
+
+    bool shaders_first = env_on("BLUEWAKE_SHADERS_FIRST", false);
+    if (checkbox("Compile shaders before playing", &shaders_first)) {
+        set_env("BLUEWAKE_SHADERS_FIRST", shaders_first ? "1" : "0");
+        g_dirty = g_restart_pending = true;
+    }
+    restart_note();
+    ImGui::TextDisabled("At start, wait until the shaders from earlier play are ready, so nothing is missing from "
+                        "the picture the first time it is drawn. Otherwise they are made while you play.");
+
+    if (ImGui::Button("Reset the window"))
+        reset_window();
+    ImGui::SameLine();
+    ImGui::TextDisabled("Out of fullscreen, at its starting size, in the middle of the screen.");
 
 }
 
@@ -1016,6 +1130,7 @@ void draw(void*) {
     draw_climb_wheel();
     draw_renderer_notice(now);
     bluewake_ui::draw_status_line(now);
+    draw_shader_wait();
     if (bluewake_stage_select_take_question()) {
         open_menu();
         g_stage_select_question = g_open;
@@ -1238,6 +1353,8 @@ extern "C" void bluewake_settings_menu_install(void) {
         if (std::sscanf(test, "%lf:%lf", &g_test_open_at, &g_test_open_for) != 2)
             g_test_open_at = -1.0;
     dol_aurora_set_overlay(draw, nullptr);
+    aurora_set_pause_on_focus_lost(env_on("BLUEWAKE_PAUSE_UNFOCUSED", false));
+    g_shader_wait = env_on("BLUEWAKE_SHADERS_FIRST", false);
     dol_aurora_set_hold(hold, nullptr);
     dol_aurora_set_hold_redraw(true);
     std::fprintf(stderr, "[settings] Esc (with the mouse free), F1 or a controller's Back opens the options\n");
@@ -1282,9 +1399,8 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
         }
         if (event->key.scancode == SDL_SCANCODE_F11 ||
             (event->key.scancode == SDL_SCANCODE_RETURN && (event->key.mod & SDL_KMOD_ALT) != 0)) {
-            const bool on = !env_on("DOL_AURORA_FULLSCREEN", false);
+            const bool on = !is_fullscreen();
             set_fullscreen(on);
-            save();
             bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");
             return true;
         }
