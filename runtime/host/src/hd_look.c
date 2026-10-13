@@ -26,6 +26,17 @@ static int setting(const char* key) {  // 1, 0, or -1 when unset
     return value[0] == '1';
 }
 
+// The HD look's strengths, softer than Aurora's own starting values: at full
+// strength the look came out darker than the GameCube's, with a dark smudge
+// under Link. Aurora reads these once when it starts, so they are set before
+// that (main.c), whether or not the look is on yet; a value already set wins.
+void bluewake_hd_look_defaults(void) {
+    setenv("DOL_AURORA_AO_STRENGTH", "0.3", 0);
+    setenv("DOL_AURORA_CLOUD_SHADOWS_STRENGTH", "0.15", 0);
+    setenv("DOL_AURORA_BLOOM_STRENGTH", "0.3", 0);
+    setenv("DOL_AURORA_FAR_BLUR_AMOUNT", "0.4", 0);
+}
+
 void bluewake_hd_look_reload(void) {
     const int all = setting("BLUEWAKE_HD_LOOK");
     const int islands = setting("BLUEWAKE_HD_DISTANT_ISLANDS");
@@ -37,7 +48,10 @@ void bluewake_hd_look_reload(void) {
     const int far_blur = setting("BLUEWAKE_HD_FAR_BLUR") >= 0 ? setting("BLUEWAKE_HD_FAR_BLUR") : all;
     const int ao = setting("BLUEWAKE_HD_AO") >= 0 ? setting("BLUEWAKE_HD_AO") : all;
     g_clouds = setting("BLUEWAKE_HD_CLOUD_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_CLOUD_SHADOWS") : all;
-    g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all;
+    // Sun shadows are worked out from what is on screen, and on open ground
+    // they drew long dark streaks, so the HD look leaves them off; only
+    // BLUEWAKE_HD_SUN_SHADOWS=1 turns them on.
+    g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all >= 0 ? 0 : -1;
     g_edge = setting("BLUEWAKE_HD_EDGE_LIGHT") >= 0 ? setting("BLUEWAKE_HD_EDGE_LIGHT") : all;
     g_torch = setting("BLUEWAKE_HD_TORCH_LIGHT") >= 0 ? setting("BLUEWAKE_HD_TORCH_LIGHT") : all;
     if (bloom >= 0)

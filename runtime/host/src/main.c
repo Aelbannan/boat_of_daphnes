@@ -7396,6 +7396,7 @@ int main(int argc, char** argv) {
             .window_pos_x = window_x,
             .window_pos_y = window_y,
         };
+        bluewake_hd_look_defaults();
         if (dol_aurora_initialize(argc, argv, &aurora_config)) {
             aurora_enabled = true;
             // BLUEWAKE_LIVE_PAD=0 (test runs): the pad script alone, even with a

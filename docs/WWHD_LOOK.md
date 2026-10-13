@@ -30,7 +30,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
 | Ambient occlusion | Ambient occlusion | **In**, with the switch (RecompCore 0171). Off by default | `BLUEWAKE_HD_AO` |
 | Cloud shadows on the sea | Cloud shadows | **In**, with the switch, outdoors (RecompCore 0172). Off by default | `BLUEWAKE_HD_CLOUD_SHADOWS` |
-| Sun shadows | Sun shadows (resolution, strength) | **In**, with the switch, outdoors, from what is on screen (RecompCore 0173). Off by default | `BLUEWAKE_HD_SUN_SHADOWS` |
+| Sun shadows | Sun shadows (resolution, strength) | **In**, outdoors, from what is on screen (RecompCore 0173). Left out of the HD look switch: on open ground it draws long dark streaks. Only its own variable turns it on | `BLUEWAKE_HD_SUN_SHADOWS` |
 | Edge light | Character edge light | **In**, with the switch, outdoors (RecompCore 0174). Off by default | `BLUEWAKE_HD_EDGE_LIGHT` |
 | Torch light | Torch and fire light | **In**, with the switch, everywhere (RecompCore 0175). Off by default | `BLUEWAKE_HD_TORCH_LIGHT` |
 
@@ -69,7 +69,7 @@ walk over the actor list once a frame while the option is on. Nothing runs while
 Wind Waker draws its 3D scene, copies the finished scene out at full size, and then draws the HUD flat on top. Bloom
 runs in Aurora just before that copy: whatever is brighter than a threshold is blurred at a quarter of the size and
 added back, so clouds, foam and white highlights glow while the HUD stays sharp. It's six small GPU passes a frame
-and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL_AURORA_BLOOM_STRENGTH` (default
+and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL_AURORA_BLOOM_STRENGTH` (BlueWake starts it at 0.3; Aurora's default
 0.35) tune it; `DOL_AURORA_PASS_TRACE=1` logs one frame's passes.
 
 Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
@@ -81,7 +81,7 @@ HD softens the distance. At the same point as bloom, the scene is blurred at a q
 by distance, before bloom. Aurora's depth gives the distance; Wind Waker draws the sky, the sea toward the horizon and
 the islands' far models without depth, so those get a lighter amount of their own. At Outset's pier, Link is about
 240 near-plane units away and the island's cliffs about 3,700, so the blur starts at 8,000 and is full at 30,000:
-the island stays sharp and the horizon softens. `DOL_AURORA_FAR_BLUR_START`, `_END`, `_AMOUNT` (0.8) and
+the island stays sharp and the horizon softens. `DOL_AURORA_FAR_BLUR_START`, `_END`, `_AMOUNT` (BlueWake starts it at 0.4; Aurora's default 0.8) and
 `_BACKGROUND` (0.35) tune it, and `DOL_AURORA_FAR_BLUR_DEBUG=1` shows the distance as brightness. It needs the
 renderer's full feature set, so it stays off in compatibility mode.
 
@@ -95,7 +95,7 @@ a quarter of the size: around each pixel, six pairs of samples on opposite sides
 distance. A pair whose average is nearer than the pixel (a crease, a contact) darkens it; on a flat floor the two
 samples straddle the pixel, so it stays as it was. Where there is no depth (the sky, the horizon) and across big
 steps (a silhouette in front of the background) nothing is darkened. `DOL_AURORA_AO_RADIUS` (default 30) and
-`_STRENGTH` (0.6) tune it, and `DOL_AURORA_AO_DEBUG=1` shows the occlusion alone.
+`_STRENGTH` (BlueWake starts it at 0.3; Aurora's default 0.6) tune it, and `DOL_AURORA_AO_DEBUG=1` shows the occlusion alone.
 
 Checked on an M3 Max from an Outset save state: darker under Link's feet, round the pier's posts and in the cliffs'
 creases; the pier's deck and the sea unchanged.
@@ -106,7 +106,7 @@ Soft shadows drift over the sea and the islands, as in HD. Outdoors (the stages 
 retrace (the current view's inverse view matrix, field of view, aspect and near plane) and passes it to Aurora. After
 ambient occlusion, each pixel's place in the world comes from that camera and the scene's depth, or, below the horizon
 where there is no depth, from where the view ray meets the sea. Smooth noise in world X/Z, drifting slowly, darkens it
-and fades out with distance. `DOL_AURORA_CLOUD_SHADOWS_STRENGTH` (0.28) and `_SCALE` (world units across a cloud,
+and fades out with distance. `DOL_AURORA_CLOUD_SHADOWS_STRENGTH` (BlueWake starts it at 0.15; Aurora's default 0.28) and `_SCALE` (world units across a cloud,
 7,000) tune it; `DOL_AURORA_CLOUD_SHADOWS_DEBUG=1` paints a 1,000-unit world grid to check the camera.
 
 Checked on an M3 Max from an Outset save state: the grid sits square on the pier and the cliffs, and the shadows show
@@ -121,6 +121,9 @@ pixel's place in view space, 24 steps go toward the sun; a step that lands behin
 shadow. It's drawn at a quarter of the size, blurred and multiplied in, and fades with distance and when the sun is low.
 Because it works from the screen, something off screen casts nothing; a full shadow map, the scene drawn again from the
 sun, would be the next step. `DOL_AURORA_SUN_SHADOWS_STRENGTH` (0.35) and `_REACH` (world units, 1,500) tune it.
+
+On an iPad Pro (M2), walking across Outset's grass, it drew long dark diagonal streaks across the ground, so the HD look
+switch leaves it off (October 13). `BLUEWAKE_HD_SUN_SHADOWS=1` still turns it on.
 
 Checked on an M3 Max from an Outset save state with the sun high: Link casts a soft shadow on the pier away from the
 sun, and the ladder's post and the pier's edges darken; the HUD is unchanged.
