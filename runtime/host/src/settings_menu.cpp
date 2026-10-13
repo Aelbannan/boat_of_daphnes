@@ -489,9 +489,10 @@ void display_tab() {
                        "further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance "
                        "and bloom. Off by default.");
 
-    bool fullscreen = is_fullscreen();
-    if (checkbox("Fullscreen   (F11)", &fullscreen))
-        set_fullscreen(fullscreen);
+    // An action for this session, not a setting: a button.
+    const bool fullscreen = is_fullscreen();
+    if (ImGui::Button(fullscreen ? "Leave fullscreen   (F11)" : "Fullscreen   (F11)"))
+        set_fullscreen(!fullscreen);
     bool start_fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
     if (checkbox("Start in fullscreen", &start_fullscreen)) {
         set_env("DOL_AURORA_FULLSCREEN", start_fullscreen ? "1" : "0");
