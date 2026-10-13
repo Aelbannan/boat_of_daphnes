@@ -468,18 +468,6 @@ void reset_window() {
 }
 
 void display_tab() {
-    static const char* const kAspects[] = {"4:3 (the game's)", "16:10", "16:9", "21:9"};
-    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
-    int aspect = 0;
-    for (int i = 0; i < 4; ++i)
-        if (g_aspect == kAspectValues[i])
-            aspect = i;
-    if (combo("Aspect ratio", &aspect, kAspects, 4)) {
-        g_aspect = kAspectValues[aspect];
-        g_dirty = g_restart_pending = true;
-    }
-    restart_note();
-
     bool hd_look = env_on("BLUEWAKE_HD_LOOK", false);
     if (checkbox("Wind Waker HD look   (F2)", &hd_look)) {
         set_env("BLUEWAKE_HD_LOOK", hd_look ? "1" : "0");
@@ -642,10 +630,23 @@ void hd_textures_section() {
     }
 }
 
-// Mods: HD textures first, then Better Wind Waker, as in the Windows Mods tab
-// and the iPhone and iPad Mods menu.
+// Mods: HD textures first, then widescreen and Better Wind Waker, as in the
+// Windows Mods tab and the iPhone and iPad Mods menu.
 void mods_tab() {
     hd_textures_section();
+    ImGui::Spacing();
+    static const char* const kAspects[] = {"Off (4:3, the game's)", "16:10", "16:9", "21:9"};
+    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
+    int aspect = 0;
+    for (int i = 0; i < 4; ++i)
+        if (g_aspect == kAspectValues[i])
+            aspect = i;
+    if (combo("Widescreen", &aspect, kAspects, 4)) {
+        g_aspect = kAspectValues[aspect];
+        g_dirty = g_restart_pending = true;
+    }
+    restart_note();
+    ImGui::TextDisabled("Widescreen widens the camera and moves the HUD to the edges.");
     ImGui::Spacing();
     if (checkbox("Better Wind Waker", &g_betterww))
         g_dirty = g_restart_pending = true;
