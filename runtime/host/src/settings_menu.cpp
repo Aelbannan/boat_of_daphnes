@@ -260,6 +260,7 @@ void close_menu() {
         bluewake_stage_select_answer(false); // closed without an answer: cancel
     }
     bluewake_haptics_block(false);
+    bluewake_pad_hold_until_released();
     save();
     std::fprintf(stderr, "[settings] menu closed\n");
 }

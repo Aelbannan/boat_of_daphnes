@@ -63,6 +63,7 @@ extern "C" {
 // types: those headers bring in the guest CPU's, which this file has no use for.
 void bluewake_mouse_camera_configure(bool enabled, double sensitivity, bool invert_y);
 void bluewake_mouse_camera_block(bool blocked);
+void bluewake_pad_hold_until_released(void);
 bool bluewake_mouse_camera_captured(void);
 void bluewake_mouse_camera_buttons(const char* map);
 void bluewake_haptics_reload(void);
@@ -501,6 +502,8 @@ void set_menu_open(bool open) {
     PADSetKeyboardActive(0, open ? FALSE : TRUE);
     bluewake_mouse_camera_block(open);
     bluewake_haptics_block(open);
+    if (!open)
+        bluewake_pad_hold_until_released();
     std::fprintf(stderr, "[windows] settings menu %s\n", open ? "open" : "closed");
     if (!open && g_dirty)
         save_file();
