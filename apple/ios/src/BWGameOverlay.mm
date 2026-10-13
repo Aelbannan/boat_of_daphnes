@@ -666,6 +666,17 @@ static NSUInteger g_packFiles = NSNotFound;
     return [[self dataDirectory] stringByAppendingPathComponent:@"Load/Textures/GZLE01"];
 }
 
+// The pack the next launch loads: the one Import from Wind Waker HD made, or
+// Load/Textures/GZLE01 (ios_entry.m reads the same setting).
+- (NSString*)activeTexturePackDirectory {
+    NSString* chosen = [[NSUserDefaults standardUserDefaults] stringForKey:@BW_TEXTURE_PACK_FOLDER_KEY];
+    BOOL isDir = NO;
+    NSString* path = chosen.length > 0 ? [[self dataDirectory] stringByAppendingPathComponent:chosen] : nil;
+    if (path != nil && [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDir] && isDir)
+        return path;
+    return [self texturePackDirectory];
+}
+
 // "On", "Off", or the change waiting for the next launch.
 - (NSString*)modState:(NSString*)key {
     const BOOL now = [[NSUserDefaults standardUserDefaults] boolForKey:key];
@@ -706,7 +717,7 @@ static NSUInteger g_packFiles = NSNotFound;
     };
     if (g_packFiles == NSNotFound) {
         g_packFiles = 0;
-        NSDirectoryEnumerator* walk = [[NSFileManager defaultManager] enumeratorAtPath:[self texturePackDirectory]];
+        NSDirectoryEnumerator* walk = [[NSFileManager defaultManager] enumeratorAtPath:[self activeTexturePackDirectory]];
         // Each texture once: its extra mip levels (name_mip1.png...) belong to it,
         // as the desktop menus count (runtime/host/src/texture_pack_menu.h).
         for (NSString* path in walk) {
@@ -882,6 +893,8 @@ static NSUInteger g_packFiles = NSNotFound;
     NSString* dest = [self texturePackDirectory];
     NSString* sourcePath = source.URLByResolvingSymlinksInPath.path;
     NSString* destPath = [NSURL fileURLWithPath:dest].URLByResolvingSymlinksInPath.path;
+    // Install Texture Pack uses Load/Textures/GZLE01 again.
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@BW_TEXTURE_PACK_FOLDER_KEY];
     if ([sourcePath isEqualToString:destPath] || [sourcePath hasPrefix:[destPath stringByAppendingString:@"/"]]) {
         g_packFiles = NSNotFound;
         [self refreshMenu];
@@ -958,9 +971,10 @@ static NSUInteger g_packFiles = NSNotFound;
 - (void)importWindWakerHDFrom:(NSURL*)source {
     __weak BWGameOverlay* weakSelf = self;
     const char* disc = getenv("BLUEWAKE_DISC");
-    NSString* textures = [self texturePackDirectory];
+    NSString* textures = [[self dataDirectory] stringByAppendingPathComponent:@"Load/Textures"];
     [[NSFileManager defaultManager] createDirectoryAtPath:textures withIntermediateDirectories:YES attributes:nil
                                                     error:nil];
+    __block std::string output;
     const BOOL scoped = [source startAccessingSecurityScopedResource];
     __block std::string failure;
     __block size_t imported = 0;
@@ -969,7 +983,7 @@ static NSUInteger g_packFiles = NSNotFound;
         wwhd::ImportOptions options;
         options.hd_folder = wwhd::hd_content_folder(source.path.fileSystemRepresentation);
         options.gc_disc = disc != NULL ? disc : "";
-        options.output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
+        options.output = output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
         options.threads = 2;
         options.progress = [wait](const wwhd::ImportProgress& p) {
             NSString* text = p.files_total
@@ -1001,8 +1015,13 @@ static NSUInteger g_packFiles = NSNotFound;
             [weakSelf presentAlert:alert];
             return;
         }
-        NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump. HD Textures "
-                                                       @"uses them after BlueWake restarts.", imported];
+        // The new pack is used on its own from the next launch.
+        NSString* folder = [@"Load/Textures" stringByAppendingPathComponent:@(output.c_str()).lastPathComponent];
+        [[NSUserDefaults standardUserDefaults] setObject:folder forKey:@BW_TEXTURE_PACK_FOLDER_KEY];
+        g_packFiles = NSNotFound;
+        [weakSelf refreshMenu];
+        NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump, in %@. HD "
+                                                       @"Textures uses them after BlueWake restarts.", imported, folder];
         [weakSelf offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Wind Waker HD Textures Ready" message:message];
     }];
 }
