@@ -29,6 +29,7 @@ extern "C" {
 #include <aurora/aurora.h>
 #include <aurora/imgui.h>
 #include <imgui.h>
+#include <imgui_internal.h> // FindWindowByName: the menu's position before Begin draws it
 #include "button_remap.h"
 #include "input_remap.h"
 #include "option_notes.h"
@@ -271,9 +272,39 @@ void restart_note() {
     ImGui::TextDisabled("(next launch)");
 }
 
+// A dropdown with its label on the right, or above it when the window is too
+// narrow for both.
 bool combo(const char* label, int* index, const char* const* items, int count) {
-    ImGui::SetNextItemWidth(std::max(80.f, ImGui::GetContentRegionAvail().x * 0.48f));
-    return ImGui::Combo(label, index, items, count);
+    const float avail = ImGui::GetContentRegionAvail().x;
+    if (ImGui::CalcTextSize(label).x + ImGui::GetStyle().ItemInnerSpacing.x <= avail * 0.5f) {
+        ImGui::SetNextItemWidth(std::max(80.f, avail * 0.48f));
+        return ImGui::Combo(label, index, items, count);
+    }
+    ImGui::PushID(label);
+    ImGui::TextWrapped("%s", label);
+    ImGui::SetNextItemWidth(-1.f);
+    const bool changed = ImGui::Combo("##value", index, items, count);
+    ImGui::PopID();
+    return changed;
+}
+
+// A checkbox whose label wraps when the window is too narrow for it; clicking
+// the wrapped label toggles it too.
+bool checkbox(const char* label, bool* value) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    if (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x <=
+        ImGui::GetContentRegionAvail().x)
+        return ImGui::Checkbox(label, value);
+    ImGui::PushID(label);
+    bool changed = ImGui::Checkbox("##box", value);
+    ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+    ImGui::TextWrapped("%s", label);
+    if (ImGui::IsItemClicked()) {
+        *value = !*value;
+        changed = true;
+    }
+    ImGui::PopID();
+    return changed;
 }
 
 bool slider(const char* label, float* value, float low, float high, const char* format) {
@@ -306,7 +337,7 @@ void display_tab() {
     restart_note();
 
     bool hd_look = env_on("BLUEWAKE_HD_LOOK", false);
-    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &hd_look)) {
+    if (checkbox("Wind Waker HD look   (F2)", &hd_look)) {
         set_env("BLUEWAKE_HD_LOOK", hd_look ? "1" : "0");
         bluewake_hd_look_reload();
         g_dirty = true;
@@ -316,7 +347,7 @@ void display_tab() {
                        "and bloom. Off by default.");
 
     bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
-    if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
+    if (checkbox("Fullscreen", &fullscreen)) {
         set_env("DOL_AURORA_FULLSCREEN", fullscreen ? "1" : "0");
         if (SDL_Window* window = game_window())
             SDL_SetWindowFullscreen(window, fullscreen);
@@ -345,7 +376,7 @@ void display_tab() {
     ImGui::TextDisabled("The game runs at 30; display changes and overloads can lower the presentation rate.");
 
     bool fps = env_on("DOL_AURORA_SHOW_FPS", false);
-    if (ImGui::Checkbox("Show the frame rate", &fps)) {
+    if (checkbox("Show the frame rate", &fps)) {
         set_env("DOL_AURORA_SHOW_FPS", fps ? "1" : "0");
         aurora_set_fps_overlay(fps);
     }
@@ -400,7 +431,7 @@ void hd_textures_section() {
         set_texture_pack(picked);
     ImGui::SeparatorText("Wind Waker HD textures");
     bool on = g_texture_pack[0] != '\0';
-    if (ImGui::Checkbox("HD textures", &on)) {
+    if (checkbox("HD textures", &on)) {
         if (!on) {
             g_last_pack = g_texture_pack;
             set_texture_pack("");
@@ -441,7 +472,7 @@ void hd_textures_section() {
 void mods_tab() {
     hd_textures_section();
     ImGui::Spacing();
-    if (ImGui::Checkbox("Better Wind Waker", &g_betterww))
+    if (checkbox("Better Wind Waker", &g_betterww))
         g_dirty = g_restart_pending = true;
     restart_note();
     if (g_options.empty()) {
@@ -451,7 +482,7 @@ void mods_tab() {
         ImGui::Indent();
         for (size_t i = 0; i < g_options.size(); ++i) {
             bool on = g_options[i].second;
-            if (ImGui::Checkbox(g_option_titles[i].c_str(), &on)) {
+            if (checkbox(g_option_titles[i].c_str(), &on)) {
                 g_options[i].second = on;
                 g_dirty = g_restart_pending = true;
             }
@@ -470,7 +501,7 @@ void mods_tab() {
 
 void gameplay_tab() {
     bool stage_select = env_on("BLUEWAKE_STAGE_SELECT_TOGGLE", false);
-    if (ImGui::Checkbox("Developers' stage select (F7)", &stage_select)) {
+    if (checkbox("Developers' stage select (F7)", &stage_select)) {
         set_env("BLUEWAKE_STAGE_SELECT_TOGGLE", stage_select ? "1" : "0");
         g_dirty = g_restart_pending = true;
     }
@@ -485,13 +516,13 @@ void gameplay_tab() {
     ImGui::Separator();
     ImGui::TextUnformatted("Forest Water Challenge");
     bool keep_trees = env_on("BLUEWAKE_FOREST_WATER_KEEP_TREES", false);
-    if (ImGui::Checkbox("Keep watered trees when time runs out", &keep_trees)) {
+    if (checkbox("Keep watered trees when time runs out", &keep_trees)) {
         set_env("BLUEWAKE_FOREST_WATER_KEEP_TREES", keep_trees ? "1" : "0");
         bluewake_forest_water_reload();
     }
     ImGui::TextWrapped("Forest Water still expires. Refill and continue with the remaining trees.");
     bool thirty_minutes = env_on("BLUEWAKE_FOREST_WATER_30_MINUTES", false);
-    if (ImGui::Checkbox("30-minute Forest Water timer", &thirty_minutes)) {
+    if (checkbox("30-minute Forest Water timer", &thirty_minutes)) {
         set_env("BLUEWAKE_FOREST_WATER_30_MINUTES", thirty_minutes ? "1" : "0");
         bluewake_forest_water_reload();
     }
@@ -509,19 +540,19 @@ void gameplay_tab() {
         bluewake_fast_load_reload();
     }
     bool ff = env_on("BLUEWAKE_FAST_FORWARD", true);
-    if (ImGui::Checkbox("Skip through the black while loading", &ff)) {
+    if (checkbox("Skip through the black while loading", &ff)) {
         set_env("BLUEWAKE_FAST_FORWARD", ff ? "1" : "0");
         bluewake_fast_load_reload();
     }
     bool doors = env_on("BLUEWAKE_QUICK_DOORS", true);
-    if (ImGui::Checkbox("Quick doors (no walk-in or door closing behind Link)", &doors)) {
+    if (checkbox("Quick doors (no walk-in or door closing behind Link)", &doors)) {
         set_env("BLUEWAKE_QUICK_DOORS", doors ? "1" : "0");
         bluewake_quick_doors_reload();
     }
 
     ImGui::Separator();
     bool climb = env_on("BLUEWAKE_CLIMB", false);
-    if (ImGui::Checkbox("Wall climbing (experimental)", &climb)) {
+    if (checkbox("Wall climbing (experimental)", &climb)) {
         set_env("BLUEWAKE_CLIMB", climb ? "1" : "0");
         bluewake_climb_reload();
     }
@@ -539,7 +570,7 @@ void gameplay_tab() {
 
     ImGui::Separator();
     bool jump = env_on("BLUEWAKE_JUMP_BUTTON", false);
-    if (ImGui::Checkbox("Jump button (Space, left bumper)", &jump)) {
+    if (checkbox("Jump button (Space, left bumper)", &jump)) {
         set_env("BLUEWAKE_JUMP_BUTTON", jump ? "1" : "0");
         bluewake_jump_button_reload();
     }
@@ -608,13 +639,13 @@ void controls_tab() {
     const bool remapped = bw_button_map_parse(env("BLUEWAKE_BUTTON_MAP"), &map);
     bool swap_ab = env_on("BLUEWAKE_PAD_SWAP_AB", false), swap_xy = env_on("BLUEWAKE_PAD_SWAP_XY", false);
     ImGui::BeginDisabled(remapped);
-    if (ImGui::Checkbox("Swap A and B", &swap_ab)) set_env("BLUEWAKE_PAD_SWAP_AB", swap_ab ? "1" : "0");
-    if (ImGui::Checkbox("Swap X and Y", &swap_xy)) set_env("BLUEWAKE_PAD_SWAP_XY", swap_xy ? "1" : "0");
+    if (checkbox("Swap A and B", &swap_ab)) set_env("BLUEWAKE_PAD_SWAP_AB", swap_ab ? "1" : "0");
+    if (checkbox("Swap X and Y", &swap_xy)) set_env("BLUEWAKE_PAD_SWAP_XY", swap_xy ? "1" : "0");
     ImGui::EndDisabled();
     bool swap_lr = env_on("BLUEWAKE_PAD_SWAP_LR", false);
-    if (ImGui::Checkbox("Swap L and R (the triggers)", &swap_lr)) set_env("BLUEWAKE_PAD_SWAP_LR", swap_lr ? "1" : "0");
+    if (checkbox("Swap L and R (the triggers)", &swap_lr)) set_env("BLUEWAKE_PAD_SWAP_LR", swap_lr ? "1" : "0");
     bool dpad_menus = env_on("BLUEWAKE_DPAD_MENUS", false);
-    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &dpad_menus)) {
+    if (checkbox("D-pad moves the cursor in Items and Quest Status", &dpad_menus)) {
         set_env("BLUEWAKE_DPAD_MENUS", dpad_menus ? "1" : "0");
         bluewake_dpad_menus_reload();
     }
@@ -634,7 +665,7 @@ void controls_tab() {
     }
     apply_controller_swaps();
     bool mouse = env_on("BLUEWAKE_MOUSE_CAMERA", true);
-    if (ImGui::Checkbox("Mouse camera (click the game to use it)", &mouse)) {
+    if (checkbox("Mouse camera (click the game to use it)", &mouse)) {
         set_env("BLUEWAKE_MOUSE_CAMERA", mouse ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
@@ -649,7 +680,7 @@ void controls_tab() {
         bluewake_mouse_camera_reload();
     }
     bool invert = env_on("BLUEWAKE_MOUSE_INVERT_Y", false);
-    if (ImGui::Checkbox("Invert the mouse's up and down", &invert)) {
+    if (checkbox("Invert the mouse's up and down", &invert)) {
         set_env("BLUEWAKE_MOUSE_INVERT_Y", invert ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
@@ -669,7 +700,7 @@ void controls_tab() {
 
     ImGui::Separator();
     bool stick = env_on("BLUEWAKE_STICK_CAMERA", true);
-    if (ImGui::Checkbox("Direct right-stick camera and aiming", &stick)) {
+    if (checkbox("Direct right-stick camera and aiming", &stick)) {
         set_env("BLUEWAKE_STICK_CAMERA", stick ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
@@ -694,7 +725,7 @@ void controls_tab() {
         bluewake_mouse_camera_reload();
     }
     bool stick_zoom = env_on("BLUEWAKE_STICK_ZOOM", false);
-    if (ImGui::Checkbox("Hold the right-stick click and move it up/down to zoom", &stick_zoom)) {
+    if (checkbox("Hold the right-stick click and move it up/down to zoom", &stick_zoom)) {
         set_env("BLUEWAKE_STICK_ZOOM", stick_zoom ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
@@ -710,23 +741,23 @@ void controls_tab() {
     }
     ImGui::EndDisabled();
     bool invert_x = env_on("BLUEWAKE_STICK_CAMERA_INVERT_X", false);
-    if (ImGui::Checkbox("Invert the right stick's left and right", &invert_x)) {
+    if (checkbox("Invert the right stick's left and right", &invert_x)) {
         set_env("BLUEWAKE_STICK_CAMERA_INVERT_X", invert_x ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
     bool invert_y = env_on("BLUEWAKE_STICK_CAMERA_INVERT_Y", false);
-    if (ImGui::Checkbox("Invert the right stick's up and down", &invert_y)) {
+    if (checkbox("Invert the right stick's up and down", &invert_y)) {
         set_env("BLUEWAKE_STICK_CAMERA_INVERT_Y", invert_y ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
     ImGui::EndDisabled();
     bool aim_invert = env_on("BLUEWAKE_AIM_INVERT_Y", false);
-    if (ImGui::Checkbox("Invert the left stick's up and down when aiming (first person, items)", &aim_invert)) {
+    if (checkbox("Invert the left stick's up and down when aiming (first person, items)", &aim_invert)) {
         set_env("BLUEWAKE_AIM_INVERT_Y", aim_invert ? "1" : "0");
         bluewake_mouse_camera_reload();
     }
     bool gyro = env_on("BLUEWAKE_GYRO_AIM", false);
-    if (ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+    if (checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
                         &gyro)) {
         set_env("BLUEWAKE_GYRO_AIM", gyro ? "1" : "0");
         bluewake_mouse_camera_reload();
@@ -767,7 +798,7 @@ void controls_tab() {
     ImGui::EndDisabled();
     ImGui::BeginDisabled(haptics != 2);
     bool triggers = env_on("BLUEWAKE_HAPTICS_TRIGGERS", true);
-    if (ImGui::Checkbox("Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)", &triggers)) {
+    if (checkbox("Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)", &triggers)) {
         set_env("BLUEWAKE_HAPTICS_TRIGGERS", triggers ? "1" : "0");
         bluewake_haptics_reload();
     }
@@ -951,14 +982,40 @@ void draw(void*) {
     }
     ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(std::min(display.x - 24.f, 860.f), display.y * 0.78f), ImGuiCond_Appearing);
+    // Resizing stays between a size that still holds the tabs, hint and buttons
+    // and the edges of the game's window, less a margin, from where the menu is.
+    const ImVec2 largest(std::max(1.f, display.x - 24.f), std::max(1.f, display.y - 24.f));
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(std::min(420.f, largest.x), std::min(300.f, largest.y)), largest, [](ImGuiSizeCallbackData* data) {
+            // Growing stops at the edge; a menu already past it (moved there) isn't shrunk.
+            const ImVec2 screen = ImGui::GetIO().DisplaySize;
+            const auto limit = [](float desired, float current, float room) {
+                return desired <= room ? desired : std::max(room, std::min(current, desired));
+            };
+            data->DesiredSize.x = limit(data->DesiredSize.x, data->CurrentSize.x, screen.x - 12.f - data->Pos.x);
+            data->DesiredSize.y = limit(data->DesiredSize.y, data->CurrentSize.y, screen.y - 12.f - data->Pos.y);
+        });
     ImGui::SetNextWindowBgAlpha(0.94f);
     bluewake_ui::begin_theme();
     if (g_menu_font != nullptr) ImGui::PushFont(g_menu_font);
     bool open = true;
+    // Dragged, or resized from the top or left, it stays inside the game's
+    // window. ImGui moves a dragged window as the frame starts, so this has to
+    // come before Begin draws it there; if it is ever bigger than the game's
+    // window, the top left (the tabs) stays in view.
+    if (const ImGuiWindow* window = ImGui::FindWindowByName("BlueWake settings")) {
+        const ImVec2 kept(std::max(12.f, std::min(window->Pos.x, display.x - 12.f - window->Size.x)),
+                          std::max(12.f, std::min(window->Pos.y, display.y - 12.f - window->Size.y)));
+        if (kept.x != window->Pos.x || kept.y != window->Pos.y)
+            ImGui::SetNextWindowPos(kept);
+    }
+    // A click on the game or outside the window leaves no window focused, and
+    // then the controller has nothing to move through: give the menu focus back.
+    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
+        ImGui::SetNextWindowFocus();
     if (ImGui::Begin("BlueWake settings", &open,
-                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::SetWindowFontScale(1.f / g_font_dpi);
-        bluewake_ui::heading("Play your way", "Game paused. F1, Esc or a controller's B returns you to the adventure.");
         // The bumpers switch tabs. Each tab's body scrolls on its own but is
         // flattened for navigation, so the D-pad moves from the tabs through the
         // options to the buttons below without A to enter it and B to leave it.
@@ -972,48 +1029,66 @@ void draw(void*) {
         int request = -1;
         if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) request = (shown + kTabCount - 1) % kTabCount;
         if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) request = (shown + 1) % kTabCount;
+        // The body takes what the footer leaves: the hint, the next-launch note
+        // when there is one, and the buttons on one row or, if narrow, two.
+        static const char* const kButtons[] = {"Resume", "Save state (F5)", "Load latest state (F9)", "Quit the game"};
+        const ImGuiStyle& style = ImGui::GetStyle();
+        float buttons = -style.ItemSpacing.x;
+        for (const char* label : kButtons)
+            buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.f + style.ItemSpacing.x;
+        const int button_rows = buttons > ImGui::GetContentRegionAvail().x ? 2 : 1;
+        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() * (g_restart_pending ? 2.f : 1.f) +
+                             ImGui::GetFrameHeightWithSpacing() * button_rows;
         if (ImGui::BeginTabBar("##tabs")) {
+            // The window has no title bar, so the close button for the mouse sits at the end of the tabs.
+            if (ImGui::TabItemButton("x", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+                open = false;
             for (int i = 0; i < kTabCount; ++i) {
                 if (!ImGui::BeginTabItem(kTabs[i].label, nullptr, i == request ? ImGuiTabItemFlags_SetSelected : 0))
                     continue;
                 shown = i;
-                ImGui::BeginChild(kTabs[i].body, ImVec2(0, -132.f), ImGuiChildFlags_NavFlattened);
+                ImGui::BeginChild(kTabs[i].body, ImVec2(0, -footer), ImGuiChildFlags_NavFlattened);
+                ImGui::PushTextWrapPos(0.f);
                 kTabs[i].draw();
+                ImGui::PopTextWrapPos();
+                // The right stick scrolls the tab, as the game isn't listening while the menu is open.
+                const auto stick = [&io](ImGuiKey key) { return io.KeysData[key - ImGuiKey_NamedKey_BEGIN].AnalogValue; };
+                const float scroll = stick(ImGuiKey_GamepadRStickDown) - stick(ImGuiKey_GamepadRStickUp);
+                if (scroll > 0.2f || scroll < -0.2f)
+                    ImGui::SetScrollY(ImGui::GetScrollY() + scroll * 900.f * io.DeltaTime);
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
         }
         ImGui::Separator();
-        ImGui::TextDisabled("Controller: D-pad or left stick moves, A chooses, B closes, LB and RB change tabs.");
+        ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
         if (g_restart_pending)
             ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Some changes take effect at the next launch.");
-        if (!g_path.empty()) {
-            ImGui::TextDisabled("Preferences saved automatically when you resume.");
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", g_path.c_str());
-        }
-        if (ImGui::Button("Resume"))
+        if (ImGui::Button(kButtons[0]))
             open = false;
+        if (!g_path.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Preferences are saved when you resume:\n%s", g_path.c_str());
         const auto next_button = [](const char* label) {
             const float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.f;
             const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
             if (right - ImGui::GetItemRectMax().x > width + ImGui::GetStyle().ItemSpacing.x)
                 ImGui::SameLine();
         };
-        next_button("Save state (F5)");
+        next_button(kButtons[1]);
         // Save states (debugging): taken or put back at the game's next clean
         // point once the menu has closed (main.c's host_state_*).
-        if (ImGui::Button("Save state (F5)")) {
+        if (ImGui::Button(kButtons[1])) {
             bluewake_save_state_hotkey(false);
             open = false;
         }
-        next_button("Load latest state (F9)");
-        if (ImGui::Button("Load latest state (F9)")) {
+        next_button(kButtons[2]);
+        if (ImGui::Button(kButtons[2])) {
             bluewake_save_state_hotkey(true);
             open = false;
         }
-        next_button("Quit the game");
-        if (ImGui::Button("Quit the game")) {
+        next_button(kButtons[3]);
+        if (ImGui::Button(kButtons[3])) {
             close_menu();
             SDL_Event quit{};
             quit.type = SDL_EVENT_QUIT;
