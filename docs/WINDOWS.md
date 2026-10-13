@@ -142,7 +142,7 @@ Run `build\windows\BlueWake\BlueWake.exe`.
 | START | Return |
 | Camera | Click the game, then move the mouse (Esc releases it) |
 | Settings | F1 or Esc after releasing the mouse |
-| Jump / Run | Space / Shift; enable them in settings |
+| Jump / Sprint | Space / Shift; turn on Jump & Sprint in settings (Gameplay) |
 | HD look | F2 |
 | Save state / load the latest | F5 / F8 |
 | Stage select | F7, once it's on in settings |
