@@ -58,6 +58,18 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   list of host timing switches to rule out.
 - **#313** (Greatfish merchant under his raft): the merchant and his raft load separate archives, and when the
   merchant's finishes first his one ground check misses the raft. Waiting for the reporter's details before a fix.
+- **#313** (Greatfish merchant): jslay88's fix, tested on their Linux build, is #323 with them as co-author; to merge once
+  they confirm a build from the branch.
+- **#318** (Wind Temple R04/R08): pdale-boop found the cause. `d_a_shutter2.rel` is a loose file on the disc, so on the
+  console the shutter is created about 12 retraces after Link is built; BlueWake has every module in memory, so it's
+  created inside Link's two-frame gap. Agreed approach: give loose RELs a load time back, behind a switch that's off
+  by default, then the stage select sweep with and without it.
+- **Android (#93):** behaviour timing on the Fold 7 gives about 4% fewer instructions and 10% fewer cycles a retrace and a
+  10% smaller module. The run that decides the merge: Outset's pier from a cool start, `main` and behaviour timing
+  alternated. CI for #93 was waiting for a maintainer's approval; approved October 13.
+- **Behaviour timing as the default** (#215): plays fine on pdale-boop's rig (21:9, 60 FPS); waiting for jkoehler11 on
+  the Steam Deck.
+- **#322:** a request for the PAL version. Not planned for now: the translation and every host address are for GZLE01.
 - Merged: #312 (the release draft), #300 (cforain's build-process docs), #314. Waiting on Chris as on October 12, and on #321.
 
 ## Where things stand on October 12
