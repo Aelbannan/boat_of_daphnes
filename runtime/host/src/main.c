@@ -57,6 +57,7 @@
 #include "return_census.h"
 #include "scheduler_contract.h"
 #include "save_state.h"
+#include "status_line.h"
 #include "climb.h"
 #include "gxruntime/hle.h"
 #include <aurora/gfx.h>
@@ -6947,7 +6948,35 @@ static void host_state_parse_requests(void) {
     }
 }
 
-// F5 / F9 from the window's event observer (mouse_camera.c), main thread.
+// The status line (status_line.h): posted by the game thread or the window's
+// key handlers, read by an overlay. The number is odd while the text is being
+// written, so a reader never copies half of one message.
+static char g_status_text[64];
+static atomic_uint g_status_seq;
+
+void bluewake_status_post(const char* text) {
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_acq_rel);
+    snprintf(g_status_text, sizeof g_status_text, "%s", text);
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_release);
+}
+
+unsigned bluewake_status_read(char* text, size_t size) {
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const unsigned before = atomic_load_explicit(&g_status_seq, memory_order_acquire);
+        if (before & 1u)
+            continue;
+        if (size != 0) {
+            memcpy(text, g_status_text, size < sizeof g_status_text ? size : sizeof g_status_text);
+            text[size - 1] = '\0';
+        }
+        atomic_thread_fence(memory_order_acquire);
+        if (atomic_load_explicit(&g_status_seq, memory_order_relaxed) == before)
+            return before / 2u;
+    }
+    return 0u;
+}
+
+// F5 / F8 from the window's event observer (mouse_camera.c), main thread.
 void bluewake_save_state_hotkey(bool load) {
     if (load)
         g_state_hotkey_load = true;
@@ -6999,6 +7028,8 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
                     (unsigned long long)g_host_retrace_count);
         if (waited > 3600u) {
             fprintf(stderr, "[state] no clean point for a minute; save dropped\n");
+            if (g_state_hotkey_save)
+                bluewake_status_post("State not saved: the game was busy");
             for (u32 i = 0; i < g_state_request_count; ++i)
                 if (g_state_requests[i].retrace <= g_host_retrace_count)
                     g_state_requests[i].done = true;
@@ -7023,7 +7054,7 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
         mkdir(host_state_dir(), 0755);
         snprintf(path, sizeof path, "%s/quick-%llu.bwstate", host_state_dir(),
                  (unsigned long long)g_host_retrace_count);
-        host_state_save(path, cpu, mod, loop);
+        bluewake_status_post(host_state_save(path, cpu, mod, loop) ? "State saved" : "State not saved");
     }
     g_state_save_armed = false;
 }
@@ -7045,12 +7076,18 @@ static inline void host_state_turn(CPUState* cpu, const StaticRecompModuleDesc* 
             g_state_hotkey_load = false;
             const char* unsafe = host_state_unsafe_reason(cpu, loop);
             if (g_state_last_path[0] == '\0' &&
-                !host_state_latest(g_state_last_path, sizeof g_state_last_path))
-                fprintf(stderr, "[state] F9: no state in %s yet (F5 saves one)\n", host_state_dir());
-            else if (unsafe != NULL)
-                fprintf(stderr, "[state] F9: not now (%s)\n", unsafe);
-            else if (!host_state_load(g_state_last_path, cpu, mod, loop))
-                fprintf(stderr, "[state] F9: load failed; the machine may be inconsistent\n");
+                !host_state_latest(g_state_last_path, sizeof g_state_last_path)) {
+                fprintf(stderr, "[state] load: no state in %s yet (F5 saves one)\n", host_state_dir());
+                bluewake_status_post("No state yet (F5 saves one)");
+            } else if (unsafe != NULL) {
+                fprintf(stderr, "[state] load: not now (%s)\n", unsafe);
+                bluewake_status_post("State not loaded: the game was busy");
+            } else if (!host_state_load(g_state_last_path, cpu, mod, loop)) {
+                fprintf(stderr, "[state] load failed; the machine may be inconsistent\n");
+                bluewake_status_post("State not loaded");
+            } else {
+                bluewake_status_post("State loaded");
+            }
             g_state_poll_retrace = g_host_retrace_count;
             return;
         }

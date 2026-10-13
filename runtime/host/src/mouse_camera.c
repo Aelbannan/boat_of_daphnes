@@ -341,10 +341,10 @@ static void observe(const void* sdl_event, void* user) {
     if (g_blocked)
         return;
     bluewake_jump_button_event(sdl_event);
-    // Debug save states: F5 saves, F9 loads the last one (main.c).
+    // Save states, the same keys on every build: F5 saves, F8 loads the last one (main.c).
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-        (event->key.scancode == SDL_SCANCODE_F5 || event->key.scancode == SDL_SCANCODE_F9))
-        bluewake_save_state_hotkey(event->key.scancode == SDL_SCANCODE_F9);
+        (event->key.scancode == SDL_SCANCODE_F5 || event->key.scancode == SDL_SCANCODE_F8))
+        bluewake_save_state_hotkey(event->key.scancode == SDL_SCANCODE_F8);
     // The stage select (BLUEWAKE_STAGE_SELECT=1): F7 opens it from play and goes back.
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat && event->key.scancode == SDL_SCANCODE_F7)
         bluewake_stage_select_hotkey();

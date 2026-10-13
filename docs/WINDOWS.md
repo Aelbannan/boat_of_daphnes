@@ -146,6 +146,7 @@ Run `build\windows\BlueWake\BlueWake.exe`.
 | Fullscreen | F11 |
 | Smooth Motion | F10 |
 | Frame rate | F9 |
+| Save state / load the latest | F5 / F8 (F6 also saves) |
 
 Game controllers work through SDL (Xbox, PlayStation, Switch Pro and others). The title screen wants A to reach
 the file menu. To choose which controller button presses each GameCube button, open settings and use

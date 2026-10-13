@@ -56,6 +56,7 @@
 #include "save_state.h"
 #include "stage_select_key.h"
 #include "desktop_theme.h"
+#include "status_line_overlay.h"
 #include <aurora/gfx.h>
 
 extern "C" {
@@ -923,7 +924,7 @@ void tab_enhancements() {
 void tab_game() {
     Settings& d = g_session;
     ImGui::TextUnformatted("Experimental debug save states");
-    if (ImGui::Button("Save state (F6)")) {
+    if (ImGui::Button("Save state (F5)")) {
         bluewake_save_state_hotkey(false);
         set_menu_open(false);
     }
@@ -1226,7 +1227,9 @@ void frame(void*) {
     }
     if (g_toggle_fullscreen) {
         g_toggle_fullscreen = false;
-        set_fullscreen(w, !is_fullscreen(w));
+        const bool on = !is_fullscreen(w);
+        set_fullscreen(w, on);
+        bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");
     }
     if (g_toggle_menu) {
         g_toggle_menu = false;
@@ -1290,6 +1293,7 @@ void frame(void*) {
     if (g_menu_open)
         draw_menu(w);
     draw_hint(w);
+    bluewake_ui::draw_status_line(SDL_GetTicks(), ui_scale(w));
     if (g_dirty && SDL_GetTicks() - g_dirty_at > 1000 && !g_menu_open)
         save_file();
 }
@@ -1536,12 +1540,13 @@ extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
         aurora_set_frame_interpolation(g_session.smooth_motion);
         changed();
         std::fprintf(stderr, "[windows] Smooth Motion %s\n", g_session.smooth_motion ? "on" : "off");
+        bluewake_status_post(g_session.smooth_motion ? "Smooth Motion on" : "Smooth Motion off");
         return 1;
     case VK_F6:
+        // A second save key, unlisted: Wind Waker Recomp's, which players
+        // learned. F5 (save) and F8 (load) are the shared keys (mouse_camera.c),
+        // the same on every build (#320).
         bluewake_save_state_hotkey(false);
-        return 1;
-    case VK_F8:
-        bluewake_save_state_hotkey(true);
         return 1;
     case VK_F2:
         // The Wind Waker HD look on or off, at once, and kept (#108).
@@ -1549,11 +1554,13 @@ extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
         apply_hd_look();
         changed();
         std::fprintf(stderr, "[windows] Wind Waker HD look %s (F2)\n", g_session.hd_look ? "on" : "off");
+        bluewake_status_post(g_session.hd_look ? "HD look on" : "HD look off");
         return 1;
     case VK_F9:
         g_session.show_fps = !g_session.show_fps;
         aurora_set_fps_overlay(g_session.show_fps);
         changed();
+        bluewake_status_post(g_session.show_fps ? "Frame rate on" : "Frame rate off");
         return 1;
     default:
         return 0;
