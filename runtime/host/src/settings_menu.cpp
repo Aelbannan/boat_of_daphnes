@@ -308,6 +308,25 @@ bool checkbox(const char* label, bool* value) {
     return changed;
 }
 
+// The controller button the player mapped to the GameCube's B (Controls ›
+// Controller buttons), as an ImGui key: the menu's "back".
+ImGuiKey menu_back_key() {
+    BwButtonMap map;
+    bw_button_map_parse(env("BLUEWAKE_BUTTON_MAP"), &map);
+    switch (map.native[1]) {
+    case SDL_GAMEPAD_BUTTON_SOUTH: return ImGuiKey_GamepadFaceDown;
+    case SDL_GAMEPAD_BUTTON_WEST: return ImGuiKey_GamepadFaceLeft;
+    case SDL_GAMEPAD_BUTTON_NORTH: return ImGuiKey_GamepadFaceUp;
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return ImGuiKey_GamepadL1;
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return ImGuiKey_GamepadR1;
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK: return ImGuiKey_GamepadL3;
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return ImGuiKey_GamepadR3;
+    case SDL_GAMEPAD_BUTTON_START: return ImGuiKey_GamepadStart;
+    case SDL_GAMEPAD_BUTTON_BACK: return ImGuiKey_GamepadBack;
+    default: return ImGuiKey_GamepadFaceRight;
+    }
+}
+
 // A selected slider moves with left and right (the D-pad, the left stick or
 // the arrow keys), a twentieth of its range a press, without A to grab it
 // first. It fills its row, so left and right have nothing else to do there.
@@ -1120,11 +1139,23 @@ void draw(void*) {
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
         }
-        // B closes the menu, unless it is closing a dropdown or ending an edit:
-        // ImGui handles those first, so look at how things were a frame ago.
+        // The game's B (whichever controller button the player mapped to it,
+        // the right face button by default) closes the menu, unless it is
+        // closing a dropdown or ending an edit. ImGui's own cancel is always
+        // the right face button and acts first, so look at how things were a
+        // frame ago; for another button, do what that cancel does here.
         static bool busy_before = false;
-        if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && !busy_before)
-            open = false;
+        const ImGuiKey back = menu_back_key();
+        if (ImGui::IsKeyPressed(back, false)) {
+            if (!busy_before)
+                open = false;
+            else if (back != ImGuiKey_GamepadFaceRight) {
+                if (ImGui::IsAnyItemActive())
+                    ImGui::ClearActiveID();
+                else
+                    ImGui::ClosePopupsExceptModals();
+            }
+        }
         busy_before = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) || ImGui::IsAnyItemActive();
     }
     ImGui::End();
