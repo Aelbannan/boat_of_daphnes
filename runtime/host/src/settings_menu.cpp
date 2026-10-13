@@ -307,11 +307,31 @@ bool checkbox(const char* label, bool* value) {
     return changed;
 }
 
+// A selected slider moves with left and right (the D-pad, the left stick or
+// the arrow keys), a twentieth of its range a press, without A to grab it
+// first. It fills its row, so left and right have nothing else to do there.
+int slider_nudge() {
+    if (!ImGui::IsItemFocused() || ImGui::IsItemActive())
+        return 0;
+    const auto pressed = [](ImGuiKey a, ImGuiKey b, ImGuiKey c) {
+        return ImGui::IsKeyPressed(a, true) || ImGui::IsKeyPressed(b, true) || ImGui::IsKeyPressed(c, true);
+    };
+    if (pressed(ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadLStickLeft, ImGuiKey_LeftArrow))
+        return -1;
+    if (pressed(ImGuiKey_GamepadDpadRight, ImGuiKey_GamepadLStickRight, ImGuiKey_RightArrow))
+        return 1;
+    return 0;
+}
+
 bool slider(const char* label, float* value, float low, float high, const char* format) {
     ImGui::PushID(label);
     ImGui::TextWrapped("%s", label);
     ImGui::SetNextItemWidth(-1.f);
-    const bool changed = ImGui::SliderFloat("##value", value, low, high, format);
+    bool changed = ImGui::SliderFloat("##value", value, low, high, format);
+    if (const int step = slider_nudge()) {
+        *value = std::clamp(*value + step * (high - low) / 20.f, low, high);
+        changed = true;
+    }
     ImGui::PopID();
     return changed;
 }
@@ -791,7 +811,12 @@ void controls_tab() {
     }
     ImGui::BeginDisabled(haptics != 2);
     int strength = std::atoi(env("BLUEWAKE_HAPTICS_STRENGTH", "80").c_str());
-    if (ImGui::SliderInt("Vibration strength", &strength, 0, 100, "%d%%")) {
+    bool strength_changed = ImGui::SliderInt("Vibration strength", &strength, 0, 100, "%d%%");
+    if (const int step = slider_nudge()) {
+        strength = std::clamp(strength + step * 5, 0, 100);
+        strength_changed = true;
+    }
+    if (strength_changed) {
         set_env("BLUEWAKE_HAPTICS_STRENGTH", std::to_string(strength));
         bluewake_haptics_reload();
     }
