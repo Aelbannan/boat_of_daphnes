@@ -43,6 +43,7 @@ extern "C" {
 #include <algorithm>
 #include <cmath>
 
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -84,10 +85,11 @@ const char* const kKeys[] = {
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
     "BLUEWAKE_STAGE_SELECT_TOGGLE", "BLUEWAKE_HD_LOOK",
     "DOL_AURORA_ASPECT_FIT",    "BLUEWAKE_PAUSE_UNFOCUSED", "BLUEWAKE_SHADERS_FIRST",
-    "BLUEWAKE_SPRINT_CHOICE",
+    "BLUEWAKE_SPRINT_CHOICE",   "BLUEWAKE_DSP_MODE",
 };
 
 std::string g_path;                          // the settings file ("" when none)
+std::string g_data_dir;                      // saves and logs (bluewake_settings_set_data_dir)
 std::map<std::string, std::string> g_other;  // its other keys, kept as they were
 bool g_open = false;
 bool g_stage_select_question = false; // the menu shows only the stage select's question
@@ -438,7 +440,7 @@ void display_tab() {
 
     // An action for this session, not a setting: a button.
     const bool fullscreen = is_fullscreen();
-    if (ImGui::Button(fullscreen ? "Leave fullscreen   (F11)" : "Fullscreen   (F11)"))
+    if (ImGui::Button(fullscreen ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
         set_fullscreen(!fullscreen);
     bool start_fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
     if (bw_menu_checkbox("Start in fullscreen", &start_fullscreen)) {
@@ -482,7 +484,7 @@ void display_tab() {
     for (int i = 0; i < 5; ++i)
         if (samples == kAnisoValues[i])
             aniso = i;
-    if (bw_menu_combo("Anisotropic filtering", &aniso, kAniso, 5)) {
+    if (bw_menu_combo("Texture filtering", &aniso, kAniso, 5)) {
         set_env("DOL_AURORA_FORCE_ANISO", std::to_string(kAnisoValues[aniso]));
         aurora_set_forced_anisotropy(kAnisoValues[aniso]);
     }
@@ -647,8 +649,7 @@ void gameplay_tab() {
     if (bw_stage_select_button())
         close_menu();
 
-    ImGui::Separator();
-    ImGui::TextUnformatted("Forest Water Challenge");
+    ImGui::SeparatorText("Forest Water Challenge");
     bool keep_trees = env_on("BLUEWAKE_FOREST_WATER_KEEP_TREES", false);
     if (bw_menu_checkbox("Keep watered trees when time runs out", &keep_trees)) {
         set_env("BLUEWAKE_FOREST_WATER_KEEP_TREES", keep_trees ? "1" : "0");
@@ -662,8 +663,7 @@ void gameplay_tab() {
     }
     ImGui::TextWrapped("Applies the next time you collect Forest Water. Both options are off by default.");
 
-    ImGui::Separator();
-    ImGui::TextUnformatted("Doors and exits");
+    ImGui::SeparatorText("Doors and exits");
     // One switch, as on Windows and the iPad: short fades and no waiting in
     // the black, or the game's own (BLUEWAKE_FADE_FRAMES 6 or 0, and
     // BLUEWAKE_FAST_FORWARD, which keep working on their own for testing).
@@ -679,7 +679,7 @@ void gameplay_tab() {
         bluewake_quick_doors_reload();
     }
 
-    ImGui::Separator();
+    ImGui::SeparatorText("Climbing");
     bool climb = env_on("BLUEWAKE_CLIMB", false);
     if (bw_menu_checkbox("Wall climbing (experimental)", &climb)) {
         set_env("BLUEWAKE_CLIMB", climb ? "1" : "0");
@@ -697,7 +697,7 @@ void gameplay_tab() {
     }
     ImGui::EndDisabled();
 
-    ImGui::Separator();
+    ImGui::SeparatorText("Jump & Sprint");
     // Jump & Sprint, one switch as on Windows and the iPad, with the sprint's
     // speed under it. The chosen speed is kept apart (BLUEWAKE_SPRINT_CHOICE) so
     // turning it off (BLUEWAKE_SPRINT_SPEED 1) and on again keeps it.
@@ -918,7 +918,7 @@ void controls_tab() {
 
     // Haptics (haptics.h): the game's vibration rendered from what it asked
     // for, with the triggers; or its own on-off motor; or none.
-    ImGui::Separator();
+    ImGui::SeparatorText("Haptics");
     static const char* const kHaptics[] = {"Off", "Classic (the game's own on and off)",
                                            "Enhanced (shaped, with the triggers)"};
     const std::string mode = env("BLUEWAKE_HAPTICS", "enhanced");
@@ -950,8 +950,7 @@ void controls_tab() {
                         : haptics == 1 ? "The motor on and off, as a GameCube controller's."
                                        : "No vibration. (The game's own Vibration option turns it off too.)");
 
-    ImGui::Separator();
-    ImGui::TextUnformatted("Keyboard");
+    ImGui::SeparatorText("Keyboard");
     ImGui::BulletText("WASD move, arrows the D-pad, T F G H the C-stick");
     ImGui::BulletText("J  A     K  B     U  X     I  Y     Q  Z     E  L     R  R     Enter  Start");
     ImGui::BulletText("Space jump, Shift (held) sprint");
@@ -965,6 +964,60 @@ void controls_tab() {
     ImGui::BulletText("Optional camera zoom: hold the right-stick click and move it up/down");
     ImGui::BulletText("Telescope and Picto Box: the right stick aims, the left stick (or D-pad) zooms");
     ImGui::PopTextWrapPos();
+}
+
+// The folder in the system's file manager.
+void open_folder(const std::string& path) {
+    std::string url = "file://";
+    for (const unsigned char c : path) {
+        if (std::isalnum(c) || std::strchr("/-._~", c) != nullptr) {
+            url += static_cast<char>(c);
+        } else {
+            char escaped[4];
+            std::snprintf(escaped, sizeof escaped, "%%%02X", c);
+            url += escaped;
+        }
+    }
+    if (!SDL_OpenURL(url.c_str()))
+        std::fprintf(stderr, "[settings] could not open %s: %s\n", path.c_str(), SDL_GetError());
+}
+
+// Sound and files, as on Windows: the sound's engine (next launch), and where
+// the saves, settings and logs are.
+void sound_files_tab() {
+    ImGui::SeparatorText("Sound");
+    int exact = env("BLUEWAKE_DSP_MODE", "hle") == "lle" ? 1 : 0;
+    bool picked = ImGui::RadioButton("Fast (Dolphin's high-level Zelda sound)", &exact, 0);
+    picked |= ImGui::RadioButton("Exact (the sound chip's own program; slower)", &exact, 1);
+    if (picked) {
+        set_env("BLUEWAKE_DSP_MODE", exact ? "lle" : "hle");
+        g_dirty = g_restart_pending = true;
+    }
+    restart_note();
+    ImGui::Spacing();
+    ImGui::SeparatorText("Your files");
+    std::string folder = g_data_dir;
+    if (folder.empty() && !g_path.empty())
+        folder = g_path.substr(0, g_path.find_last_of('/') + 1);
+    if (folder.empty()) {
+        ImGui::TextDisabled("This session keeps no files.");
+        return;
+    }
+    if (folder.back() != '/')
+        folder += '/';
+    ImGui::TextDisabled("Saves and session logs are kept apart from the build:");
+    ImGui::TextUnformatted(folder.c_str());
+    if (!g_path.empty())
+        ImGui::TextDisabled("Settings: %s", g_path.c_str());
+    if (ImGui::Button("Open that folder"))
+        open_folder(folder);
+    const std::string logs = folder + "logs";
+    SDL_PathInfo info;
+    if (SDL_GetPathInfo(logs.c_str(), &info) && info.type == SDL_PATHTYPE_DIRECTORY) {
+        ImGui::SameLine();
+        if (ImGui::Button("Open the session logs"))
+            open_folder(logs);
+    }
 }
 
 void open_menu();
@@ -1177,7 +1230,8 @@ void draw(void*) {
         static const Tab kTabs[] = {{"Display", "##display-body", display_tab},
                                     {"Gameplay", "##gameplay-body", gameplay_tab},
                                     {"Mods", "##mods-body", mods_tab},
-                                    {"Controls", "##controls-body", controls_tab}};
+                                    {"Controls", "##controls-body", controls_tab},
+                                    {"Sound and files", "##sound-files-body", sound_files_tab}};
         constexpr int kTabCount = static_cast<int>(sizeof kTabs / sizeof kTabs[0]);
         static int shown = 0;
         int request = -1;
@@ -1185,15 +1239,7 @@ void draw(void*) {
             request = (shown + kTabCount + pad.tab_step) % kTabCount;
         // The body takes what the footer leaves: the hint, the next-launch note
         // when there is one, and the buttons on one row or, if narrow, two.
-        static const char* const kButtons[] = {"Resume", "Save state (F5)", "Load latest state (F8)", "Quit the game"};
-        const ImGuiStyle& style = ImGui::GetStyle();
-        float buttons = -style.ItemSpacing.x;
-        for (const char* label : kButtons)
-            buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.f + style.ItemSpacing.x;
-        const int button_rows = buttons > ImGui::GetContentRegionAvail().x ? 2 : 1;
-        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
-                             (g_restart_pending ? ImGui::GetFrameHeightWithSpacing() : 0.f) +
-                             ImGui::GetFrameHeightWithSpacing() * button_rows;
+        const float footer = bw_menu_footer_height(g_restart_pending);
         if (ImGui::BeginTabBar("##tabs")) {
             // The window has no title bar, so the close button for the mouse sits at the end of the tabs.
             if (ImGui::TabItemButton("x", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
@@ -1212,11 +1258,8 @@ void draw(void*) {
             }
             ImGui::EndTabBar();
         }
-        ImGui::Separator();
-        ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
+        bw_menu_footer_note(g_restart_pending);
         if (g_restart_pending) {
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Some changes take effect at the next launch.");
 #if defined(__linux__)
             // Linux's launcher (linux_entry.c) starts the game again after a
             // clean exit; the Mac app has no relaunch yet.
@@ -1232,34 +1275,29 @@ void draw(void*) {
             }
 #endif
         }
-        if (ImGui::Button(kButtons[0]))
+        switch (bw_menu_footer_buttons(g_path.c_str())) {
+        case BW_MENU_RESUME:
             open = false;
-        if (!g_path.empty() && ImGui::IsItemHovered())
-            ImGui::SetTooltip("Preferences are saved when you resume:\n%s", g_path.c_str());
-        const auto next_button = [](const char* label) {
-            const float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.f;
-            const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-            if (right - ImGui::GetItemRectMax().x > width + ImGui::GetStyle().ItemSpacing.x)
-                ImGui::SameLine();
-        };
-        next_button(kButtons[1]);
+            break;
         // Save states (debugging): taken or put back at the game's next clean
         // point once the menu has closed (main.c's host_state_*).
-        if (ImGui::Button(kButtons[1])) {
+        case BW_MENU_SAVE_STATE:
             bluewake_save_state_hotkey(false);
             open = false;
-        }
-        next_button(kButtons[2]);
-        if (ImGui::Button(kButtons[2])) {
+            break;
+        case BW_MENU_LOAD_STATE:
             bluewake_save_state_hotkey(true);
             open = false;
-        }
-        next_button(kButtons[3]);
-        if (ImGui::Button(kButtons[3])) {
+            break;
+        case BW_MENU_QUIT: {
             close_menu();
             SDL_Event quit{};
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
+            break;
+        }
+        case BW_MENU_NONE:
+            break;
         }
         // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
         if (bw_menu_back(pad.back))
@@ -1353,6 +1391,8 @@ extern "C" void bluewake_settings_load(void) {
 }
 
 extern "C" bool bluewake_settings_restart_requested(void) { return g_restart_requested; }
+
+extern "C" void bluewake_settings_set_data_dir(const char* dir) { g_data_dir = dir != nullptr ? dir : ""; }
 
 extern "C" void bluewake_settings_menu_install(void) {
     g_installed_ms = SDL_GetTicks();

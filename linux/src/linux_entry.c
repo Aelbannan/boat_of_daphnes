@@ -545,6 +545,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "[linux] app=%s data=%s%s module=%s disc=%s\n", g_exe_dir, g_data_dir,
             g_portable ? " (portable)" : "", module, getenv("BLUEWAKE_DISC"));
     bw_crash_install(g_data_dir);
+    bluewake_settings_set_data_dir(g_data_dir);
     char* host_argv[3] = {argv[0], module, NULL};
     char launch_marker[4096];
     snprintf(launch_marker, sizeof launch_marker, "%slaunch.pending", g_data_dir);

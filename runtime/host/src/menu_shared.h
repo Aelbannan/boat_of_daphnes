@@ -186,3 +186,49 @@ inline bool bw_menu_back(bool pressed) {
     }
     return true;
 }
+
+// The footer both menus end with: the hint, the next-launch note when there is
+// one, and the buttons, on one row or, when narrow, two.
+enum BwMenuButton { BW_MENU_NONE, BW_MENU_RESUME, BW_MENU_SAVE_STATE, BW_MENU_LOAD_STATE, BW_MENU_QUIT };
+inline const char* const kBwMenuButtons[] = {"Resume", "Save state (F5)", "Load latest state (F8)", "Quit the game"};
+
+// The footer's height, for the tab body above it (BeginChild's -height).
+inline float bw_menu_footer_height(bool restart_note) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float buttons = -style.ItemSpacing.x;
+    for (const char* label : kBwMenuButtons)
+        buttons += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.f + style.ItemSpacing.x;
+    const int rows = buttons > ImGui::GetContentRegionAvail().x ? 2 : 1;
+    return style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
+           (restart_note ? ImGui::GetFrameHeightWithSpacing() : 0.f) + ImGui::GetFrameHeightWithSpacing() * rows;
+}
+
+// The hint and the next-launch note. The caller puts its Restart now button,
+// if it has one, on the same line right after it (ImGui::SameLine()).
+inline void bw_menu_footer_note(bool restart_note) {
+    ImGui::Separator();
+    ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
+    if (restart_note) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(ImVec4(1.f, 0.8f, 0.3f, 1.f), "Some changes take effect at the next launch.");
+    }
+}
+
+// The buttons; returns the one pressed. Resume's tooltip names where the
+// preferences are saved, when given.
+inline BwMenuButton bw_menu_footer_buttons(const char* settings_path) {
+    BwMenuButton pressed = BW_MENU_NONE;
+    for (int i = 0; i < 4; ++i) {
+        if (i > 0) {
+            const float width = ImGui::CalcTextSize(kBwMenuButtons[i]).x + ImGui::GetStyle().FramePadding.x * 2.f;
+            const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+            if (right - ImGui::GetItemRectMax().x > width + ImGui::GetStyle().ItemSpacing.x)
+                ImGui::SameLine();
+        }
+        if (ImGui::Button(kBwMenuButtons[i]))
+            pressed = static_cast<BwMenuButton>(i + 1);
+        if (i == 0 && settings_path != nullptr && settings_path[0] != '\0' && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Preferences are saved when you resume:\n%s", settings_path);
+    }
+    return pressed;
+}
