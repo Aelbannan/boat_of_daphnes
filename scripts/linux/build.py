@@ -1304,7 +1304,8 @@ Run ./bluewake. Options (./bluewake --help lists them all):
 Keyboard: arrows D-pad, J A, K B, U X, I Y, W/A/S/D control stick,
 H/F/T/G C-stick, E/R L/R, Q Z, Return START. Game controllers work too.
 Mouse: click the game and move the mouse to turn the camera; Esc releases it.
-F11 fullscreen, F10 Smooth Motion, F9 frame rate, F5 save state, F8 load it.
+F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate, F5 save state,
+F8 load it, F2 HD look, F7 stage select.
 
 Saves and session logs: ~/.local/share/BlueWake
 Settings: ~/.config/BlueWake/settings.ini

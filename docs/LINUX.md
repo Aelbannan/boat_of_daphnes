@@ -149,6 +149,18 @@ disc and module paths). Keyboard: arrows D-pad, J/K/U/I face buttons, W/A/S/D st
 H/F/T/G C-stick, E/R L/R, Q Z, Return START; game controllers work. Mouse: click the
 game and move to turn the camera, Esc releases it.
 
+| Key | |
+| --- | --- |
+| Settings | F1 or Esc after releasing the mouse |
+| HD look | F2 |
+| Save state / load the latest | F5 / F8 |
+| Stage select | F7, once it's on in settings |
+| Frame rate | F9 |
+| Smooth Motion | F10 |
+| Fullscreen | F11 or Alt+Enter |
+
+A few words at the bottom left say what each key did.
+
 The optional controller zoom is under **Controls** in the settings menu. Enable it,
 then hold the right-stick click and move that stick up or down; tapping the click
 still enters or leaves first person. Its speed is adjustable beside the option.
