@@ -99,41 +99,52 @@ inline BwMenuPad bw_menu_controller(const std::string& button_map, bool swap_ab)
     // The stick is one direction at a time, its stronger axis, past half way.
     const bool stick = std::fabs(lx) >= 0.5f || std::fabs(ly) >= 0.5f;
     const bool across = std::fabs(lx) > std::fabs(ly);
-    constexpr int kKeys = 5, kAll = 8;
-    const bool now[kAll] = {
+    // Presses are a physical button going down, so a button already held when
+    // the menu opens, or when the player remaps it in Controls (picking the
+    // game's B with the button that then becomes B), does nothing until it is
+    // pressed again.
+    static bool was_held[SDL_GAMEPAD_BUTTON_COUNT];
+    static int last_frame = -10;
+    const bool reopened = ImGui::GetFrameCount() != last_frame + 1;
+    last_frame = ImGui::GetFrameCount();
+    const auto pressed = [&](unsigned k) {
+        return !reopened && k < SDL_GAMEPAD_BUTTON_COUNT && held[k] && !was_held[k];
+    };
+    // The keys ImGui gets: the arrows while the D-pad or the stick is held, and
+    // Space from a press of the game's A until it's let go.
+    static const ImGuiKey kKey[] = {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_UpArrow,
+                                    ImGuiKey_DownArrow, ImGuiKey_Space};
+    static bool key_down[5];
+    const bool now[5] = {
         button(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || (stick && across && lx < 0.f),
         button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || (stick && across && lx > 0.f),
         button(SDL_GAMEPAD_BUTTON_DPAD_UP) || (stick && !across && ly < 0.f),
         button(SDL_GAMEPAD_BUTTON_DPAD_DOWN) || (stick && !across && ly > 0.f),
-        button(a),
-        button(b),
-        button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER),
-        button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER),
+        button(a) && (key_down[4] || pressed(a)),
     };
-    static const ImGuiKey kKey[kKeys] = {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_UpArrow,
-                                         ImGuiKey_DownArrow, ImGuiKey_Space};
-    static bool before[kAll];
-    static int last_frame = -10;
-    // Opened again (or the first time): let go of any key left down when it
-    // closed, and take what's held now as already held, so the press that
-    // opened it, or a stick still pushed, does nothing.
-    const bool reopened = ImGui::GetFrameCount() != last_frame + 1;
-    last_frame = ImGui::GetFrameCount();
-    BwMenuPad out;
-    for (int i = 0; i < kAll; ++i) {
-        if (reopened) {
-            if (i < kKeys && before[i])
-                io.AddKeyEvent(kKey[i], false);
-        } else if (now[i] != before[i]) {
-            if (i < kKeys)
-                io.AddKeyEvent(kKey[i], now[i]);
-            else if (now[i] && i == 5)
-                out.back = true;
-            else if (now[i])
-                out.tab_step = i == 6 ? -1 : 1;
+    // Opened again (or the first time): a direction already held counts once
+    // it's let go and pushed again, as A does.
+    static bool wait_release[4];
+    for (int i = 0; i < 5; ++i) {
+        if (i < 4) {
+            if (reopened)
+                wait_release[i] = now[i];
+            else if (!now[i])
+                wait_release[i] = false;
         }
-        before[i] = now[i];
+        const bool down = !reopened && now[i] && !(i < 4 && wait_release[i]);
+        if (down != key_down[i])
+            io.AddKeyEvent(kKey[i], down);
+        key_down[i] = down;
     }
+    BwMenuPad out;
+    out.back = pressed(b);
+    if (pressed(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER))
+        out.tab_step = -1;
+    else if (pressed(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
+        out.tab_step = 1;
+    for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; ++k)
+        was_held[k] = held[k];
     if (std::fabs(ry) > 0.2f)
         out.scroll = ry;
     return out;
