@@ -21,7 +21,7 @@ import java.util.List;
  * rows with a back row at the top. Choosing an action closes the menu, as on the iPhone.
  */
 public class MenuView extends View {
-    /** One menu entry: an action, a submenu (children) or an inline group (inline children, no title). */
+    /** One menu entry: an action, a submenu (children) or an inline group (inline children, a title or none). */
     static final class Item {
         final String title;
         String subtitle;
@@ -42,8 +42,11 @@ public class MenuView extends View {
             return item;
         }
 
-        static Item inline(List<Item> children) {
-            Item item = new Item("");
+        static Item inline(List<Item> children) { return inline("", children); }
+
+        /** An inline group under a small title, as a titled UIMenu with UIMenuOptionsDisplayInline shows it. */
+        static Item inline(String title, List<Item> children) {
+            Item item = new Item(title);
             item.children = children;
             item.inline = true;
             return item;
@@ -70,7 +73,8 @@ public class MenuView extends View {
     }
 
     private static final class Row {
-        Item item;          // null for the back row
+        Item item;          // null for the back row and for a group's title
+        String header;      // a titled inline group's title: not a choice
         boolean separatorAbove;
         final RectF rect = new RectF();
     }
@@ -146,6 +150,13 @@ public class MenuView extends View {
         for (Item item : current.children) {
             if (item.inline) {
                 boolean first = true;
+                if (!item.title.isEmpty()) {
+                    Row header = new Row();
+                    header.header = item.title;
+                    header.separatorAbove = !rows.isEmpty();
+                    rows.add(header);
+                    first = false;
+                }
                 for (Item child : item.children) {
                     Row row = new Row();
                     row.item = child;
@@ -169,6 +180,7 @@ public class MenuView extends View {
     }
 
     private float rowHeight(Row row) {
+        if (row.header != null) return 30f * dp;
         if (row.item != null && row.item.subtitle != null && !row.item.subtitle.isEmpty()) return 62f * dp;
         return 48f * dp;
     }
@@ -213,7 +225,7 @@ public class MenuView extends View {
                 thick.setStrokeWidth(6f * dp);
                 thick.setColor(Color.argb(90, 0, 0, 0));
                 canvas.drawRect(panel.left, row.rect.top - 7f * dp, panel.right, row.rect.top, thick);
-            } else if (i > 0) {
+            } else if (i > 0 && rows.get(i - 1).header == null) {
                 canvas.drawRect(panel.left + 16f * dp, row.rect.top, panel.right, row.rect.top + Math.max(1f, dp * 0.5f),
                         linePaint);
             }
@@ -225,6 +237,13 @@ public class MenuView extends View {
 
     private void drawRow(Canvas canvas, Row row, Item current) {
         final float left = row.rect.left + 16f * dp, right = row.rect.right - 16f * dp;
+        if (row.header != null) {
+            subtitlePaint.setAlpha(150);
+            String header = TextUtils.ellipsize(row.header, subtitlePaint, right - left, TextUtils.TruncateAt.END)
+                    .toString();
+            canvas.drawText(header, left, row.rect.bottom - 8f * dp, subtitlePaint);
+            return;
+        }
         if (row.item == null) {
             // The back row: the submenu's title, with a chevron back.
             titlePaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
@@ -274,7 +293,7 @@ public class MenuView extends View {
 
     private Row rowAt(float x, float y) {
         if (!panel.contains(x, y)) return null;
-        for (Row row : rows) if (row.rect.contains(x, y)) return row;
+        for (Row row : rows) if (row.header == null && row.rect.contains(x, y)) return row;
         return null;
     }
 
