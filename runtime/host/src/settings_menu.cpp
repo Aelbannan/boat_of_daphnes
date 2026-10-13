@@ -82,6 +82,7 @@ const char* const kKeys[] = {
     "BLUEWAKE_FOREST_WATER_KEEP_TREES", "BLUEWAKE_FOREST_WATER_30_MINUTES",
     "BLUEWAKE_STAGE_SELECT_TOGGLE", "BLUEWAKE_HD_LOOK",
     "DOL_AURORA_ASPECT_FIT",    "BLUEWAKE_PAUSE_UNFOCUSED", "BLUEWAKE_SHADERS_FIRST",
+    "BLUEWAKE_SPRINT_CHOICE",
 };
 
 std::string g_path;                          // the settings file ("" when none)
@@ -704,18 +705,13 @@ void gameplay_tab() {
 
     ImGui::Separator();
     ImGui::TextUnformatted("Doors and exits");
-    int fade = std::atoi(env("BLUEWAKE_FADE_FRAMES", "6").c_str());
-    if (fade <= 0 || fade > 26)
-        fade = 26;
-    ImGui::TextWrapped("Fade length (game frames; 26 is the original)");
-    ImGui::SetNextItemWidth(-1.f);
-    if (ImGui::SliderInt("##fade-length", &fade, 2, 26)) {
-        set_env("BLUEWAKE_FADE_FRAMES", fade >= 26 ? "0" : std::to_string(fade));
-        bluewake_fast_load_reload();
-    }
-    bool ff = env_on("BLUEWAKE_FAST_FORWARD", true);
-    if (checkbox("Skip through the black while loading", &ff)) {
-        set_env("BLUEWAKE_FAST_FORWARD", ff ? "1" : "0");
+    // One switch, as on Windows and the iPad: short fades and no waiting in
+    // the black, or the game's own (BLUEWAKE_FADE_FRAMES 6 or 0, and
+    // BLUEWAKE_FAST_FORWARD, which keep working on their own for testing).
+    bool fast = env_on("BLUEWAKE_FAST_FORWARD", true);
+    if (checkbox("Fast transitions (short fades, no waiting in the black)", &fast)) {
+        set_env("BLUEWAKE_FAST_FORWARD", fast ? "1" : "0");
+        set_env("BLUEWAKE_FADE_FRAMES", fast ? "6" : "0");
         bluewake_fast_load_reload();
     }
     bool doors = env_on("BLUEWAKE_QUICK_DOORS", true);
@@ -743,20 +739,29 @@ void gameplay_tab() {
     ImGui::EndDisabled();
 
     ImGui::Separator();
-    bool jump = env_on("BLUEWAKE_JUMP_BUTTON", false);
-    if (checkbox("Jump button (Space, left bumper)", &jump)) {
-        set_env("BLUEWAKE_JUMP_BUTTON", jump ? "1" : "0");
-        bluewake_jump_button_reload();
-    }
-    float sprint = static_cast<float>(std::atof(env("BLUEWAKE_SPRINT_SPEED", "1").c_str()));
-    if (sprint < 1.f)
-        sprint = 1.f;
-    if (slider("Sprint speed (Shift, left stick click; 1 is off)", &sprint, 1.f, 2.f, "%.2fx")) {
+    // Jump & Sprint, one switch as on Windows and the iPad, with the sprint's
+    // speed under it. The chosen speed is kept apart (BLUEWAKE_SPRINT_CHOICE) so
+    // turning it off (BLUEWAKE_SPRINT_SPEED 1) and on again keeps it.
+    const float current = static_cast<float>(std::atof(env("BLUEWAKE_SPRINT_SPEED", "1").c_str()));
+    bool extras = env_on("BLUEWAKE_JUMP_BUTTON", false) || current > 1.01f;
+    float choice = static_cast<float>(std::atof(env("BLUEWAKE_SPRINT_CHOICE", "0").c_str()));
+    if (choice < 1.1f || choice > 2.f)
+        choice = current > 1.01f && current <= 2.f ? std::max(current, 1.1f) : 1.5f;
+    const auto apply_sprint = [&]() {
         char text[16];
-        std::snprintf(text, sizeof text, "%.2f", sprint);
-        set_env("BLUEWAKE_SPRINT_SPEED", text);
+        std::snprintf(text, sizeof text, "%.2f", choice);
+        set_env("BLUEWAKE_SPRINT_CHOICE", text);
+        set_env("BLUEWAKE_SPRINT_SPEED", extras ? text : "1");
+        set_env("BLUEWAKE_JUMP_BUTTON", extras ? "1" : "0");
+        bluewake_jump_button_reload();
         bluewake_sprint_reload();
-    }
+    };
+    if (checkbox("Jump & Sprint (Space or the left bumper jumps; Shift or the left stick click sprints)", &extras))
+        apply_sprint();
+    ImGui::BeginDisabled(!extras);
+    if (slider("Sprint speed", &choice, 1.1f, 2.f, "%.2fx"))
+        apply_sprint();
+    ImGui::EndDisabled();
 }
 
 void apply_controller_swaps() {
