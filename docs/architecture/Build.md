@@ -418,19 +418,28 @@ flowchart LR
     DolC["Translated DOL C"]
     RelC["Translated REL C"]
     Binaries["Original DOL + REL metadata"]
-    Generate["generate_composite.py"]
-    Verify{"Expected base digest?"}
-    Variants["Build selected mod variants"]
-    Prepare["Apply guarded optimizations"]
     Ready["OUT/composite-src/<br/>compile-ready source"]
+    Stop["Stop unless explicitly accepted"]
+
+    subgraph BlueWake["BlueWake build logic"]
+        Generate["generate_composite.py"]
+        Verify{"Expected base digest?"}
+        Variants["Build selected mod variants"]
+        Prepare["Apply guarded optimizations"]
+    end
 
     DolC --> Generate
     RelC --> Generate
     Binaries --> Generate
     Generate --> Verify
     Verify -->|yes| Variants --> Prepare --> Ready
-    Verify -->|no| Stop["Stop unless explicitly accepted"]
+    Verify -->|no| Stop
 ```
+
+Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
+output into BlueWake's compile-ready game-module source. It adds cross-DOL/REL
+dispatch, validates provenance, and applies BlueWake's mods and guarded
+optimizations. The BlueWake host application remains separate until stage 7.
 
 ### Generate the composite source
 
