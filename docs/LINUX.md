@@ -165,6 +165,14 @@ The optional controller zoom is under **Controls** in the settings menu. Enable 
 then hold the right-stick click and move that stick up or down; tapping the click
 still enters or leaves first person. Its speed is adjustable beside the option.
 
+The settings menu's **Display** tab has what the Windows one has: a **Fullscreen** button for this session
+(F11), **Start in fullscreen** for the next launch (as `--fullscreen`), **Reset the window**, **Keep the
+picture's shape** (black bars rather than stretching a 4:3 picture; a widened one always keeps its shape),
+**Pause while the window is in the background** and **Compile shaders before playing**. The settings
+that are new on Linux are off until you turn them on. The widescreen choice is under **Mods**, after HD
+textures. Under **Gameplay**, Jump & Sprint (with a **Sprint speed**) and Fast transitions are one
+switch each, as on the iPad.
+
 Your saves and session logs live in `~/.local/share/BlueWake`, outside the
 build, so rebuilding never touches them. The settings menu (Esc or F1) saves
 preferences separately to `~/.config/BlueWake/settings.ini`.
