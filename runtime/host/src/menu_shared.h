@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <imgui_internal.h> // ClearActiveID, ClosePopupsExceptModals, CalcTypematicRepeatAmount
 #include <cmath>
+#include <utility>
 #include <string>
 #include "button_remap.h"
 
@@ -46,104 +47,131 @@ inline bool bw_menu_checkbox(const char* label, bool* value) {
     return changed;
 }
 
-// The controller button the player mapped to the GameCube's B (Controls ›
-// Controller buttons; "" is the controller's own layout), as an ImGui key:
-// the menu's "back".
-inline ImGuiKey bw_menu_back_key(const std::string& button_map) {
-    BwButtonMap map;
-    bw_button_map_parse(button_map, &map);
-    switch (map.native[1]) {
-    case SDL_GAMEPAD_BUTTON_SOUTH: return ImGuiKey_GamepadFaceDown;
-    case SDL_GAMEPAD_BUTTON_WEST: return ImGuiKey_GamepadFaceLeft;
-    case SDL_GAMEPAD_BUTTON_NORTH: return ImGuiKey_GamepadFaceUp;
-    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return ImGuiKey_GamepadL1;
-    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return ImGuiKey_GamepadR1;
-    case SDL_GAMEPAD_BUTTON_LEFT_STICK: return ImGuiKey_GamepadL3;
-    case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return ImGuiKey_GamepadR3;
-    case SDL_GAMEPAD_BUTTON_START: return ImGuiKey_GamepadStart;
-    case SDL_GAMEPAD_BUTTON_BACK: return ImGuiKey_GamepadBack;
-    default: return ImGuiKey_GamepadFaceRight;
-    }
-}
+// --- a controller in the menu ----------------------------------------------
+//
+// ImGui's own controller navigation is off in the menus (NavEnableGamepad):
+// it scrolls the window with the left stick, which nothing outside ImGui can
+// switch off, and it chooses and cancels with fixed face buttons. Instead
+// bw_menu_controller reads the controller from SDL once a frame and hands ImGui
+// keys: the D-pad and the left stick are the arrow keys, held while they're
+// held so ImGui repeats them as it does a held key, and the game's A is Space,
+// which chooses. The game's B, the bumpers and the right stick come back to
+// the menu, which acts on them itself.
 
-// The left stick moves through the menu as the D-pad does. ImGui moves only
-// with the D-pad (its left stick scrolls), and the SDL backend sets the D-pad
-// from the controller every frame, so a push of the stick reaches ImGui as a
-// tap of an arrow key instead: one as it's pushed, then repeating while it's
-// held, as a held D-pad does. Call it once a frame while the menu is open.
-inline void bw_menu_stick_as_dpad() {
-    static ImGuiDir held = ImGuiDir_None;
-    static float held_for = 0.f;
+struct BwMenuPad {
+    int tab_step = 0;   // -1 for LB, 1 for RB, pressed this frame
+    bool back = false;  // the game's B, pressed this frame
+    float scroll = 0.f; // the right stick, -1 (up) to 1 (down); 0 inside its dead zone
+};
+
+// Call it once a frame while the menu is open, before its window. The game's A
+// and B are where the player put them: a custom layout (Controls › Controller
+// buttons; "" is the controller's own), else Swap A and B, as the game reads them.
+inline BwMenuPad bw_menu_controller(const std::string& button_map, bool swap_ab) {
     ImGuiIO& io = ImGui::GetIO();
-    const auto value = [&io](ImGuiKey key) { return io.KeysData[key - ImGuiKey_NamedKey_BEGIN].AnalogValue; };
-    const float x = value(ImGuiKey_GamepadLStickRight) - value(ImGuiKey_GamepadLStickLeft);
-    const float y = value(ImGuiKey_GamepadLStickDown) - value(ImGuiKey_GamepadLStickUp);
-    ImGuiDir dir = ImGuiDir_None;
-    if (std::fabs(x) >= 0.5f || std::fabs(y) >= 0.5f)
-        dir = std::fabs(x) > std::fabs(y) ? (x < 0.f ? ImGuiDir_Left : ImGuiDir_Right)
-                                          : (y < 0.f ? ImGuiDir_Up : ImGuiDir_Down);
-    if (dir != held) {
-        held = dir;
-        held_for = 0.f;
-    } else {
-        held_for += io.DeltaTime;
+    io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+    BwButtonMap map;
+    const bool custom = bw_button_map_parse(button_map, &map);
+    unsigned a = map.native[0], b = map.native[1];
+    if (!custom && swap_ab)
+        std::swap(a, b);
+    bool held[SDL_GAMEPAD_BUTTON_COUNT] = {};
+    float lx = 0.f, ly = 0.f, ry = 0.f;
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        SDL_Gamepad* pad = SDL_GetGamepadFromID(ids[i]);
+        if (pad == nullptr)
+            continue;
+        for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; ++k)
+            held[k] = held[k] || SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(k));
+        const auto stronger = [pad](float& to, SDL_GamepadAxis axis) {
+            const float v = SDL_GetGamepadAxis(pad, axis) / 32767.f;
+            if (std::fabs(v) > std::fabs(to))
+                to = v;
+        };
+        stronger(lx, SDL_GAMEPAD_AXIS_LEFTX);
+        stronger(ly, SDL_GAMEPAD_AXIS_LEFTY);
+        stronger(ry, SDL_GAMEPAD_AXIS_RIGHTY);
     }
-    if (dir == ImGuiDir_None)
-        return;
-    const float before = held_for == 0.f ? -1.f : held_for - io.DeltaTime;
-    if (ImGui::CalcTypematicRepeatAmount(before, held_for, io.KeyRepeatDelay, io.KeyRepeatRate * 0.8f) <= 0)
-        return;
-    const ImGuiKey key = dir == ImGuiDir_Left    ? ImGuiKey_LeftArrow
-                         : dir == ImGuiDir_Right ? ImGuiKey_RightArrow
-                         : dir == ImGuiDir_Up    ? ImGuiKey_UpArrow
-                                                 : ImGuiKey_DownArrow;
-    io.AddKeyEvent(key, true);
-    io.AddKeyEvent(key, false);
+    SDL_free(ids);
+    const auto button = [&held](unsigned k) { return k < SDL_GAMEPAD_BUTTON_COUNT && held[k]; };
+    // The stick is one direction at a time, its stronger axis, past half way.
+    const bool stick = std::fabs(lx) >= 0.5f || std::fabs(ly) >= 0.5f;
+    const bool across = std::fabs(lx) > std::fabs(ly);
+    constexpr int kKeys = 5, kAll = 8;
+    const bool now[kAll] = {
+        button(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || (stick && across && lx < 0.f),
+        button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || (stick && across && lx > 0.f),
+        button(SDL_GAMEPAD_BUTTON_DPAD_UP) || (stick && !across && ly < 0.f),
+        button(SDL_GAMEPAD_BUTTON_DPAD_DOWN) || (stick && !across && ly > 0.f),
+        button(a),
+        button(b),
+        button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER),
+        button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER),
+    };
+    static const ImGuiKey kKey[kKeys] = {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_UpArrow,
+                                         ImGuiKey_DownArrow, ImGuiKey_Space};
+    static bool before[kAll];
+    static int last_frame = -10;
+    // Opened again (or the first time): let go of any key left down when it
+    // closed, and take what's held now as already held, so the press that
+    // opened it, or a stick still pushed, does nothing.
+    const bool reopened = ImGui::GetFrameCount() != last_frame + 1;
+    last_frame = ImGui::GetFrameCount();
+    BwMenuPad out;
+    for (int i = 0; i < kAll; ++i) {
+        if (reopened) {
+            if (i < kKeys && before[i])
+                io.AddKeyEvent(kKey[i], false);
+        } else if (now[i] != before[i]) {
+            if (i < kKeys)
+                io.AddKeyEvent(kKey[i], now[i]);
+            else if (now[i] && i == 5)
+                out.back = true;
+            else if (now[i])
+                out.tab_step = i == 6 ? -1 : 1;
+        }
+        before[i] = now[i];
+    }
+    if (std::fabs(ry) > 0.2f)
+        out.scroll = ry;
+    return out;
 }
 
-// A selected slider moves with left and right (the D-pad, or the arrow keys,
-// which the left stick taps: bw_menu_stick_as_dpad) without A to grab it
-// first: -1, 1, or 0 for no press. Call it right after the slider; it fills
-// its row, so left and right have nothing else to do there.
+// A selected slider moves with left and right (the arrow keys, which the
+// D-pad and the left stick hold: bw_menu_controller) without A to grab it
+// first: -1, 1, or 0 for no press, repeating while held. Call it right after
+// the slider; it fills its row, so left and right have nothing else to do there.
 inline int bw_menu_slider_nudge() {
     if (!ImGui::IsItemFocused() || ImGui::IsItemActive())
         return 0;
-    const auto pressed = [](ImGuiKey a, ImGuiKey b) {
-        return ImGui::IsKeyPressed(a, true) || ImGui::IsKeyPressed(b, true);
-    };
-    if (pressed(ImGuiKey_GamepadDpadLeft, ImGuiKey_LeftArrow))
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
         return -1;
-    if (pressed(ImGuiKey_GamepadDpadRight, ImGuiKey_RightArrow))
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
         return 1;
     return 0;
 }
 
-// The right stick scrolls the current window (a tab's body): the game isn't
-// listening while the menu is open.
-inline void bw_menu_stick_scroll() {
-    const ImGuiIO& io = ImGui::GetIO();
-    const auto stick = [&io](ImGuiKey key) { return io.KeysData[key - ImGuiKey_NamedKey_BEGIN].AnalogValue; };
-    const float scroll = stick(ImGuiKey_GamepadRStickDown) - stick(ImGuiKey_GamepadRStickUp);
-    if (scroll > 0.2f || scroll < -0.2f)
-        ImGui::SetScrollY(ImGui::GetScrollY() + scroll * 900.f * io.DeltaTime);
+// The right stick (BwMenuPad::scroll) scrolls the current window, a tab's body:
+// the game isn't listening while the menu is open.
+inline void bw_menu_stick_scroll(float scroll) {
+    if (scroll != 0.f)
+        ImGui::SetScrollY(ImGui::GetScrollY() + scroll * 900.f * ImGui::GetIO().DeltaTime);
 }
 
-// The game's B closes the menu, unless it is closing a dropdown or ending an
-// edit. ImGui's own cancel is always the right face button and acts first, so
-// this looks at how things were a frame ago; for another button, it does what
-// that cancel does. Call it once a frame inside the menu's window; true: close.
-inline bool bw_menu_back_pressed(ImGuiKey back, bool* busy_before) {
-    bool close = false;
-    if (ImGui::IsKeyPressed(back, false)) {
-        if (!*busy_before)
-            close = true;
-        else if (back != ImGuiKey_GamepadFaceRight) {
-            if (ImGui::IsAnyItemActive())
-                ImGui::ClearActiveID();
-            else
-                ImGui::ClosePopupsExceptModals();
-        }
+// The game's B (BwMenuPad::back) ends an edit or closes an open dropdown, and
+// otherwise closes the menu. Call it inside the menu's window; true: close.
+inline bool bw_menu_back(bool pressed) {
+    if (!pressed)
+        return false;
+    if (ImGui::IsAnyItemActive()) {
+        ImGui::ClearActiveID();
+        return false;
     }
-    *busy_before = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) || ImGui::IsAnyItemActive();
-    return close;
+    if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        ImGui::ClosePopupsExceptModals();
+        return false;
+    }
+    return true;
 }

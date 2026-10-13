@@ -1068,10 +1068,16 @@ void load_font(SDL_Window* w) {
 
 void draw_menu(SDL_Window* w) {
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // The controller, read here and handed to ImGui as keys (menu_shared.h).
+    const BwMenuPad pad = bw_menu_controller(g_session.button_map, g_session.controller_swap_ab);
     const float scale = ui_scale(w);
     bluewake_ui::begin_theme(scale);
     if (g_stage_select_question) {
+        if (pad.back) {  // B cancels the question, as Esc does
+            io.AddKeyEvent(ImGuiKey_Escape, true);
+            io.AddKeyEvent(ImGuiKey_Escape, false);
+        }
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
                                 ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowBgAlpha(0.94f);
@@ -1129,7 +1135,6 @@ void draw_menu(SDL_Window* w) {
                                    ImGuiWindowFlags_NoSavedSettings;
     if (ImGui::Begin("BlueWake settings", &open, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
-        bw_menu_stick_as_dpad();
         bluewake_ui::heading("Play your way", "Display, controls and enhancements, all in one place.");
         // Esc normally closes it in the keyboard hook (bw_settings_key), which
         // keeps the key from SDL; one that reaches ImGui instead closes it too.
@@ -1142,8 +1147,8 @@ void draw_menu(SDL_Window* w) {
         constexpr int kTabCount = IM_ARRAYSIZE(kTabs);
         static int shown = 0;
         int request = -1;
-        if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) request = (shown + kTabCount - 1) % kTabCount;
-        if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) request = (shown + 1) % kTabCount;
+        if (pad.tab_step != 0)
+            request = (shown + kTabCount + pad.tab_step) % kTabCount;
         const ImGuiStyle& style = ImGui::GetStyle();
         const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
                              ImGui::GetFrameHeightWithSpacing();
@@ -1166,7 +1171,7 @@ void draw_menu(SDL_Window* w) {
                 default: tab_game(); break;
                 }
                 ImGui::PopTextWrapPos();
-                bw_menu_stick_scroll();
+                bw_menu_stick_scroll(pad.scroll);
                 ImGui::EndChild();
                 ImGui::PopID();
                 ImGui::EndTabItem();
@@ -1193,9 +1198,8 @@ void draw_menu(SDL_Window* w) {
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
         }
-        // The game's B, wherever the player mapped it, closes the menu (menu_shared.h).
-        static bool busy_before = false;
-        if (bw_menu_back_pressed(bw_menu_back_key(g_session.button_map), &busy_before))
+        // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
+        if (bw_menu_back(pad.back))
             open = false;
     }
     ImGui::End();

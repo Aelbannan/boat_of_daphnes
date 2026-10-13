@@ -1105,11 +1105,17 @@ void draw(void*) {
         return;
     ImGuiIO& io = ImGui::GetIO();
     if (!g_nav_set) {
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         g_nav_set = true;
     }
+    // The controller, read here and handed to ImGui as keys (menu_shared.h).
+    const BwMenuPad pad = bw_menu_controller(env("BLUEWAKE_BUTTON_MAP"), env_on("BLUEWAKE_PAD_SWAP_AB", false));
     const ImVec2 display = io.DisplaySize;
     if (g_stage_select_question) {
+        if (pad.back) {  // B cancels the question, as Esc does
+            io.AddKeyEvent(ImGuiKey_Escape, true);
+            io.AddKeyEvent(ImGuiKey_Escape, false);
+        }
         ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowBgAlpha(0.94f);
         bluewake_ui::begin_theme();
@@ -1164,7 +1170,6 @@ void draw(void*) {
     if (ImGui::Begin("BlueWake settings", &open,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::SetWindowFontScale(1.f / g_font_dpi);
-        bw_menu_stick_as_dpad();
         // The bumpers switch tabs. Each tab's body scrolls on its own but is
         // flattened for navigation, so the D-pad moves from the tabs through the
         // options to the buttons below without A to enter it and B to leave it.
@@ -1176,8 +1181,8 @@ void draw(void*) {
         constexpr int kTabCount = static_cast<int>(sizeof kTabs / sizeof kTabs[0]);
         static int shown = 0;
         int request = -1;
-        if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) request = (shown + kTabCount - 1) % kTabCount;
-        if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) request = (shown + 1) % kTabCount;
+        if (pad.tab_step != 0)
+            request = (shown + kTabCount + pad.tab_step) % kTabCount;
         // The body takes what the footer leaves: the hint, the next-launch note
         // when there is one, and the buttons on one row or, if narrow, two.
         static const char* const kButtons[] = {"Resume", "Save state (F5)", "Load latest state (F8)", "Quit the game"};
@@ -1201,7 +1206,7 @@ void draw(void*) {
                 ImGui::PushTextWrapPos(0.f);
                 kTabs[i].draw();
                 ImGui::PopTextWrapPos();
-                bw_menu_stick_scroll();
+                bw_menu_stick_scroll(pad.scroll);
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
@@ -1256,9 +1261,8 @@ void draw(void*) {
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
         }
-        // The game's B, wherever the player mapped it, closes the menu (menu_shared.h).
-        static bool busy_before = false;
-        if (bw_menu_back_pressed(bw_menu_back_key(env("BLUEWAKE_BUTTON_MAP")), &busy_before))
+        // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
+        if (bw_menu_back(pad.back))
             open = false;
     }
     ImGui::End();
