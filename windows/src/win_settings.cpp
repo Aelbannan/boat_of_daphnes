@@ -573,19 +573,6 @@ void restart_note(bool differs) {
 // display_tab), so the menus match on every platform (#320).
 void tab_display(SDL_Window* w) {
     Settings& d = g_session;
-    static const char* const kAspects[] = {"4:3 (the game's)", "16:10", "16:9", "21:9"};
-    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
-    int aspect = 0;
-    for (int i = 0; i < IM_ARRAYSIZE(kAspectValues); i++)
-        if (d.aspect == kAspectValues[i])
-            aspect = i;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Aspect ratio", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
-        d.aspect = kAspectValues[aspect];
-        changed();
-    }
-    restart_note(d.aspect != g_launched.aspect);
-    ImGui::TextDisabled("    Widescreen widens the camera and moves the HUD to the edges.");
     if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
         apply_hd_look();
         changed();
@@ -910,11 +897,26 @@ void tab_gameplay() {
     ImGui::EndDisabled();
 }
 
-// Mods: HD textures first, then Better Wind Waker, as in the Mac and Linux
-// Mods tab and the iPhone and iPad Mods menu.
+// Mods: HD textures first, then widescreen and Better Wind Waker, as in the
+// Mac and Linux Mods tab and the iPhone and iPad Mods menu.
 void tab_mods() {
     Settings& d = g_session;
     hd_textures_section(d);
+    ImGui::Spacing();
+    static const char* const kAspects[] = {"Off (4:3, the game's)", "16:10", "16:9", "21:9"};
+    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
+    int aspect = 0;
+    for (int i = 0; i < IM_ARRAYSIZE(kAspectValues); i++)
+        if (d.aspect == kAspectValues[i])
+            aspect = i;
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::Combo("Widescreen", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
+        d.aspect = kAspectValues[aspect];
+        changed();
+    }
+    restart_note(d.aspect != g_launched.aspect);
+    ImGui::TextDisabled("    Widescreen widens the camera and moves the HUD to the edges.");
+    ImGui::Spacing();
     if (ImGui::Checkbox("Better Wind Waker", &d.betterww))
         changed();
     restart_note(d.betterww != g_launched.betterww);
