@@ -359,28 +359,50 @@ the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 ## 4. Translate
 
 ```mermaid
-flowchart LR
+flowchart TD
     Source["Pinned DolRecomp source<br/>ROOT/ref/recompcore/DolRecomp"]
+    Build["CMake + Ninja"]
     Tool["Native DolRecomp executable<br/>OUT/dolrecomp/"]
     Dol["OUT/game/main.dol"]
     Rels["OUT/game/rels/<br/>415 REL modules"]
+    Frontend["GameCube / Gekko frontend<br/>parse DOL + REL, decode PowerPC"]
+    IR["DolIR<br/>shared translation representation"]
+    Backend["Portable C backend<br/>emit split source + dispatch metadata"]
     DolC["OUT/translated/dol/<br/>generated C chunks"]
     RelC["OUT/translated/rels/<br/>generated C modules"]
 
-    Source -->|CMake + Ninja| Tool
-    Tool -->|GameCube C backend| DolC
-    Tool -->|GameCube C backend| RelC
-    Dol --> Tool
-    Rels --> Tool
+    Source --> Build --> Tool
+    Tool -. "contains" .-> Frontend
+    Tool -. "contains" .-> Backend
+    Dol --> Frontend
+    Rels --> Frontend
+    Frontend --> IR --> Backend
+    Backend --> DolC
+    Backend --> RelC
 ```
 
 ### Translation pipeline
 
 Each builder compiles the
 [pinned DolRecomp revision](https://github.com/elliotttate/DolRecomp)
-for its host, then uses the same GameCube C backend and Gekko CPU model. The
-generated code preserves PowerPC operations and guest addresses; it is not
-reconstructed Nintendo source code.
+for its host, then invokes it with `--gamecube --backend c --cpu gekko`.
+“GameCube” selects the DOL/REL input rules and Gekko PowerPC model; “C backend”
+selects portable C as the translator's output instead of native LLVM objects.
+
+The frontend validates and decodes the executable units into DolRecomp's
+internal representation (DolIR). The backend emits split C sources, dispatch
+tables, and module metadata that preserve guest operations and addresses. This
+is compile-oriented generated code, not reconstructed Nintendo source and not
+a component that runs by itself.
+
+The platform compiler does not run in this stage. Section 7 later feeds the
+prepared C through Clang to produce an x86-64 or arm64 native game module; the
+module uses RecompCore at runtime for architectural state and host services.
+
+References: DolRecomp's pinned [backend overview](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/backend/README.md),
+[CLI mode selection](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/app/cli.c#L14-L33),
+and [portable C emitter](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/backend/emitter.c).
+The table below links the corresponding BlueWake invocation on each platform.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
