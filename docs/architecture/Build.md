@@ -360,16 +360,16 @@ the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ```mermaid
 flowchart TD
-    Source["Pinned DolRecomp source<br/>ROOT/ref/recompcore/<br/>DolRecomp"]
-    Build["CMake + Ninja"]
-    Tool["Native DolRecomp<br/>executable<br/>OUT/dolrecomp/"]
-    Dol["OUT/game/main.dol"]
-    Rels["OUT/game/rels/<br/>415 REL modules"]
-    Frontend["GameCube / Gekko frontend<br/>parse DOL + REL<br/>decode PowerPC"]
-    IR["DolIR<br/>shared translation<br/>representation"]
-    Backend["Portable C backend<br/>emit split source<br/>and dispatch metadata"]
-    DolC["DOL translation<br/>generated C chunks<br/>under OUT/translated/dol/"]
-    RelC["REL translations<br/>generated C grouped by REL<br/>under OUT/translated/rels/"]
+    Source["DolRecomp<br/>source"]
+    Build["CMake<br/>+ Ninja"]
+    Tool["DolRecomp<br/>executable"]
+    Dol["Main DOL"]
+    Rels["415 RELs"]
+    Frontend["GameCube input<br/>Gekko CPU"]
+    IR["DolIR"]
+    Backend["Portable C<br/>backend"]
+    DolC["DOL C chunks"]
+    RelC["REL-grouped<br/>C chunks"]
 
     Source --> Build --> Tool
     Tool -. "contains" .-> Frontend
@@ -415,16 +415,16 @@ The table below links the corresponding BlueWake invocation on each platform.
 
 ```mermaid
 flowchart LR
-    DolC["Translated DOL C"]
-    RelC["Translated REL C"]
-    Binaries["Original DOL + REL<br/>metadata"]
-    Ready["OUT/composite-src/<br/>compile-ready source"]
-    Stop["Stop unless<br/>explicitly accepted"]
+    DolC["DOL C chunks"]
+    RelC["REL C chunks"]
+    Binaries["DOL + REL<br/>metadata"]
+    Ready["Compile-ready<br/>source"]
+    Stop["Stop or<br/>override"]
 
-    subgraph BlueWake["BlueWake build logic"]
-        Generate["generate_composite.py<br/>combine source"]
-        Verify{"Expected<br/>base digest?"}
-        Variants["Build selected<br/>mod variants"]
+    subgraph BlueWake["BlueWake logic"]
+        Generate["Compose source"]
+        Verify{"Digest match?"}
+        Variants["Add mod<br/>variants"]
         Prepare["Apply guarded<br/>optimizations"]
     end
 
@@ -463,13 +463,13 @@ optimizations. The BlueWake host application remains separate until stage 7.
 
 ```mermaid
 flowchart LR
-    Prepared["Prepared<br/>composite source"]
-    Fingerprint["Source + compiler +<br/>playback fingerprint"]
-    Instrumented["Instrumented<br/>game module"]
-    Playback["Deterministic<br/>headless playbacks"]
-    Raw["Raw LLVM profiles"]
-    Merge["llvm-profdata merge"]
-    Profile["Optimization profile<br/>under OUT"]
+    Prepared["Prepared source"]
+    Fingerprint["Input<br/>fingerprint"]
+    Instrumented["Instrumented<br/>module"]
+    Playback["Headless<br/>playbacks"]
+    Raw["Raw profiles"]
+    Merge["Merge profiles"]
+    Profile["PGO profile"]
 
     Prepared --> Fingerprint
     Fingerprint -->|cache miss| Instrumented --> Playback --> Raw --> Merge --> Profile
@@ -497,15 +497,15 @@ inside the private `OUT` tree and are not release artifacts.
 
 ```mermaid
 flowchart TD
-    Composite["OUT/composite-src/<br/>prepared translated source"]
-    Runtime["RecompCore + BlueWake<br/>host source"]
-    Module["Native translated<br/>game module"]
-    Host["Platform application"]
-    Assemble["Embed or place module,<br/>runtime data, and provenance"]
-    Package{"Target package"}
-    Desktop["Runnable desktop<br/>folder or app"]
-    AppImage["Optional AppImage"]
-    IPA["Optional unsigned IPA"]
+    Composite["Prepared game<br/>source"]
+    Runtime["BlueWake host<br/>+ RecompCore"]
+    Module["Native game<br/>module"]
+    Host["Platform host<br/>application"]
+    Assemble["Assemble host,<br/>module, data,<br/>and provenance"]
+    Package{"Package target"}
+    Desktop["Desktop app<br/>or folder"]
+    AppImage["AppImage"]
+    IPA["Unsigned IPA"]
 
     Composite --> Module
     Runtime --> Host
