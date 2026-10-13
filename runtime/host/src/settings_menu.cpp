@@ -163,9 +163,15 @@ std::string options_value() {
     return list;
 }
 
+void capture_launch_choices();
+
 void save() {
     if (g_path.empty() || !g_dirty)
         return;
+    // The aspect, Better Wind Waker and the texture pack are written from the
+    // menu's copies, read when it first opens: a key (F2, F9, F10, F11) that
+    // saves before then would otherwise write them empty.
+    capture_launch_choices();
     const auto slash = g_path.rfind('/');
     if (slash != std::string::npos) {
         // Application Support/BlueWake, one level at a time.
