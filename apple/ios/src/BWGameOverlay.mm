@@ -419,9 +419,10 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     _menuButton.menu = [self buildMenu];
 }
 
-// Switches that keep the menu open (#104): the open submenu is swapped for a
-// fresh one in place, so its checkmarks move without the menu closing, and the
-// whole menu is rebuilt once it closes.
+// Switches that keep the menu open (#104): the open submenu keeps its identity
+// and only its items are swapped, so its checkmarks move without the menu
+// closing, and the whole menu is rebuilt once it closes. Returning a new UIMenu
+// instead makes iOS pop back to the top level after every tap.
 - (UIAction*)keepMenuOpen:(UIAction*)action {
     action.attributes |= UIMenuElementAttributesKeepsMenuPresented;
     return action;
@@ -436,7 +437,9 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     }
     [interaction updateVisibleMenuWithBlock:^UIMenu*(UIMenu* visible) {
         UIMenu* fresh = build();
-        return fresh != nil && [visible.title isEqualToString:fresh.title] ? fresh : visible;
+        if (fresh == nil || ![visible.title isEqualToString:fresh.title])
+            return visible;
+        return [visible menuByReplacingChildren:fresh.children];
     }];
 }
 
