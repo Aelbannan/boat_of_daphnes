@@ -33,6 +33,7 @@ extern "C" {
 #include "input_remap.h"
 #include "option_notes.h"
 #include "stage_select_key.h"
+#include "texture_pack_menu.h"
 
 #include <algorithm>
 #include <cmath>
@@ -92,6 +93,8 @@ bool g_betterww = false;
 std::vector<std::pair<std::string, bool>> g_options; // name, on
 std::vector<std::string> g_option_titles;
 char g_texture_pack[1024];
+std::string g_last_pack;             // the folder before HD textures went off (this session)
+bw_texture_pack::Counter g_pack_count; // textures in g_texture_pack, counted once per menu opening
 bool g_restart_pending = false;
 // BLUEWAKE_SETTINGS_TEST_OPEN=at:for (seconds after the menu is installed;
 // testing only): opens the menu, and closes it after `for` seconds.
@@ -200,14 +203,22 @@ void save() {
     std::fprintf(stderr, "[settings] %s %s\n", ok ? "saved" : "save failed; retry pending for", g_path.c_str());
 }
 
-// The launch-time choices as they are now (the environment after the launch
-// and the settings file, and the options the game started with).
+// The launch-time choices (the environment after the launch and the settings
+// file, and the options the game started with), read the first time the menu
+// opens. Later openings keep what the player chose since: reading them again
+// would show, and then save, the launch values over the player's changes.
 void capture_launch_choices() {
-    g_aspect = env("BLUEWAKE_ASPECT", "4:3");
-    const std::string mods = env("BLUEWAKE_MODS");
-    g_betterww = mods.find("betterww") != std::string::npos;
-    std::snprintf(g_texture_pack, sizeof g_texture_pack, "%s", env("DOL_AURORA_TEXTURE_PACK").c_str());
-    g_options.clear();
+    static bool captured = false;
+    if (!captured) {
+        captured = true;
+        g_aspect = env("BLUEWAKE_ASPECT", "4:3");
+        const std::string mods = env("BLUEWAKE_MODS");
+        g_betterww = mods.find("betterww") != std::string::npos;
+        std::snprintf(g_texture_pack, sizeof g_texture_pack, "%s", env("DOL_AURORA_TEXTURE_PACK").c_str());
+    }
+    // Better Wind Waker's options are listed once the game has started.
+    if (!g_options.empty())
+        return;
     g_option_titles.clear();
     for (u32 i = 0;; ++i) {
         const char* title = nullptr;
@@ -234,6 +245,7 @@ void open_menu() {
     bluewake_mouse_camera_release();
     bluewake_haptics_block(true);
     capture_launch_choices();
+    g_pack_count.forget();
     g_open = true;
     std::fprintf(stderr, "[settings] menu open (the game is paused)\n");
 }
@@ -357,22 +369,78 @@ void display_tab() {
         aurora_set_forced_anisotropy(kAnisoValues[aniso]);
     }
 
-    ImGui::Separator();
-    ImGui::TextUnformatted("HD texture pack (a Dolphin pack's GZL folder):");
-    ImGui::SetNextItemWidth(-(ImGui::CalcTextSize("None (next launch)").x +
-                              4.f * ImGui::GetStyle().FramePadding.x +
-                              2.f * ImGui::GetStyle().ItemSpacing.x));
-    if (ImGui::InputText("##texpack", g_texture_pack, sizeof g_texture_pack))
-        g_dirty = g_restart_pending = true;
-    ImGui::SameLine();
-    if (ImGui::Button("None")) {
-        g_texture_pack[0] = '\0';
-        g_dirty = g_restart_pending = true;
-    }
-    restart_note();
 }
 
-void gameplay_tab() {
+// The folder scripts/import_wwhd_textures.py puts its pack in.
+std::string importer_pack_folder() {
+    const char* home = std::getenv("HOME");
+    if (home == nullptr || home[0] == '\0')
+        return "";
+#if defined(__linux__)
+    const char* data = std::getenv("XDG_DATA_HOME");
+    const std::string base = data != nullptr && data[0] != '\0' ? data : std::string(home) + "/.local/share";
+    return base + "/BlueWake/Load/Textures/WWHD";
+#else
+    return std::string(home) + "/Library/Application Support/BlueWake/Load/Textures/WWHD";
+#endif
+}
+
+
+void set_texture_pack(const std::string& folder) {
+    std::snprintf(g_texture_pack, sizeof g_texture_pack, "%s", folder.c_str());
+    g_dirty = g_restart_pending = true;
+}
+
+// Wind Waker HD textures: the same section, in the same order, as the Windows
+// Mods tab and the iPhone and iPad Mods menu. The pack is on while a folder is
+// chosen (DOL_AURORA_TEXTURE_PACK), as in the Linux setup window.
+void hd_textures_section() {
+    std::string picked;
+    if (bw_texture_pack::take_folder(picked))
+        set_texture_pack(picked);
+    ImGui::SeparatorText("Wind Waker HD textures");
+    bool on = g_texture_pack[0] != '\0';
+    if (ImGui::Checkbox("HD textures", &on)) {
+        if (!on) {
+            g_last_pack = g_texture_pack;
+            set_texture_pack("");
+        } else {
+            std::error_code ec;
+            const std::string folder = !g_last_pack.empty() ? g_last_pack
+                : std::filesystem::is_directory(importer_pack_folder(), ec) ? importer_pack_folder() : "";
+            if (folder.empty())
+                bw_texture_pack::choose_folder(game_window(), "");
+            else
+                set_texture_pack(folder);
+        }
+    }
+    restart_note();
+    if (g_texture_pack[0] != '\0') {
+        const size_t textures = g_pack_count.get(g_texture_pack);
+        if (textures > 0)
+            ImGui::TextDisabled("%zu textures in %s", textures, g_texture_pack);
+        else
+            ImGui::TextDisabled("No .png or .dds textures in %s", g_texture_pack);
+    } else {
+        ImGui::TextDisabled("Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the "
+                            "game's textures.");
+    }
+    if (ImGui::Button("Choose texture pack folder..."))
+        bw_texture_pack::choose_folder(game_window(), g_texture_pack);
+    const std::string error = bw_texture_pack::picker_error();
+    if (!error.empty()) {
+        ImGui::TextWrapped("The folder picker did not open (%s). Type the folder instead:", error.c_str());
+        ImGui::SetNextItemWidth(-1.f);
+        if (ImGui::InputText("##texpack", g_texture_pack, sizeof g_texture_pack))
+            g_dirty = g_restart_pending = true;
+    }
+}
+
+// Mods: HD textures first, then Better Wind Waker, as in the Windows Mods tab
+// and the iPhone and iPad Mods menu.
+void mods_tab() {
+    hd_textures_section();
+    ImGui::Spacing();
     if (ImGui::Checkbox("Better Wind Waker", &g_betterww))
         g_dirty = g_restart_pending = true;
     restart_note();
@@ -397,7 +465,10 @@ void gameplay_tab() {
         ImGui::EndDisabled();
     }
 
-    ImGui::Separator();
+
+}
+
+void gameplay_tab() {
     bool stage_select = env_on("BLUEWAKE_STAGE_SELECT_TOGGLE", false);
     if (ImGui::Checkbox("Developers' stage select (F7)", &stage_select)) {
         set_env("BLUEWAKE_STAGE_SELECT_TOGGLE", stage_select ? "1" : "0");
@@ -898,6 +969,12 @@ void draw(void*) {
             if (ImGui::BeginTabItem("Gameplay")) {
                 ImGui::BeginChild("##gameplay-body", ImVec2(0, -110.f), false);
                 gameplay_tab();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Mods")) {
+                ImGui::BeginChild("##mods-body", ImVec2(0, -110.f), false);
+                mods_tab();
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
