@@ -1,14 +1,15 @@
 # Mods
 
-BlueWake has a **Mods** section in the in-game ⋯ menu with four mods. Each takes effect the next time
-BlueWake starts, and none of them changes your saves.
+BlueWake has a **Mods** section in the in-game ⋯ menu on iPhone and iPad, and a **Mods** tab in the F1 menu
+on Mac, Linux and Windows. **Wind Waker HD textures** comes first in it on every build. Each mod takes
+effect the next time BlueWake starts, and none of them changes your saves.
 
 | Mod | What it does | What you need |
 | --- | --- | --- |
 | Widescreen 16:9 | The community 16:9 code (Dolphin's GZLE01 Gecko code): a wider field of view with the HUD placed for 16:9, letterboxed on a 4:3 iPad | Nothing; it is built in |
 | Widescreen 16:10 | The same code with its aspect-dependent values recomputed for 16:10 (Mac displays, most iPads' shape is closer to it); one widescreen mod at a time | Nothing; it is built in |
 | Widescreen 21:9 | The same code recomputed for 21:9 ultrawide desktop displays (Windows, Linux, Mac) | Nothing; it is built in |
-| HD Texture Pack | Replaces the game's textures with a Dolphin-format pack, such as [Hypatia's HD pack](https://forums.dolphin-emu.org/Thread-hypatia-s-tloz-the-wind-waker-hd-pack-v2-0001a) | The pack's `tex1_…` images in `Documents/BlueWake/Load/Textures/GZLE01` |
+| HD Textures | Replaces the game's textures with a Dolphin-format pack, such as [Hypatia's HD pack](https://forums.dolphin-emu.org/Thread-hypatia-s-tloz-the-wind-waker-hd-pack-v2-0001a) or [the textures from your own Wind Waker HD disc](WWHD_TEXTURES.md) | The pack's `tex1_…` images: on iPhone and iPad in `Documents/BlueWake/Load/Textures/GZLE01` (Install Texture Pack… copies them there); on the desktop, any folder picked with Choose texture pack folder… |
 | Better Wind Waker | [Better Wind Waker](https://github.com/WideBoner/betterww)'s quality-of-life changes from Wind Waker HD, each its own setting: Swift or Brisk Sail, instant text, faster rolling, grappling, block pushing, climbing and crawling, Tingle Chests without the Tuner, an unrestricted boat, no song replays, turning while swinging, a faster Ballad of Gales, skipping the opening movie, an inverted camera, a revealed sea chart | Nothing; it is built in |
 
 On the iPad, `Documents/BlueWake` is **On My iPad › BlueWake › BlueWake** in the Files app.
@@ -32,12 +33,13 @@ if an older device struggles, 2× renders 1707×960.
 **HD textures:** download a Dolphin-format pack for GZLE01. On the iPad, Hypatia's *Android-Lite* build
 (3× resolution, about 530 MB of PNG files) fits comfortably; the full-size PC builds need several GB of
 memory. Copy the folder of `tex1_…` images (in Hypatia's pack, the `GZL` folder) into
-`Load/Textures/GZLE01`, turn on *HD Texture Pack* and restart. Subfolders are searched, `_mipN`
-sidecar mipmaps are used, and PNG and DDS files both work. The menu shows how many textures it found.
+`Load/Textures/GZLE01`, turn on *HD Textures* and restart. Subfolders are searched, `_mipN`
+sidecar mipmaps are used, and PNG and DDS files both work. The menu shows how many textures it found. On the desktop, **Choose texture pack folder…** uses a
+pack where it is, with nothing copied.
 
 You can also [import compatible textures from your own Wii U Wind Waker HD
 disc](WWHD_TEXTURES.md). The local importer creates a Dolphin-format pack;
-select it with the same HD texture pack setting.
+add it the same way, in **Mods › Wind Waker HD textures**.
 
 **Better Wind Waker:** turn on *Better Wind Waker*, pick its settings in **⋯ › Mods › Better Wind Waker
 Settings** and restart. Each of Better Wind Waker's settings is a switch of its own, on or off by Better
