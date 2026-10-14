@@ -42,6 +42,9 @@ void bluewake_settings_menu_install(void);
 // Every SDL event: true when the menu took it (its keys, or anything while it
 // is open), so nothing else acts on it.
 bool bluewake_settings_menu_event(const void* sdl_event);
+// True once the menu's Restart now quit the game: linux_entry.c starts it
+// again, with the environment it began with, after a clean exit.
+bool bluewake_settings_restart_requested(void);
 #endif
 
 #ifdef __cplusplus

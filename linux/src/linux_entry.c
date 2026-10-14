@@ -22,6 +22,7 @@
 // Every default is only a default: an environment variable that is already
 // set (BLUEWAKE_DISC, BLUEWAKE_CARD_PATH, ...) wins.
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <glob.h>
 #include <pthread.h>
@@ -40,6 +41,7 @@
 #include "linux_crash.h"
 #include "linux_setup.h"
 #include "launch_marker.h"
+#include "settings_menu.h"
 
 int bluewake_host_main(int argc, char** argv);
 
@@ -185,6 +187,7 @@ static pthread_t g_log_thread;
 static int g_log_pipe[2];
 static FILE* g_log_file;
 static int g_term_out = -1;
+static int g_term_err = -1;  // the terminal's stderr, kept for restore_terminal_streams
 
 static void* log_pump(void* arg) {
     (void)arg;
@@ -255,6 +258,15 @@ static void finish_session_log(void) {
     g_log_file = NULL;
 }
 
+// Before Restart now's execve: the session log closed, and the terminal's own
+// streams back on 1 and 2, so the next session's log doesn't write into this
+// one's pipe (with no reader after the execve, it filled and the game froze).
+static void restore_terminal_streams(void) {
+    finish_session_log();
+    if (g_term_out >= 0) dup2(g_term_out, STDOUT_FILENO);
+    if (g_term_err >= 0) dup2(g_term_err, STDERR_FILENO);
+}
+
 static void start_session_log(void) {
     char logs[4096];
     snprintf(logs, sizeof logs, "%slogs/", g_data_dir);
@@ -279,7 +291,12 @@ static void start_session_log(void) {
     int err_fd = dup(STDERR_FILENO);
     if (out_fd < 0 || err_fd < 0) { if (out_fd >= 0) close(out_fd); if (err_fd >= 0) close(err_fd); }
     g_term_out = out_fd;
-    (void)err_fd;
+    g_term_err = err_fd;
+    // None of these may reach a restarted BlueWake (Restart now's execve):
+    // its own session log starts from the terminal's streams, put back first.
+    fcntl(g_log_pipe[0], F_SETFD, FD_CLOEXEC);
+    if (out_fd >= 0) fcntl(out_fd, F_SETFD, FD_CLOEXEC);
+    if (err_fd >= 0) fcntl(err_fd, F_SETFD, FD_CLOEXEC);
     dup2(g_log_pipe[1], STDOUT_FILENO);
     dup2(g_log_pipe[1], STDERR_FILENO);
     close(g_log_pipe[1]);
@@ -326,7 +343,23 @@ static void usage(void) {
             "settings, logs and caches stay in a user folder beside it instead.\n");
 }
 
+// The environment BlueWake started with, for Restart now: the new session
+// gets the same command line and environment, and the settings file decides
+// the rest (as on Windows).
+extern char** environ;
+static char** g_launch_env;
+
+static void capture_launch_env(void) {
+    size_t count = 0;
+    while (environ[count] != NULL)
+        ++count;
+    g_launch_env = calloc(count + 1, sizeof *g_launch_env);
+    for (size_t i = 0; g_launch_env != NULL && i < count; ++i)
+        g_launch_env[i] = strdup(environ[i]);
+}
+
 int main(int argc, char** argv) {
+    capture_launch_env();
     for (int i = 1; i < argc; i++)
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) { usage(); return 0; }
     resolve_dirs();
@@ -515,6 +548,12 @@ int main(int argc, char** argv) {
     char* host_argv[3] = {argv[0], module, NULL};
     char launch_marker[4096];
     snprintf(launch_marker, sizeof launch_marker, "%slaunch.pending", g_data_dir);
+    // The last launch never got as far as a clean exit: start in safe mode,
+    // as Windows does (settings_menu.cpp's bluewake_settings_load).
+    if (bw_launch_pending(launch_marker)) {
+        fprintf(stderr, "[safe-mode] the last launch didn't finish; starting in safe mode\n");
+        setenv("BLUEWAKE_SAFE_MODE", "1", 1);
+    }
     if (!bw_launch_begin(launch_marker)) {
         fprintf(stderr, "BlueWake could not create its launch recovery marker in %s. Check that the folder "
                 "can be created and written to%s.\n", g_data_dir,
@@ -526,6 +565,12 @@ int main(int argc, char** argv) {
     const int status = bluewake_host_main(2, host_argv);
     if (status == 0 && !bw_launch_clear(launch_marker))
         fprintf(stderr, "[safe-mode] could not clear launch marker on clean exit\n");
+    if (status == 0 && bluewake_settings_restart_requested() && g_launch_env != NULL) {
+        fprintf(stderr, "[settings] restarting with the new settings\n");
+        restore_terminal_streams();
+        execve("/proc/self/exe", argv, g_launch_env);
+        fprintf(stderr, "[settings] restart failed: %s\n", strerror(errno));
+    }
     fflush(stdout);
     fflush(stderr);
     return status;
