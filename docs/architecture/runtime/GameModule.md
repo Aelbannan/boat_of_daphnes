@@ -29,10 +29,14 @@ new high-level game API.
 ```mermaid
 flowchart TD
     Host["BlueWake host"]
-    Loader["Dynamic loader"]
-    Export["Module export"]
-    Descriptor["Module descriptor"]
-    State["Shared state"]
+    Loader["`Dynamic
+loader`"]
+    Export["`Module
+export`"]
+    Descriptor["`Module
+descriptor`"]
+    State["`Shared CPUState
+and MEM1`"]
 
     Host --> Loader --> Export --> Descriptor
     Descriptor -->|"validate ABI"| Host
@@ -60,11 +64,14 @@ an exception, a callback, or another service boundary requires it.
 ```mermaid
 flowchart TD
     Host["Host turn"]
-    Budget["Cycle budget"]
+    Budget["`Cycle
+budget`"]
     PC["Guest PC"]
-    Dispatch["Dispatch"]
+    Dispatch["`Generated
+dispatch`"]
     Native["Native block"]
-    Boundary{"Service boundary?"}
+    Boundary{"`Service
+boundary?`"}
 
     Host --> Budget --> PC --> Dispatch --> Native --> Boundary
     Boundary -->|"no"| PC

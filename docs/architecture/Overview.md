@@ -45,16 +45,24 @@ same process at runtime.
 flowchart TD
     subgraph Build["Build time"]
         Disc["Game disc"]
-        Extract["Extract DOL + RELs"]
-        Translator["DolRecomp"]
+        Extract["`Extract
+DOL + RELs`"]
+        Translator["`DolRecomp
+translate PPC`"]
         Generated["Generated C"]
-        Prepared["Prepared C"]
+        Prepared["`Prepared C
++ optional mods`"]
         Training["Optional PGO"]
-        HostSource["Host source"]
-        RuntimeSource["Runtime source"]
-        GameCompiler["Module compiler"]
-        AppCompiler["App compiler"]
-        GameModule["Game module"]
+        HostSource["`Host + platform
+source`"]
+        RuntimeSource["`Runtime +
+renderer source`"]
+        GameCompiler["`Game-module
+compiler`"]
+        AppCompiler["`Application
+compiler`"]
+        GameModule["`Native game
+module`"]
         Executable["Platform app"]
         Package["Runnable package"]
 
@@ -72,7 +80,8 @@ flowchart TD
         Host["BlueWake host"]
         Game["Game module"]
         Guest["Guest state"]
-        Services["GameCube services"]
+        Services["`GameCube
+services`"]
         Graphics["Graphics stack"]
         Assets["Disc assets"]
 

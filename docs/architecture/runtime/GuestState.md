@@ -32,7 +32,8 @@ when execution crosses the host/module ABI.
 ```mermaid
 flowchart TD
     DOL["main.dol"]
-    REL["REL data"]
+    REL["`REL metadata and
+data images`"]
     Loader["Image loader"]
     Memory["MEM1 + aliases"]
     OS["OS globals"]

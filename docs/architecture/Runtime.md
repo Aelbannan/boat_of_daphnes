@@ -37,24 +37,36 @@ them.
 
 ```mermaid
 flowchart TD
-    Platform["Platform app"]
-    Host["BlueWake host"]
-    Module["Game module"]
-    Guest["Guest state"]
-    Services["GameCube services"]
-    Graphics["Graphics stack"]
+    Platform["`Platform app
+native integration`"]
+    Host["`BlueWake host
+coordination`"]
+    Module["`Game module
+translated code`"]
+    Guest["`Guest state
+CPU, memory, time`"]
+    Services["`GameCube services
+devices and I/O`"]
+    Graphics["`Graphics
+GXRuntime, Aurora, Dawn`"]
     Disc["Disc data"]
-    Player["Player data"]
-    Native["Native platform"]
+    Player["`Player data
+saves and settings`"]
+    Native["`Native platform
+OS, devices, GPU`"]
 
     Platform -->|"starts"| Host
     Host -->|"loads ABI"| Module
     Host <-->|"coordinates"| Module
-    Host <-->|"init / read / update"| Guest
-    Module <-->|"read / update while running"| Guest
+    Host <-->|"`initializes,
+reads and
+updates`"| Guest
+    Module <-->|"`reads and updates
+while executing`"| Guest
     Module -->|"guest I/O"| Services
     Host <-->|"adapts"| Services
-    Services <-->|"state / results"| Guest
+    Services <-->|"`reads state /
+publishes results`"| Guest
     Module -->|"GX work"| Graphics
     Host <-->|"presents"| Graphics
     Disc -->|"reads"| Services
