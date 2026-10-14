@@ -2,6 +2,7 @@
 // build() and source_textures() in scripts/import_wwhd_textures.py, with the
 // same matching, priorities and conflicts, so the pack holds the same images.
 #include "pack.h"
+#include "file_io.h"
 #include "filesystem.h"
 
 #include "hd.h"
@@ -244,10 +245,25 @@ bool compatible(const GCTexture& gc, const HDTexture& hd) {
            int64_t(hd.width) * gc.height == int64_t(hd.height) * gc.width;
 }
 
+struct WriteError : std::runtime_error { using std::runtime_error::runtime_error; };
+
 void write_file(const fs::path& path, const Bytes& data) {
+    check_cancel();
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out || !out.write(reinterpret_cast<const char*>(data.data()), std::streamsize(data.size())))
-        throw FormatError("cannot write " + path.string());
+    if (!out)
+        throw WriteError("cannot write " + path.string());
+    for (size_t done = 0; done < data.size();) {
+        check_cancel();
+        const size_t count = std::min(kIoChunk, data.size() - done);
+        if (!out.write(reinterpret_cast<const char*>(data.data() + done), std::streamsize(count)))
+            throw WriteError("cannot write " + path.string());
+        done += count;
+    }
+    WWHD_CHECKPOINT("write-before-close");
+    // Buffered writes can fail only on close (for example, a full volume).
+    out.close();
+    if (!out)
+        throw WriteError("cannot finish writing " + path.string());
 }
 
 // Encodes and writes PNGs on a few threads. Queued images are capped by size,
@@ -255,21 +271,22 @@ void write_file(const fs::path& path, const Bytes& data) {
 // queued write (before a file may be removed, and at the end).
 class PngWriter {
   public:
-    explicit PngWriter(unsigned threads) {
-        for (unsigned i = 0; i < threads; i++)
-            workers_.emplace_back([this] { work(); });
+    explicit PngWriter(unsigned threads) : cancel_(import_cancel) {
+        try {
+            for (unsigned i = 0; i < threads; i++)
+                workers_.emplace_back([this] { work(); });
+        } catch (...) {
+            stop();
+            join();
+            throw;
+        }
     }
     ~PngWriter() {
-        {
-            std::lock_guard<std::mutex> hold(lock_);
-            stop_ = true;
-        }
-        wake_.notify_all();
-        room_.notify_all();
-        for (std::thread& t : workers_)
-            t.join();
+        stop();
+        join();
     }
     void add(const fs::path& path, const Image& image) {
+        check_cancel();
         if (workers_.empty()) {
             write_file(path, encode_png(image));
             return;
@@ -277,28 +294,68 @@ class PngWriter {
         std::unique_lock<std::mutex> hold(lock_);
         // Include the next image in the budget. One oversized image may run
         // alone so a large texture cannot deadlock the producer.
-        room_.wait(hold, [&] {
-            return stop_ || queued_bytes_ == 0 ||
-                   (image.rgba.size() <= kMaxQueuedBytes && queued_bytes_ <= kMaxQueuedBytes - image.rgba.size());
-        });
+        while (!stop_ && queued_bytes_ != 0 &&
+               (image.rgba.size() > kMaxQueuedBytes || queued_bytes_ > kMaxQueuedBytes - image.rgba.size())) {
+            WWHD_CHECKPOINT("png-room-wait");
+            check();
+#ifdef WWHD_IMPORT_TESTING
+            import_test_checkpoint("png-waiting");
+#endif
+            room_.wait_for(hold, std::chrono::milliseconds(25));
+        }
         check();
         queued_bytes_ += image.rgba.size();
         queue_.push_back({path, image});
+        hold.unlock();
         wake_.notify_one();
+        WWHD_CHECKPOINT("png-queued");
     }
     void drain() {
         std::unique_lock<std::mutex> hold(lock_);
-        room_.wait(hold, [&] { return (queue_.empty() && busy_ == 0) || stop_; });
+        while ((!queue_.empty() || busy_ != 0) && !stop_) {
+            WWHD_CHECKPOINT("png-drain-wait");
+            check();
+            // An external atomic token cannot notify the condition variable.
+#ifdef WWHD_IMPORT_TESTING
+            import_test_checkpoint("png-waiting");
+#endif
+            room_.wait_for(hold, std::chrono::milliseconds(25));
+        }
         check();
     }
 
   private:
     static constexpr size_t kMaxQueuedBytes = 32u << 20;
+    void clear_queue() {
+        for (const auto& job : queue_)
+            queued_bytes_ -= job.second.rgba.size();
+        queue_.clear();
+    }
+    void stop() {
+        {
+            std::lock_guard<std::mutex> hold(lock_);
+            stop_ = true;
+            clear_queue();
+        }
+#ifdef WWHD_IMPORT_TESTING
+        import_test_checkpoint("png-stopping");
+#endif
+        wake_.notify_all();
+        room_.notify_all();
+    }
+    void join() {
+        for (std::thread& t : workers_)
+            t.join();
+    }
     void check() {
+        check_cancel();
+        if (cancelled_)
+            throw Cancelled();
         if (!error_.empty())
-            throw FormatError(error_);
+            throw WriteError(error_);
     }
     void work() {
+        CancellationScope scope(cancel_);
         for (;;) {
             std::pair<fs::path, Image> job;
             {
@@ -311,8 +368,12 @@ class PngWriter {
                 busy_++;
             }
             std::string failure;
+            bool cancelled = false;
             try {
+                WWHD_CHECKPOINT("png-before-encode");
                 write_file(job.first, encode_png(job.second));
+            } catch (const Cancelled&) {
+                cancelled = true;
             } catch (const std::exception& ex) {
                 failure = ex.what();
             }
@@ -320,10 +381,16 @@ class PngWriter {
                 std::lock_guard<std::mutex> hold(lock_);
                 busy_--;
                 queued_bytes_ -= job.second.rgba.size();
+                if (cancelled || !failure.empty()) {
+                    cancelled_ = cancelled_ || cancelled;
+                    stop_ = true;
+                    clear_queue();
+                }
                 if (!failure.empty() && error_.empty())
                     error_ = failure;
             }
             room_.notify_all();
+            wake_.notify_all();
         }
     }
     std::mutex lock_;
@@ -332,6 +399,8 @@ class PngWriter {
     size_t queued_bytes_ = 0;
     size_t busy_ = 0;
     bool stop_ = false;
+    bool cancelled_ = false;
+    const std::atomic<bool>* cancel_;
     std::string error_;
     std::vector<std::thread> workers_;
 };
@@ -343,12 +412,16 @@ std::string digest_of(const std::vector<Image>& images, bool exact) {
             sha.update(im.rgba.data(), im.rgba.size());
         return sha.hex();
     }
-    XXH3_state_t* state = XXH3_createState();
-    XXH3_128bits_reset(state);
+    std::unique_ptr<XXH3_state_t, decltype(&XXH3_freeState)> state(XXH3_createState(), XXH3_freeState);
+    if (!state)
+        throw std::bad_alloc();
+    XXH3_128bits_reset(state.get());
     for (const Image& im : images)
-        XXH3_128bits_update(state, im.rgba.data(), im.rgba.size());
-    const XXH128_hash_t h = XXH3_128bits_digest(state);
-    XXH3_freeState(state);
+        for (size_t at = 0; at < im.rgba.size(); at += kIoChunk) {
+            check_cancel();
+            XXH3_128bits_update(state.get(), im.rgba.data() + at, std::min(kIoChunk, im.rgba.size() - at));
+        }
+    const XXH128_hash_t h = XXH3_128bits_digest(state.get());
     char hex[33];
     std::snprintf(hex, sizeof hex, "%016llx%016llx", (unsigned long long)h.high64, (unsigned long long)h.low64);
     return hex;
@@ -415,6 +488,7 @@ Bytes encode_png(const Image& image) {
         z.avail_in = uInt(size);
         int status;
         do {
+            check_cancel();
             z.next_out = buffer.data();
             z.avail_out = uInt(buffer.size());
             status = deflate(&z, flush);
@@ -425,6 +499,7 @@ Bytes encode_png(const Image& image) {
     };
     const uint8_t filter = 0;
     for (int y = 0; y < image.height; y++) {
+        WWHD_CHECKPOINT("png-row");
         deflate_bytes(&filter, 1, Z_NO_FLUSH);
         deflate_bytes(image.at(0, y), size_t(image.width) * 4, Z_NO_FLUSH);
     }
@@ -441,6 +516,8 @@ Bytes encode_png(const Image& image) {
 }
 
 ImportResult import_pack(const ImportOptions& o) {
+    CancellationScope scope(o.cancel);
+    WWHD_CHECKPOINT("import-start");
     ImportResult result;
     ImportProgress progress;
     const auto report = [&](const std::string& stage) {
@@ -448,16 +525,13 @@ ImportResult import_pack(const ImportOptions& o) {
         if (o.progress)
             o.progress(progress);
     };
-    const auto check_cancel = [&] {
-        if (o.cancel != nullptr && o.cancel->load())
-            throw FormatError("cancelled");
-    };
     const fs::path output = fs::absolute(fs::path(o.output));
     std::error_code ec;
     if (fs::exists(output, ec))
         throw FormatError("output already exists; choose a new folder to preserve existing packs");
 
     report("Opening Wind Waker HD");
+    check_cancel();
     std::unique_ptr<WiiUDisc> disc;
     std::map<std::string, const WiiUDiscEntry*> disc_entries;
     std::vector<std::string> files;
@@ -477,6 +551,7 @@ ImportResult import_pack(const ImportOptions& o) {
         }
         disc = std::make_unique<WiiUDisc>(o.hd_folder, keys);
         for (const WiiUDiscEntry& entry : disc->entries()) {
+            check_cancel();
             const std::string name = lower(entry.path);
             if (entry.path.rfind("content/Cafe/", 0) != 0 &&
                 (ends_with(name, ".szs") || ends_with(name, ".sarc") || ends_with(name, ".pack") || ends_with(name, ".bfres"))) {
@@ -492,11 +567,15 @@ ImportResult import_pack(const ImportOptions& o) {
         throw FormatError("no Wind Waker HD resources in the selected input");
     check_cancel();
     report("Reading the GameCube disc");
+    check_cancel();
     const std::vector<GCTexture> originals = index_gc(o.gc_disc, result.errors);
     Targets targets;
-    for (const GCTexture& t : originals)
+    for (const GCTexture& t : originals) {
+        check_cancel();
         targets[{resource(t.source), lower(t.name)}].push_back(&t);
+    }
 
+    check_cancel();
     fs::create_directories(output.parent_path(), ec);
     std::mt19937_64 rng(uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
     const fs::path staging = output.parent_path() / ("." + output.filename().string() + "-" + std::to_string(rng() % 1000000000));
@@ -538,9 +617,11 @@ ImportResult import_pack(const ImportOptions& o) {
                     });
                 }
                 const auto handle = [&](const std::string& path, const Bytes& data) {
+                    check_cancel();
                     const auto l = layouts.find(parent_of(path));
                     const Layout* layout = keep && l != layouts.end() ? &l->second : nullptr;
                     source_textures(data, path, targets, layout, [&](HDTexture&& hd, std::vector<const GCTexture*> candidates) {
+                        check_cancel();
                         std::vector<const GCTexture*> gc;
                         for (const GCTexture* t : candidates)
                             if (compatible(*t, hd))
@@ -567,6 +648,7 @@ ImportResult import_pack(const ImportOptions& o) {
                                 }
                             const int priority = candidate_priority(hd.name, resource(hd.source));
                             for (const GCTexture* original : gc) {
+                                check_cancel();
                                 const bool is_intensity = original->format == 0 || original->format == 1;
                                 const auto& variant = is_intensity ? intensity : images;
                                 const std::string& digest = digests[is_intensity];
@@ -601,6 +683,7 @@ ImportResult import_pack(const ImportOptions& o) {
                                 }
                                 Match m;
                                 for (size_t i = 0; i < variant.size(); i++) {
+                                    check_cancel();
                                     const std::string name =
                                         i == 0 ? key : key.substr(0, key.size() - 4) + "_mip" + std::to_string(i) + ".png";
                                     if (o.exact_report) {
@@ -640,12 +723,16 @@ ImportResult import_pack(const ImportOptions& o) {
         writer.drain();
         check_cancel();
         report("Finishing the pack");
-        for (const std::string& key : conflicts)
+        check_cancel();
+        for (const std::string& key : conflicts) {
+            check_cancel();
             for (const std::string& name : matches[key].generated)
                 fs::remove(staging / name, ec);
+        }
         std::string textures;
         size_t accepted = 0;
         for (auto& [key, m] : matches) {
+            check_cancel();
             if (conflicts.count(key))
                 continue;
             accepted++;
@@ -675,9 +762,11 @@ ImportResult import_pack(const ImportOptions& o) {
         result.replacements = accepted;
         result.conflicts = conflicts.size();
         std::string errors;
-        for (const ImportError& e : result.errors)
+        for (const ImportError& e : result.errors) {
+            check_cancel();
             errors += std::string(errors.empty() ? "" : ",\n") + "    {\"source\": " + json_string(e.source) +
                       ", \"reason\": " + json_string(e.reason) + "}";
+        }
         const std::time_t now = std::time(nullptr);
         char created[32];
         std::strftime(created, sizeof created, "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&now));
@@ -691,6 +780,8 @@ ImportResult import_pack(const ImportOptions& o) {
                                    "Choose this folder in Mods > Wind Waker HD textures, then restart.\n"
                                    "Do not distribute this folder with app builds or source releases.\n";
         write_file(staging / "README.txt", Bytes(readme.begin(), readme.end()));
+        // Publication is the commit point; cancellation after it is success.
+        WWHD_CHECKPOINT("publish");
         (fs::rename)(staging, output);
     } catch (...) {
         fs::remove_all(staging, ec);

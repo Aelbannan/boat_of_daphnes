@@ -3,6 +3,7 @@
 // and import_wwhd_textures.py's hd_files. BFRES v3/v4 FTEX layout follows
 // AboodXD's BFRES-Tool, the BFLIM footer BFLIM-Tool (both GPL-3.0-or-later).
 #include "hd.h"
+#include "file_io.h"
 #include "filesystem.h"
 
 #include "addrlib.h"
@@ -22,11 +23,13 @@ bool bcn(int64_t format) {
 } // namespace
 
 std::vector<std::string> hd_files(const std::string& folder) {
+    check_cancel();
     namespace fs = std::filesystem;
     std::vector<std::vector<std::string>> found;
     std::error_code ec;
     const fs::path root(folder);
     for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+        WWHD_CHECKPOINT("folder-entry");
         std::error_code type;
         if (!it->is_regular_file(type))
             continue;
@@ -41,9 +44,13 @@ std::vector<std::string> hd_files(const std::string& folder) {
     if (ec)
         throw FormatError("cannot read the Wind Waker HD folder: " + ec.message());
     // Python sorts the paths part by part (PurePosixPath ordering).
-    std::sort(found.begin(), found.end());
+    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
+        check_cancel();
+        return a < b;
+    });
     std::vector<std::string> paths;
     for (const auto& parts : found) {
+        check_cancel();
         std::string path;
         for (const auto& part : parts)
             path += (path.empty() ? "" : "/") + part;
@@ -53,6 +60,7 @@ std::vector<std::string> hd_files(const std::string& folder) {
 }
 
 Bytes read_file(const std::string& path) {
+    check_cancel();
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file)
         throw FormatError("cannot open " + path);
@@ -61,8 +69,7 @@ Bytes read_file(const std::string& path) {
         throw FormatError("HD resource exceeds size limit");
     Bytes data(static_cast<size_t>(size));
     file.seekg(0);
-    if (!file.read(reinterpret_cast<char*>(data.data()), size))
-        throw FormatError("cannot read " + path);
+    read_exact(file, data.data(), data.size(), "cannot read HD resource");
     return data;
 }
 
@@ -134,6 +141,7 @@ void bfres(const Bytes& data, const std::string& path, const std::set<std::strin
         return;
     const size_t count = r.u32(group + 4), entries = group + 24;
     for (size_t i = 0; i < count; ++i) {
+        check_cancel();
         const size_t e = entries + i * 16;
         const std::string name = r.string(r.relative(e + 8));
         const size_t tex = r.relative(e + 12);
@@ -175,6 +183,7 @@ void bfres(const Bytes& data, const std::string& path, const std::set<std::strin
         if (!bpp)
             throw FormatError("unknown GX2 surface format");
         for (int64_t level = 0; level < mips; ++level) {
+            check_cancel();
             const addrlib::SurfaceInfo info = addrlib::getSurfaceInfo(fmt, w, h, depth, dim, tile, aa, level);
             const uint8_t* tiled;
             if (level) {

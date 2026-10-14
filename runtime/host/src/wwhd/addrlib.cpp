@@ -4,6 +4,7 @@
 // GPL-3.0-or-later, copyright AboodXD 2018), which scripts/wwhd vendors
 // unchanged (scripts/wwhd/vendor/SOURCE.json). Function names follow it so the
 // two can be read side by side; Python's integers are 64-bit here.
+#include "cancel.h"
 #include "addrlib.h"
 
 #include <algorithm>
@@ -770,6 +771,7 @@ Bytes deswizzle(int64_t width, int64_t height, int64_t height_, int64_t format, 
     const i64 bankSwizzle = (swizzle >> 9) & 3;
     const i64 length = static_cast<i64>(size);
     for (i64 y = 0; y < height; ++y) {
+        check_cancel();
         for (i64 x = 0; x < width; ++x) {
             i64 pos;
             if (tileMode == 0 || tileMode == 1)

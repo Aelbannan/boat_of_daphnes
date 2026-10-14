@@ -1,6 +1,7 @@
 // Port of scripts/wwhd/disc.py. All keys come from the caller; disc members
 // stay in memory. The partition and hashed CBC layouts follow that reader.
 #include "wiiu_disc.h"
+#include "cancel.h"
 
 #include <algorithm>
 #include <map>
@@ -74,8 +75,10 @@ FileTable file_table(const Bytes& data) {
 
     FileTable table;
     table.clusters.reserve(cluster_count);
-    for (size_t i = 0; i < cluster_count; ++i)
+    for (size_t i = 0; i < cluster_count; ++i) {
+        check_cancel();
         table.clusters.push_back({r.u32(32 + i * 32), r.u32(36 + i * 32)});
+    }
 
     std::set<std::string> paths;
     size_t path_bytes = 0;
@@ -84,6 +87,7 @@ FileTable file_table(const Bytes& data) {
         if (depth > 32 || first > end || end > count)
             throw FormatError("invalid Wii U directory tree");
         for (uint32_t i = first; i < end;) {
+            WWHD_CHECKPOINT("wiiu-entry");
             const size_t at = base + size_t(i) * 16;
             const uint32_t type_name = r.u32(at), off = r.u32(at + 4), size = r.u32(at + 8);
             const std::string name = r.string(strings + (type_name & 0xFFFFFF));
@@ -194,6 +198,7 @@ struct WiiUDisc::Impl {
         uint64_t at = entry.offset;
         size_t done = 0;
         while (done < out.size()) {
+            WWHD_CHECKPOINT("metadata-block");
             // Charge actual block work, even when many tiny metadata entries
             // point at the same block. Their file sizes alone undercount it.
             range(system_bytes_read, kBlock, kMaxFile);
@@ -232,6 +237,7 @@ struct WiiUDisc::Impl {
         std::set<uint64_t> starts;
         std::string game_name;
         for (size_t i = 0; i < count; ++i) {
+            check_cancel();
             const size_t at = 0x800 + i * 0x80;
             const std::string name = Reader(toc.take(at, 32), 32).string(0);
             component(name);
@@ -262,6 +268,7 @@ struct WiiUDisc::Impl {
         std::string tmd_path;
         uint64_t scanned = 0;
         for (const WiiUDiscEntry& entry : system_files.entries) {
+            check_cancel();
             const std::string path_lower = lower(entry.path);
             constexpr std::string_view suffix = "/title.tmd";
             if (path_lower.size() < suffix.size() ||
@@ -308,6 +315,7 @@ struct WiiUDisc::Impl {
         tmd.take(0xB04, size_t(content_count) * 48);
         std::set<uint32_t> content_ids;
         for (size_t i = 0; i < content_count; ++i) {
+            check_cancel();
             const size_t at = 0xB04 + i * 48;
             Content content;
             content.type = tmd.u16(at + 6);
@@ -372,6 +380,7 @@ struct WiiUDisc::Impl {
     }
 
     Bytes read(const WiiUDiscEntry& entry) {
+        check_cancel();
         if (entry.size > kMaxFile)
             throw FormatError("disc file is too large");
         const Content& content = checked_content(entry);
@@ -386,6 +395,7 @@ struct WiiUDisc::Impl {
         size_t done = 0;
         if (content.type & 2) {
             while (done < out.size()) {
+                WWHD_CHECKPOINT("content-block");
                 const Bytes& plain = hashed_block(entry.cluster, at / kPayload, region);
                 const size_t within = static_cast<size_t>(at % kPayload);
                 const size_t n = std::min(out.size() - done, static_cast<size_t>(kPayload) - within);
@@ -404,6 +414,7 @@ struct WiiUDisc::Impl {
                 iv[1] = static_cast<uint8_t>(entry.cluster);
             }
             while (done < out.size()) {
+                WWHD_CHECKPOINT("content-block");
                 const size_t within = static_cast<size_t>(at % 16);
                 const size_t n = std::min(out.size() - done, static_cast<size_t>(kBlock) - within);
                 const Bytes raw = read_region(region, at - within, align16(within + n));

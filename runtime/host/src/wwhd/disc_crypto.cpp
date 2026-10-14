@@ -1,4 +1,5 @@
 #include "disc_crypto.h"
+#include "cancel.h"
 
 #include <mbedtls/aes.h>
 #include <mbedtls/sha1.h>
@@ -21,6 +22,7 @@ int hex_digit(unsigned char c) {
 } // namespace
 
 DiscKey read_disc_key(const std::string &path) {
+  check_cancel();
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file)
     throw FormatError("could not open the selected key file");
@@ -35,6 +37,7 @@ DiscKey read_disc_key(const std::string &path) {
               static_cast<std::streamsize>(bytes.size()));
   if (!file)
     throw FormatError("could not read the selected key file");
+  check_cancel();
   DiscKey key{};
   if (bytes.size() == key.size()) {
     std::copy(bytes.begin(), bytes.end(), key.begin());
@@ -59,6 +62,7 @@ DiscKey read_disc_key(const std::string &path) {
 
 Bytes disc_aes_cbc_decrypt(const DiscKey &key, const DiscKey &iv,
                            const Bytes &encrypted) {
+  check_cancel();
   if (encrypted.size() > kMaxFile || encrypted.size() % 16 != 0)
     throw FormatError("invalid encrypted disc block size");
   if (encrypted.empty())
@@ -67,20 +71,38 @@ Bytes disc_aes_cbc_decrypt(const DiscKey &key, const DiscKey &iv,
   DiscKey working_iv = iv;
   mbedtls_aes_context context;
   mbedtls_aes_init(&context);
+  struct Cleanup {
+    mbedtls_aes_context* context;
+    ~Cleanup() { mbedtls_aes_free(context); }
+  } cleanup{&context};
   int error = mbedtls_aes_setkey_dec(&context, key.data(), 128);
-  if (error == 0)
+  // CBC updates working_iv, preserving chaining across bounded chunks.
+  for (size_t at = 0; error == 0 && at < encrypted.size(); at += 65536) {
+    check_cancel();
     error = mbedtls_aes_crypt_cbc(&context, MBEDTLS_AES_DECRYPT,
-                                  encrypted.size(), working_iv.data(),
-                                  encrypted.data(), plain.data());
-  mbedtls_aes_free(&context);
+                                  std::min(size_t{65536}, encrypted.size() - at), working_iv.data(),
+                                  encrypted.data() + at, plain.data() + at);
+  }
   if (error != 0)
     throw FormatError("could not decrypt the disc block");
   return plain;
 }
 
 DiscSha1 disc_sha1(const Bytes &bytes) {
+  check_cancel();
   DiscSha1 digest{};
-  if (mbedtls_sha1_ret(bytes.data(), bytes.size(), digest.data()) != 0)
+  mbedtls_sha1_context context;
+  mbedtls_sha1_init(&context);
+  struct Cleanup {
+    mbedtls_sha1_context* context;
+    ~Cleanup() { mbedtls_sha1_free(context); }
+  } cleanup{&context};
+  int error = mbedtls_sha1_starts_ret(&context);
+  for (size_t at = 0; error == 0 && at < bytes.size(); at += 65536) {
+    check_cancel();
+    error = mbedtls_sha1_update_ret(&context, bytes.data() + at, std::min(size_t{65536}, bytes.size() - at));
+  }
+  if (error != 0 || mbedtls_sha1_finish_ret(&context, digest.data()) != 0)
     throw FormatError("could not check the disc block checksum");
   return digest;
 }

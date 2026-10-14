@@ -1,5 +1,6 @@
 // SHA-256 (FIPS 180-4), for the built-in importer's report and its
 // image comparisons, matching hashlib.sha256 in scripts/import_wwhd_textures.py.
+#include "cancel.h"
 #include "sha256.h"
 
 #include <cstdio>
@@ -63,6 +64,7 @@ void Sha256::block(const uint8_t* p) {
 }
 
 void Sha256::update(const void* data, size_t size) {
+    check_cancel();
     const uint8_t* p = static_cast<const uint8_t*>(data);
     length_ += size;
     if (used_) {
@@ -76,7 +78,10 @@ void Sha256::update(const void* data, size_t size) {
             used_ = 0;
         }
     }
+    size_t blocks = 0;
     while (size >= 64) {
+        if (blocks++ % 1024 == 0)
+            check_cancel();
         block(p);
         p += 64;
         size -= 64;

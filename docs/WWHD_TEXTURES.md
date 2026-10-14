@@ -40,10 +40,12 @@ Android integration remains part of the port work. The app needs no Python.
    import works, or cancel the job. When it finishes, reopen Mods to see the
    result. The new pack is selected and **HD textures** is on. Resume the game
    to save the choice, then restart BlueWake to load it.
-4. On iPhone/iPad, the game pauses behind an import progress alert. When the
-   import completes, the app offers to turn on HD textures for the next
+4. On iPhone/iPad, the game pauses behind an import progress sheet. **Cancel**
+   keeps it paused while the current read and cleanup finish. Switching apps
+   during import also requests cancellation; the result appears after returning.
+   When the import completes, the app offers to turn on HD textures for the next
    launch. Restart to load the pack. This path still needs a full-dump test on
-   hardware; the progress alert does not yet offer cancellation.
+   hardware and an interactive check of cancellation/background transitions.
 
 The native importer implements the script's matching and conversion: from
 the supplied decrypted HD folder and GameCube disc it makes the same 3,546
@@ -355,6 +357,29 @@ regression fails against the earlier detached worker and passes with AddressSani
 and UndefinedBehaviorSanitizer on the Mac. It uses generated inputs and a
 controlled worker; it is not a mobile lifecycle or full-disc cancellation test.
 
+Cancellation now also reaches folder and GameCube scans, archive members,
+disc blocks, texture/mipmap work and PNG workers. It clears queued PNG jobs,
+joins workers before cleanup, and checks again immediately before publishing
+the finished folder. Once that rename succeeds, a late Cancel still reports
+success. Files are explicitly closed and checked before publication so a
+buffered write failure cannot silently produce an incomplete pack.
+
+Generated checks on the Mac cover 23 cancellation points, both real PNG-worker
+wait paths, cleanup and existing-pack preservation, late cancellation after
+publication, and two buffered-close failures. Seven CTests, six ASan/UBSan
+checks and two TSan checks pass. A fresh full import after these changes still
+produces all 3,546 keys and 33,859 byte-identical PNGs, including every mip and
+the 91 generated HUD/title textures; matching metadata is unchanged. The
+complete iOS Simulator app also links with the changes. The iOS operation's six Foundation cases cover
+success/error, cancellation before starting, while waiting for a provider,
+during conversion, and after a completed commit. They verify grant lifetime,
+suppression of late progress and one completion; they also run in the Mac CI
+audit under sanitizers. They do not establish UIKit or Files-provider acceptance.
+
+Cancellation cannot interrupt an OS read that is already stalled. Abrupt process
+termination also bypasses exception cleanup and can leave hidden staging folders;
+ownership/restart recovery and reporting failed cleanup remain open work.
+
 ### Native iOS Simulator check (October 15, 2026)
 
 An isolated test app linked all eight production importer source files from
@@ -419,8 +444,9 @@ raw/CBC/hashed content across block boundaries, title/common/override keys,
 wrong keys, malformed tables and damaged content. The encrypted fixtures are
 checked independently by the existing Python reader. Mac CTest and the
 parser's AddressSanitizer / UndefinedBehaviorSanitizer run pass. The updated
-production Mac and iOS Simulator apps compile and link. Windows CI passed for
-the core at `b23787d`; Linux and the later menu integration need their own results.
+production Mac and iOS Simulator apps compile and link. Windows and Linux CI
+passed for the image/key menu at `ea31b24`; the later cancellation changes need
+their own results.
 
 An end-to-end generated fixture also checks folder import against WUD and
 mapped WUX in four key modes: nine successful imports have identical PNGs,
@@ -449,3 +475,29 @@ phone/tablet memory and lifecycle validation. The supplied reference is a
 decrypted folder; generated encrypted fixtures do not establish acceptance
 of an authentic disc dump. The committed automated fixtures contain no game
 assets or private keys; the Mac menu check's HD resource and output stay private.
+
+### Android core check (October 15, 2026)
+
+At `ea31b24`, the native development importer and three reader/crypto test
+executables built for arm64 with NDK r29 (`29.0.14206865`, minimum API 28).
+They ran on a fresh Android API 36 ARM64 emulator. Five generated imports
+(folder, WUD and WUX with common/title key modes) produced thirty PNGs whose
+pixels, CRCs and mip sizes passed the independent fixture checks; each image
+pack also matched the folder pack byte for byte. The three reader tests passed,
+and a wrong key was rejected without an output folder. Only generated fixtures
+were used. The temporary emulator was stopped and removed afterward.
+
+This is core execution, not the Android app, a Files picker, real-phone memory
+or gameplay performance. Android #93 at `42610f2` has an existing-pack installer
+but no native HD import entry. Its settings also still use one fixed pack folder;
+selecting a completed native import must be wired into both launch settings
+and the displayed count.
+
+The remaining input adapter must handle document URIs through Android's
+[Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files),
+not treat them as filesystem paths. The
+[ContentResolver contract](https://developer.android.com/reference/android/content/ContentResolver#openFileDescriptor(android.net.Uri,java.lang.String,android.os.CancellationSignal))
+allows a read-only descriptor to be a pipe. Image imports need a checked,
+seekable source or a cancellable local staging copy; they must not request
+write access merely to obtain seeking. Folder traversal, key access, cancellation,
+storage exhaustion and activity recreation remain integration checks.

@@ -3,6 +3,7 @@
 // resampler, the premultiplied-alpha conversions and the 255 multiply follow
 // Pillow's Resample.c, Convert.c, Chops.c and ImagingUtils.h (HPND license),
 // version 12.2.0, which scripts/wwhd pins.
+#include "cancel.h"
 #include "imaging.h"
 
 #include <algorithm>
@@ -91,6 +92,7 @@ Image decode_bcn(int base_format, const uint8_t* src, size_t size, int width, in
     if (size < size_t(bw) * bh * block_bytes)
         throw FormatError("truncated BCn data");
     for (int by = 0; by < bh; by++) {
+        check_cancel();
         for (int bx = 0; bx < bw; bx++) {
             const uint8_t* block = src + (size_t(by) * bw + bx) * block_bytes;
             Rgba col[16];
@@ -183,6 +185,7 @@ Coeffs precompute(int in_size, float in0, float in1, int out_size) {
     std::vector<double> kk(size_t(out_size) * c.ksize, 0.0);
     c.bounds.resize(size_t(out_size) * 2);
     for (int xx = 0; xx < out_size; xx++) {
+        check_cancel();
         const double center = in0 + (xx + 0.5) * scale;
         double ww = 0.0;
         const double ss = 1.0 / filterscale;
@@ -229,6 +232,7 @@ Image resample(const Image& in, int xsize, int ysize) {
             v.bounds[size_t(i) * 2] -= ybox_first;
         Image tmp(xsize, ybox_last - ybox_first);
         for (int yy = 0; yy < tmp.height; yy++) {
+            check_cancel();
             for (int xx = 0; xx < xsize; xx++) {
                 const int xmin = h.bounds[size_t(xx) * 2], xmax = h.bounds[size_t(xx) * 2 + 1];
                 const int32_t* k = &h.kk[size_t(xx) * h.ksize];
@@ -250,6 +254,7 @@ Image resample(const Image& in, int xsize, int ysize) {
     if (need_v) {
         Image out(cur.width, ysize);
         for (int yy = 0; yy < ysize; yy++) {
+            check_cancel();
             const int32_t* k = &v.kk[size_t(yy) * v.ksize];
             const int ymin = v.bounds[size_t(yy) * 2], ymax = v.bounds[size_t(yy) * 2 + 1];
             for (int xx = 0; xx < cur.width; xx++) {
@@ -285,6 +290,8 @@ Image resize_lanczos(const Image& in, int width, int height) {
         return in;
     Image pre = in;
     for (size_t i = 0; i < pre.rgba.size(); i += 4) {
+        if (i % (64 * 1024) == 0)
+            check_cancel();
         const unsigned a = pre.rgba[i + 3];
         pre.rgba[i] = muldiv255(pre.rgba[i], a);
         pre.rgba[i + 1] = muldiv255(pre.rgba[i + 1], a);
@@ -292,6 +299,8 @@ Image resize_lanczos(const Image& in, int width, int height) {
     }
     Image out = resample(pre, width, height);
     for (size_t i = 0; i < out.rgba.size(); i += 4) {
+        if (i % (64 * 1024) == 0)
+            check_cancel();
         const int a = out.rgba[i + 3];
         if (a != 255 && a != 0) {
             out.rgba[i] = clip(255 * out.rgba[i] / a);
@@ -304,6 +313,7 @@ Image resize_lanczos(const Image& in, int width, int height) {
 
 void complete_mips(std::vector<Image>& images) {
     while (!(images.back().width == 1 && images.back().height == 1)) {
+        check_cancel();
         const Image& last = images.back();
         Image next = resize_lanczos(last, std::max(1, last.width / 2), std::max(1, last.height / 2));
         images.push_back(std::move(next));
@@ -316,6 +326,7 @@ std::vector<Image> hd_images(const HDTexture& t) {
     if (t.components.size() != 4)
         throw FormatError("unsupported GX2 component selection");
     for (size_t level = 0; level < t.levels.size(); level++) {
+        check_cancel();
         const Bytes& raw = t.levels[level];
         const int w = std::max(1, t.width >> level), h = std::max(1, t.height >> level);
         const size_t pixels = size_t(w) * h;
@@ -334,6 +345,8 @@ std::vector<Image> hd_images(const HDTexture& t) {
             if (raw.size() < pixels * stride)
                 throw FormatError("truncated surface");
             for (size_t i = 0; i < pixels; i++) {
+                if (i % (16 * 1024) == 0)
+                    check_cancel();
                 uint8_t* o = &image.rgba[i * 4];
                 o[0] = raw[i * stride];
                 o[1] = stride == 2 ? raw[i * stride + 1] : 0;
@@ -353,6 +366,8 @@ std::vector<Image> hd_images(const HDTexture& t) {
             if (raw.size() < pixels * stride)
                 throw FormatError("truncated surface");
             for (size_t i = 0; i < pixels; i++) {
+                if (i % (16 * 1024) == 0)
+                    check_cancel();
                 uint32_t value = 0;
                 for (int b = 0; b < stride; b++)
                     value |= uint32_t(raw[i * stride + b]) << (8 * b);
@@ -378,6 +393,8 @@ std::vector<Image> hd_images(const HDTexture& t) {
                 throw FormatError("unsupported GX2 component selection");
         Image selected(w, h);
         for (size_t i = 0; i < pixels; i++) {
+            if (i % (16 * 1024) == 0)
+                check_cancel();
             const uint8_t* p = &image.rgba[i * 4];
             const uint8_t choices[6] = {p[0], p[1], p[2], p[3], 0, 255};
             for (int c = 0; c < 4; c++)
@@ -395,6 +412,8 @@ std::vector<Image> for_gc_format(const std::vector<Image>& images, int gc_format
     for (const Image& im : images) {
         Image o(im.width, im.height);
         for (size_t i = 0; i < im.rgba.size(); i += 4) {
+            if (i % (64 * 1024) == 0)
+                check_cancel();
             const uint8_t r = im.rgba[i], a = im.rgba[i + 3];
             const uint8_t v = layout_mask ? uint8_t(int(r) * int(a) / 255) : r;
             o.rgba[i] = o.rgba[i + 1] = o.rgba[i + 2] = o.rgba[i + 3] = v;
@@ -407,6 +426,7 @@ std::vector<Image> for_gc_format(const std::vector<Image>& images, int gc_format
 Image crop(const Image& in, int left, int top, int right, int bottom) {
     Image out(std::max(0, right - left), std::max(0, bottom - top));
     for (int y = 0; y < out.height; y++) {
+        check_cancel();
         const int sy = y + top;
         if (sy < 0 || sy >= in.height)
             continue;
@@ -421,6 +441,7 @@ Image crop(const Image& in, int left, int top, int right, int bottom) {
 
 void paste(Image& dst, const Image& src, int x, int y) {
     for (int sy = 0; sy < src.height; sy++) {
+        check_cancel();
         const int dy = y + sy;
         if (dy < 0 || dy >= dst.height)
             continue;
@@ -439,6 +460,8 @@ Image alpha_composite(const Image& dst, const Image& src) {
     const auto shift_div255 = [](uint32_t a) { return ((a >> 8) + a) >> 8; };
     Image out(dst.width, dst.height);
     for (size_t i = 0; i < dst.rgba.size(); i += 4) {
+        if (i % (64 * 1024) == 0)
+            check_cancel();
         const uint8_t* d = &dst.rgba[i];
         const uint8_t* s = &src.rgba[i];
         uint8_t* o = &out.rgba[i];
@@ -466,7 +489,8 @@ void alpha_composite_at(Image& dst, const Image& src, int x, int y) {
 
 bool alpha_bbox(const Image& in, Box& box) {
     int left = in.width, top = in.height, right = -1, bottom = -1;
-    for (int y = 0; y < in.height; y++)
+    for (int y = 0; y < in.height; y++) {
+        check_cancel();
         for (int x = 0; x < in.width; x++)
             if (in.at(x, y)[3]) {
                 left = std::min(left, x);
@@ -474,6 +498,7 @@ bool alpha_bbox(const Image& in, Box& box) {
                 top = std::min(top, y);
                 bottom = std::max(bottom, y);
             }
+    }
     if (right < 0)
         return false;
     box = {left, top, right + 1, bottom + 1};
@@ -483,8 +508,10 @@ bool alpha_bbox(const Image& in, Box& box) {
 Image flip_top_bottom(const Image& in) {
     Image out(in.width, in.height);
     const size_t row = size_t(in.width) * 4;
-    for (int y = 0; y < in.height; y++)
+    for (int y = 0; y < in.height; y++) {
+        check_cancel();
         std::memcpy(out.rgba.data() + size_t(in.height - 1 - y) * row, in.rgba.data() + size_t(y) * row, row);
+    }
     return out;
 }
 

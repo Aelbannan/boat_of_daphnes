@@ -40,6 +40,15 @@ set_tests_properties(bluewake_wwhd_wiiu_disc_test PROPERTIES FIXTURES_REQUIRED w
 # Exercise the complete image-to-PNG pipeline with synthetic BTI/BFRES data.
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
+add_executable(bluewake_wwhd_cancellation_test
+    ${BLUEWAKE_REPO_ROOT}/tests/wwhd_cancellation_test.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp)
+target_compile_features(bluewake_wwhd_cancellation_test PRIVATE cxx_std_17)
+target_include_directories(bluewake_wwhd_cancellation_test PRIVATE ${BLUEWAKE_HOST_SRC})
+target_link_libraries(bluewake_wwhd_cancellation_test PRIVATE bluewake_wwhd_disc_crypto Threads::Threads)
+add_test(NAME bluewake_wwhd_cancellation_test COMMAND bluewake_wwhd_cancellation_test)
+set_tests_properties(bluewake_wwhd_cancellation_test PROPERTIES TIMEOUT 15)
+
 add_executable(bluewake_wwhd_native_import
     ${BLUEWAKE_REPO_ROOT}/tests/wwhd_native_import.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/formats.cpp
@@ -52,6 +61,7 @@ add_executable(bluewake_wwhd_native_import
     ${BLUEWAKE_HOST_SRC}/wwhd/disc_image.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/wiiu_disc.cpp)
 target_compile_features(bluewake_wwhd_native_import PRIVATE cxx_std_17)
+target_compile_definitions(bluewake_wwhd_native_import PRIVATE WWHD_IMPORT_TESTING)
 target_include_directories(bluewake_wwhd_native_import PRIVATE ${BLUEWAKE_HOST_SRC})
 target_link_libraries(bluewake_wwhd_native_import PRIVATE
     bluewake_wwhd_disc_crypto xxhash ZLIB::ZLIB Threads::Threads)
@@ -63,7 +73,8 @@ set_tests_properties(bluewake_wwhd_disc_import_test PROPERTIES TIMEOUT 60)
 # sources with both clang-cl and the clang GNU driver used by the app builder.
 if(WIN32)
     foreach(_wwhd_target IN ITEMS bluewake_wwhd_disc_image_test bluewake_wwhd_disc_crypto_test
-            bluewake_wwhd_wiiu_disc_test bluewake_wwhd_native_import bluewake_wwhd_import_job_test)
+            bluewake_wwhd_wiiu_disc_test bluewake_wwhd_native_import bluewake_wwhd_import_job_test
+            bluewake_wwhd_cancellation_test)
         if(TARGET ${_wwhd_target})
             target_sources(${_wwhd_target} PRIVATE "${BLUEWAKE_REPO_ROOT}/windows/resources/BlueWake.manifest")
         endif()

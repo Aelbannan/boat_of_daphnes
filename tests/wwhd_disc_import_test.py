@@ -57,7 +57,7 @@ def make_gamecube():
     return disc
 
 
-def make_bfres():
+def make_bfres(size=32):
     data = bytearray(0x2000)
     data[:10] = b"FRES\x03\0\0\0\xfe\xff"
     fixture.put(data, 0x24, "i", 0x100 - 0x24)
@@ -65,14 +65,35 @@ def make_bfres():
     fixture.put(data, 0x120, "ii", 0x200 - 0x120, 0x240 - 0x124)
     data[0x200:0x202] = b"A\0"
     data[0x240:0x244] = b"FTEX"
-    info = addrlib.getSurfaceInfo(0x1A, 32, 32, 1, 1, 1, 0, 0)
-    fixture.put(data, 0x244, "16I", 1, 32, 32, 1, 1, 0x1A, 0, 1,
+    info = addrlib.getSurfaceInfo(0x1A, size, size, 1, 1, 1, 0, 0)
+    fixture.put(data, 0x244, "16I", 1, size, size, 1, 1, 0x1A, 0, 1,
                 info.surfSize, 0, 0, 0, 1, 0, info.baseAlign, info.pitch)
     data[0x2C8:0x2CC] = bytes((0, 1, 2, 3))
     fixture.put(data, 0x2F0, "i", 0x800 - 0x2F0)
     data.extend(bytes(max(0, 0x800 + info.surfSize - len(data))))
     data[0x800:0x800 + info.surfSize] = COLOR * (info.surfSize // 4)
     return bytes(data)
+
+
+
+def make_sarc(bfres):
+    names = b"A.bfres\0B.bfres\0"
+    payload = 0x14 + 12 + 32 + 8 + len(names)
+    data = bytearray(payload)
+    struct.pack_into(">4sHHIII", data, 0, b"SARC", 0x14, 0xFEFF,
+                     payload + 2 * len(bfres), payload, 0x01000000)
+    struct.pack_into(">4sHHI", data, 0x14, b"SFAT", 12, 2, 0x65)
+    for i in range(2):
+        struct.pack_into(">IIII", data, 0x20 + i * 16, 0, 0x01000000 | (i * 2),
+                         i * len(bfres), (i + 1) * len(bfres))
+    struct.pack_into(">4sHH", data, 0x40, b"SFNT", 8, 0)
+    data[0x48:] = names
+    return bytes(data) + bfres * 2
+
+
+def make_yaz0(data):
+    return b"Yaz0" + struct.pack(">I", len(data)) + bytes(8) + b"".join(
+        b"\xff" + data[at:at + 8] for at in range(0, len(data), 8))
 
 
 def make_wiiu(bfres):
@@ -143,7 +164,7 @@ def check_png(data, size, label):
     check(raw == expected, f"{label}: unexpected pixels, scanlines or mip size")
 
 
-def check_pack(output):
+def check_pack(output, exact=True):
     report = json.loads((output / "import-report.json").read_text(encoding="utf-8"))
     check(report["replacement_count"] == 1 and report["conflicts_skipped"] == 0
           and report["unsupported"] == [] and len(report["textures"]) == 1,
@@ -160,7 +181,7 @@ def check_pack(output):
     for name, size in zip(names, MIP_SIZES):
         check_png(pngs[name], size, output.name + "/" + name)
     hashes = {name: hashlib.sha256(data).hexdigest() for name, data in pngs.items()}
-    check(texture["files_sha256"] == hashes, f"{output.name}: report PNG hashes differ")
+    check(texture["files_sha256"] == (hashes if exact else {}), f"{output.name}: report PNG hashes differ")
     return pngs
 
 
@@ -194,15 +215,24 @@ def run(cli, root):
     for name in ("toy.wud", "toy.wux"):
         check_reference(images / name, bfres)
 
-    environment = dict(os.environ, WWHD_EXACT_REPORT="1")
-    def invoke(source, output, arguments=(), failure=None, *, gc_input=gc):
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("WWHD_TEST_") and key != "WWHD_EXACT_REPORT"}
+    def invoke(source, output, arguments=(), failure=None, *, gc_input=gc, exact=True,
+               cancel=None, after=1, expected_code=1, evidence=None):
         before = snapshot(outputs)
         command = [str(cli), str(source), str(gc_input), str(output)] + [str(a) for a in arguments]
-        result = subprocess.run(command, cwd=root, env=environment, capture_output=True,
+        child_environment = dict(environment)
+        if exact:
+            child_environment["WWHD_EXACT_REPORT"] = "1"
+        if cancel:
+            child_environment.update(WWHD_TEST_CANCEL=cancel, WWHD_TEST_AFTER=str(after))
+        result = subprocess.run(command, cwd=root, env=child_environment, capture_output=True,
                                 text=True, timeout=30, check=False)
         detail = f"{output.name}: exit {result.returncode}\n{result.stdout}\n{result.stderr}"
+        if evidence is not None:
+            check(evidence in result.stderr, "missing test checkpoint evidence: " + detail)
         if failure is not None:
-            check(result.returncode == 1, "expected a handled import failure: " + detail)
+            check(result.returncode == expected_code, "expected a handled import failure: " + detail)
             check(failure.lower() in result.stderr.lower(), "unexpected failure reason: " + detail)
             check(snapshot(outputs) == before, "failed import changed output or left staging: " + detail)
             return None
@@ -213,7 +243,7 @@ def run(cli, root):
         prefix = relative + "/"
         outside = {p: data for p, data in after.items() if p != relative and not p.startswith(prefix)}
         check(outside == before, "successful import modified another output or left staging: " + detail)
-        return check_pack(output)
+        return check_pack(output, exact)
 
     baseline = outputs / "folder-pack"
     expected_pngs = invoke(folder, baseline)
@@ -275,6 +305,74 @@ def run(cli, root):
             check(pngs == expected_pngs, f"Unicode {name}/{mode}: PNG bytes differ from ASCII baseline")
             unicode_imports += 1
 
+    # Cancellation uses named test-only boundaries in the native runner. Every
+    # case must throw the distinct Cancelled exception (exit 3), preserve all
+    # previous packs byte-for-byte and remove even empty staging directories.
+    cancellations = 0
+    def cancel_case(mode, source=folder, arguments=(), *, after=1, gc_input=gc, exact=True, evidence=None):
+        nonlocal cancellations
+        invoke(source, outputs / f"cancel-{cancellations}", arguments,
+               failure="Import cancelled", expected_code=3, cancel=mode, after=after,
+               gc_input=gc_input, exact=exact, evidence=evidence or f"Test cancellation: {mode}")
+        cancellations += 1
+
+    cancel_case("pre", root / "missing-HD", gc_input=root / "missing-GC")
+    cancel_case("stage:Opening Wind Waker HD", root / "missing-HD")
+    cancel_case("folder-entry")
+    cancel_case("stage:Reading the GameCube disc", gc_input=root / "missing-GC")
+    for mode in ("gc-entry", "gc-resource", "gc-leaf"):
+        cancel_case(mode)
+    # Header + FST + first resource chunk succeed; cancel before the second
+    # 64 KiB resource chunk, rather than reading the entire declared resource.
+    large_gc = bytearray(make_gamecube())
+    large_gc.extend(bytes(0x800 + 2 * fixture.BLOCK - len(large_gc)))
+    fixture.put(large_gc, 0x500 + 20, "I", 2 * fixture.BLOCK)
+    large_gc_path = root / "large-synthetic.iso"
+    large_gc_path.write_bytes(large_gc)
+    cancel_case("read-block", gc_input=large_gc_path, after=4,
+                evidence="Test cancellation: read-block (4)")
+
+    archive_folder = root / "archive-folder"
+    archive_folder.mkdir()
+    (archive_folder / "A.pack").write_bytes(make_sarc(bfres))
+    cancel_case("archive-member", archive_folder, after=2,
+                evidence="Test cancellation: archive-member (2)")
+    yaz_folder = root / "yaz-folder"
+    yaz_folder.mkdir()
+    (yaz_folder / "A.szs").write_bytes(make_yaz0(make_sarc(bfres + bytes(2 * fixture.BLOCK))))
+    cancel_case("yaz0-block", yaz_folder, after=2,
+                evidence="Test cancellation: yaz0-block (2)")
+    for name in ("toy.wud", "toy.wux"):
+        for mode, after in (("disc-block", 2), ("wiiu-entry", 2),
+                            ("metadata-block", 2), ("content-block", 2)):
+            cancel_case(mode, images / name, title_args, after=after,
+                        evidence=f"Test cancellation: {mode} ({after})")
+    cancel_case("stage:Finishing the pack")
+    cancel_case("publish")
+    cancel_case("png-row", exact=False, after=2)
+    # A real worker is held while all six mip jobs are queued. Cancellation
+    # happens just before the producer waits; shutdown releases and joins the
+    # worker, and no queued job is started. This would deadlock with wait().
+    cancel_case("async-drain", exact=False, evidence="Async cleanup: 1 started, 6 queued, joined")
+    # Also exercise backpressure with an actual image over the 32 MiB budget.
+    large_folder = root / "large-folder"
+    large_folder.mkdir()
+    (large_folder / "A.bfres").write_bytes(make_bfres(3072))
+    cancel_case("async-room", large_folder, exact=False,
+                evidence="Async cleanup: 1 started, 1 queued, joined")
+    for source, arguments in ((folder, ()), (images / "toy.wux", title_args)):
+        pngs = invoke(source, outputs / ("async-" + source.name), arguments, exact=False)
+        check(pngs == expected_pngs, "async PNG bytes differ from the exact-report baseline")
+    # Once rename has committed a complete pack, a late cancel is success.
+    pngs = invoke(folder, outputs / "cancel-after-publication", cancel="stage:Done")
+    check(pngs == expected_pngs, "cancellation after publication changed the completed pack")
+    close_failures = 0
+    if os.name != "nt":
+        for exact in (True, False):
+            invoke(folder, outputs / f"close-failure-{exact}", cancel="close-failure", exact=exact,
+                   failure="cannot finish writing")
+            close_failures += 1
+
     # Unlike wrong keys (rejected while opening), a corrupt payload fails after
     # import_pack has created staging. Require its cleanup for WUD and WUX.
     wud[fixture.HASHED + fixture.BLOCK + 0x400 + 19] ^= 1
@@ -286,7 +384,9 @@ def run(cli, root):
     check(check_pack(baseline) == expected_pngs, "original folder pack was changed")
     print(f"PASS: folder + 2 disc formats x {len(modes)} key modes; six PNG mips each, "
           f"independent pixels/CRC; {unicode_imports} Unicode-path imports match ASCII PNGs; "
-          f"{failures} failure/preservation checks")
+          f"{failures} failure/preservation checks; {cancellations} deterministic cancellations; "
+          f"2 async PNG byte comparisons; post-publication cancel succeeds; "
+          f"{close_failures} buffered-close failures (POSIX only)")
 
 
 def main():

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "wwhd.h"
+#include "cancel.h"
 
 #include <atomic>
 #include <functional>
@@ -39,8 +40,10 @@ struct ImportResult {
     std::vector<ImportError> errors;
 };
 
-// Throws FormatError when the import cannot be made; a cancelled import throws
-// and leaves nothing behind.
+// Throws Cancelled before publication when the token is set, FormatError for
+// invalid input, or another std::exception for I/O failures. Workers stop before
+// staging cleanup. Once the completed folder is renamed into place, it is kept.
+// The token must remain alive until this call returns (including worker joins).
 ImportResult import_pack(const ImportOptions& options);
 
 // A PNG of an RGBA image (8 bits per channel), deflated with zlib.

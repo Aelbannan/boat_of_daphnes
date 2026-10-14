@@ -15,6 +15,7 @@ extern "C" {
 // importer (BlueWake imports on first run, first_run.m). Pad state and pause
 // reasons go through touch_controls.cpp.
 #include "wwhd/import_job.h"
+#include "BWHDImportOperation.h"
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <UIKit/UIKit.h>
@@ -242,6 +243,59 @@ static CGRect BWFrameAtNormalizedCenter(CGRect safe, CGFloat x, CGFloat y, CGFlo
 @implementation BWHDImportSelection
 @end
 
+// A normal button requests cancellation without UIAlertAction's automatic
+// dismissal. Keep this controller up until the worker and cleanup have ended.
+@interface BWHDImportProgress : UIViewController
+@property(nonatomic, copy) void (^cancelImport)(void);
+@property(nonatomic, copy) NSString* message;
+- (void)showCancelling;
+@end
+@implementation BWHDImportProgress {
+    UILabel* _messageLabel;
+    UIButton* _cancelButton;
+}
+- (void)loadView {
+    self.view = [UIView new];
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+    UILabel* title = [UILabel new];
+    title.text = @"Importing from Wind Waker HD";
+    title.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    title.numberOfLines = 0;
+    _messageLabel = [UILabel new];
+    _messageLabel.text = self.message;
+    _messageLabel.numberOfLines = 0;
+    _messageLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    UIActivityIndicatorView* spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    [spinner startAnimating];
+    _cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_cancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
+    [_cancelButton addTarget:self action:@selector(cancelPressed) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[ title, _messageLabel, spinner, _cancelButton ]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 16;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:stack];
+    UILayoutGuide* area = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:area.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:area.trailingAnchor constant:-24],
+        [stack.centerYAnchor constraintEqualToAnchor:area.centerYAnchor],
+        [stack.topAnchor constraintGreaterThanOrEqualToAnchor:area.topAnchor constant:24],
+        [_cancelButton.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+    ]];
+}
+- (void)setMessage:(NSString*)message {
+    _message = [message copy];
+    _messageLabel.text = _message;
+}
+- (void)cancelPressed { if (self.cancelImport) self.cancelImport(); }
+- (void)showCancelling {
+    [self loadViewIfNeeded];
+    self.message = @"Cancelling… Waiting for the current read and cleanup to finish.";
+    _cancelButton.enabled = NO;
+}
+@end
+
 // UIKit may already be dismissing an alert or document picker when its
 // callback arrives. Wait for that transition, or dismiss it explicitly,
 // before presenting the next picker, key choices, or progress alert.
@@ -331,10 +385,16 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     NSDictionary<NSString*, NSNumber*>* _launchMods;  // mod switches as this launch read them
     void (^_pickHandler)(NSArray<NSURL*>* urls);      // the open file picker's handler
     void (^_hdPickHandler)(BWHDScopedURL* picked);    // nil on cancel; called after dismissal
+    std::shared_ptr<BWHDImportOperation> _hdImport;
+    BWHDImportProgress* _hdProgress;
+    void (^_hdImportCompletion)(void);
+    UIBackgroundTaskIdentifier _hdBackgroundTask;
+    BOOL _hdBackgroundGraceStarted, _hdImportDismissing;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
+        _hdBackgroundTask = UIBackgroundTaskInvalid;
         self.accessibilityIdentifier = @"BlueWakeOverlay";
         _launchAspectMode = (NSInteger)BWDefault(BWAspectModeKey, 0);
         NSUserDefaults* d = [NSUserDefaults standardUserDefaults];
@@ -358,6 +418,9 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
 }
 
 - (void)dealloc {
+    if (_hdImport) _hdImport->cancel();
+    if (_hdBackgroundTask != UIBackgroundTaskInvalid)
+        [UIApplication.sharedApplication endBackgroundTask:_hdBackgroundTask];
     [_fpsTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
@@ -920,40 +983,20 @@ static NSUInteger g_packFiles = NSNotFound;
 // the main thread once the alert is gone. work may update the alert's message.
 - (void)waitTitled:(NSString*)title message:(NSString*)message
               work:(void (^)(UIAlertController* wait))work done:(void (^)(void))done {
-    [self waitTitled:title message:message readingIntents:nil
-               work:^(UIAlertController* wait, NSError* error) {
-                   (void)error;
-                   work(wait);
-               } done:done];
-}
-
-- (void)waitTitled:(NSString*)title message:(NSString*)message
-    readingIntents:(NSArray<NSFileAccessIntent*>*)intents
-              work:(void (^)(UIAlertController* wait, NSError* error))work done:(void (^)(void))done {
     UIAlertController* wait = [UIAlertController alertControllerWithTitle:title message:message
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:wait animated:YES completion:^{
-        void (^run)(NSError*) = ^(NSError* error) {
-            work(wait, error);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            work(wait);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [wait dismissViewControllerAnimated:YES completion:^{
                     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
                     done();
                 }];
             });
-        };
-        if (intents.count > 0) {
-            NSOperationQueue* queue = [NSOperationQueue new];
-            queue.qualityOfService = NSQualityOfServiceUserInitiated;
-            NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
-            // Acquire all inputs together; work must finish reading before
-            // this accessor returns and releases the coordinated access.
-            [coordinator coordinateAccessWithIntents:intents queue:queue byAccessor:run];
-        } else {
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ run(nil); });
-        }
+        });
     }];
 }
 
@@ -1059,6 +1102,7 @@ static NSUInteger g_packFiles = NSNotFound;
 // folder at Load/Textures/WWHD (or a numbered sibling), saved as the selected
 // texture pack folder for the next launch.
 - (void)chooseWindWakerHD {
+    if (_hdImport) return; // Includes cancellation cleanup and deferred dismissal.
     __weak BWGameOverlay* weakSelf = self;
     UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Import from Wind Waker HD"
         message:@"Choose your decrypted dump folder, or a USA WUD/WUX image and its key files."
@@ -1176,87 +1220,190 @@ static NSUInteger g_packFiles = NSNotFound;
     [self presentAlert:alert];
 }
 
+- (void)endHDBackgroundTime {
+    UIBackgroundTaskIdentifier task = _hdBackgroundTask;
+    _hdBackgroundTask = UIBackgroundTaskInvalid;
+    if (task != UIBackgroundTaskInvalid)
+        [UIApplication.sharedApplication endBackgroundTask:task];
+}
+
+- (void)cancelHDImport {
+    if (!_hdImport || _hdImport->finished()) return;
+    _hdImport->cancel();
+    [_hdProgress showCancelling];
+}
+
+- (void)hdImportEnteredBackground:(NSNotification*)note {
+    if ([note.object isKindOfClass:UIScene.class] && note.object != self.window.windowScene) return;
+    if (!_hdImport || _hdImport->finished()) return;
+    [self cancelHDImport];
+    if (_hdBackgroundGraceStarted) return;
+    _hdBackgroundGraceStarted = YES;
+    __weak BWGameOverlay* weakSelf = self;
+    const auto operation = _hdImport;
+    // One bounded cleanup allowance, never renewed on foreground/background
+    // cycling. Expiration cannot release grants or pretend the worker stopped.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        BWGameOverlay* overlay = weakSelf;
+        if (overlay != nil && overlay->_hdImport == operation) {
+            [overlay cancelHDImport];
+            [overlay endHDBackgroundTime];
+        }
+    });
+}
+
+- (void)finishHDImportIfActive {
+    if (!_hdImport || !_hdImport->finished() || _hdImportDismissing ||
+        self.window == nil ||
+        UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+        self.window.windowScene.activationState != UISceneActivationStateForegroundActive)
+        return;
+    _hdImportDismissing = YES;
+    __weak BWGameOverlay* weakSelf = self;
+    BWHDWhenDismissed(_hdProgress, ^{
+        BWGameOverlay* overlay = weakSelf;
+        if (overlay == nil) return;
+        // Keep the terminal result pending if backgrounding interrupted dismissal.
+        overlay->_hdImportDismissing = NO;
+        if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+            overlay.window.windowScene.activationState != UISceneActivationStateForegroundActive)
+            return;
+        void (^completed)(void) = overlay->_hdImportCompletion;
+        overlay->_hdImportCompletion = nil;
+        overlay->_hdProgress.cancelImport = nil;
+        overlay->_hdProgress = nil;
+        overlay->_hdImport.reset();
+        bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
+        if (completed) completed();
+    });
+}
+
 - (void)importWindWakerHDFrom:(BWHDScopedURL*)source discKey:(BWHDScopedURL*)discKey
                  contentKey:(BWHDScopedURL*)contentKey titleKey:(BOOL)usesTitleKey {
-    if (source == nil || (discKey != nil) != (contentKey != nil))
+    if (_hdImport || source == nil || (discKey != nil) != (contentKey != nil))
+        return;
+    // A picker can finish after its scene/window has gone away. Do not reserve
+    // the import slot or pause the game when no presentation can start it.
+    UIViewController* presenter = [self presenter];
+    if (self.window == nil || presenter == nil || presenter.view.window == nil ||
+        UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+        self.window.windowScene.activationState != UISceneActivationStateForegroundActive)
         return;
     __weak BWGameOverlay* weakSelf = self;
     const char* disc = getenv("BLUEWAKE_DISC");
     const std::string gcDisc = disc != NULL ? disc : "";
     NSString* textures = [[self dataDirectory] stringByAppendingPathComponent:@"Load/Textures"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:textures withIntermediateDirectories:YES attributes:nil
-                                                    error:nil];
+    const BOOL imageInput = discKey != nil;
     __block std::string output;
     __block std::string failure;
     __block size_t imported = 0;
     NSFileAccessIntent* sourceRead = [NSFileAccessIntent readingIntentWithURL:source.url options:0];
-    NSFileAccessIntent* discKeyRead = discKey != nil
+    NSFileAccessIntent* discKeyRead = imageInput
         ? [NSFileAccessIntent readingIntentWithURL:discKey.url options:0] : nil;
-    NSFileAccessIntent* contentKeyRead = contentKey != nil
+    NSFileAccessIntent* contentKeyRead = imageInput
         ? [NSFileAccessIntent readingIntentWithURL:contentKey.url options:0] : nil;
-    NSArray<NSFileAccessIntent*>* inputs = discKey != nil
+    NSArray<NSFileAccessIntent*>* inputs = imageInput
         ? @[ sourceRead, discKeyRead, contentKeyRead ] : @[ sourceRead ];
-    [self waitTitled:@"Importing from Wind Waker HD" message:@"Opening Wind Waker HD…"
-       readingIntents:inputs work:^(UIAlertController* wait, NSError* error) {
-        if (error != nil) {
-            failure = "BlueWake could not access the selected Wind Waker HD files. "
-                      "Make sure they are available in Files and try again.";
-            return;
-        }
-        try {
-            wwhd::ImportOptions options;
-            // Coordination may update the URLs while waiting for a provider.
-            options.hd_folder = discKey != nil ? sourceRead.URL.path.fileSystemRepresentation
-                                               : wwhd::hd_content_folder(sourceRead.URL.path.fileSystemRepresentation);
-            options.gc_disc = gcDisc;
-            if (discKey != nil) {
-                options.disc_key_file = discKeyRead.URL.path.fileSystemRepresentation;
-                if (usesTitleKey)
-                    options.title_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
-                else
-                    options.common_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
+    NSArray* grants = imageInput ? @[ source, discKey, contentKey ] : @[ source ];
+    const auto operation = std::make_shared<BWHDImportOperation>();
+    _hdImport = operation;
+    _hdBackgroundGraceStarted = NO;
+    _hdImportDismissing = NO;
+    _hdProgress = [BWHDImportProgress new];
+    _hdProgress.modalPresentationStyle = UIModalPresentationFormSheet;
+    _hdProgress.modalInPresentation = YES;
+    _hdProgress.preferredContentSize = CGSizeMake(360, 260);
+    _hdProgress.message = @"Opening Wind Waker HD…";
+    _hdProgress.cancelImport = ^{ [weakSelf cancelHDImport]; };
+    // Request time before starting work; it is used only to wind down if the
+    // app backgrounds, and ended on completion, expiry, or the five-second cap.
+    _hdBackgroundTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"Finish HD import cleanup"
+        expirationHandler:^{
+            BWGameOverlay* overlay = weakSelf;
+            if (overlay != nil && overlay->_hdImport == operation) {
+                [overlay cancelHDImport];
+                [overlay endHDBackgroundTime];
             }
-            options.output = output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
-            options.threads = 2;
-            options.progress = [wait](const wwhd::ImportProgress& p) {
-                NSString* text = p.files_total
-                    ? [NSString stringWithFormat:@"%zu of %zu files, %zu textures so far", p.files_read, p.files_total,
-                                                 p.replacements]
-                    : @(p.stage.c_str());
-                dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
+        }];
+    [self clearTouchInput];
+    bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
+    [presenter presentViewController:_hdProgress animated:YES completion:^{
+        BWGameOverlay* overlay = weakSelf;
+        if (overlay == nil || UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+            overlay.window.windowScene.activationState != UISceneActivationStateForegroundActive) {
+            operation->cancel();
+            if (overlay != nil) [overlay->_hdProgress showCancelling];
+        }
+        operation->start(inputs, grants, ^bool(NSError* error, const std::atomic<bool>* cancel) {
+            if (error != nil) {
+                failure = "BlueWake could not access the selected Wind Waker HD files. "
+                          "Make sure they are available in Files and try again.";
+                return false;
+            }
+            try {
+                wwhd::ImportOptions options;
+                // Coordination may update URLs while waiting for a provider.
+                options.hd_folder = imageInput ? sourceRead.URL.path.fileSystemRepresentation
+                    : wwhd::hd_content_folder(sourceRead.URL.path.fileSystemRepresentation);
+                options.gc_disc = gcDisc;
+                if (imageInput) {
+                    options.disc_key_file = discKeyRead.URL.path.fileSystemRepresentation;
+                    if (usesTitleKey)
+                        options.title_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
+                    else
+                        options.common_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
+                }
+                options.output = output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
+                options.threads = 2;
+                options.cancel = cancel;
+                options.progress = [weakSelf, operation, cancel](const wwhd::ImportProgress& p) {
+                    if (cancel->load()) return;
+                    NSString* text = p.files_total
+                        ? [NSString stringWithFormat:@"%zu of %zu files, %zu textures so far", p.files_read, p.files_total,
+                                                     p.replacements]
+                        : @(p.stage.c_str());
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        BWGameOverlay* overlay = weakSelf;
+                        if (overlay != nil && overlay->_hdImport == operation && operation->acceptsProgress())
+                            overlay->_hdProgress.message = text;
+                    });
+                };
+                if (options.gc_disc.empty())
+                    throw wwhd::FormatError("BlueWake could not find the GameCube disc it plays.");
+                imported = wwhd::import_pack(options).replacements;
+                return true; // Commit won any late cancellation race.
+            } catch (const std::exception& ex) {
+                failure = ex.what();
+                return false;
+            }
+        }, ^(BWHDImportOperation::Result result) {
+            BWGameOverlay* overlay = weakSelf;
+            if (overlay == nil) return;
+            [overlay endHDBackgroundTime];
+            // No grants/key paths are retained by this deferred UI completion.
+            overlay->_hdImportCompletion = ^{
+                BWGameOverlay* current = weakSelf;
+                if (current == nil) return;
+                g_packFiles = NSNotFound;
+                [current refreshMenu];
+                if (result == BWHDImportOperation::Result::cancelled) {
+                    [current showMessage:@"Import Cancelled" text:@"The import stopped. Your existing texture packs are unchanged."];
+                } else if (result == BWHDImportOperation::Result::failed) {
+                    NSString* help = imageInput
+                        ? @"Choose your USA WUD/WUX image and its disc key, with a matching common key or title key."
+                        : @"Pick your Wind Waker HD dump folder (with code, content and meta) or its content folder.";
+                    [current showMessage:@"Import Failed" text:[NSString stringWithFormat:@"%s\n\n%@", failure.c_str(), help]];
+                } else {
+                    NSString* folder = [@"Load/Textures" stringByAppendingPathComponent:@(output.c_str()).lastPathComponent];
+                    [[NSUserDefaults standardUserDefaults] setObject:folder forKey:@BW_TEXTURE_PACK_FOLDER_KEY];
+                    [current refreshMenu];
+                    NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump, in %@. "
+                        @"HD Textures uses them after BlueWake restarts.", imported, folder];
+                    [current offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Wind Waker HD Textures Ready" message:message];
+                }
             };
-            if (options.gc_disc.empty())
-                throw wwhd::FormatError("BlueWake could not find the GameCube disc it plays.");
-            imported = wwhd::import_pack(options).replacements;
-        } catch (const std::exception& ex) {
-            failure = ex.what();
-        }
-    } done:^{
-        [source finishAccess];
-        [discKey finishAccess];
-        [contentKey finishAccess];
-        g_packFiles = NSNotFound;
-        [weakSelf refreshMenu];
-        if (!failure.empty()) {
-            NSString* help = discKey != nil
-                ? @"Choose your USA WUD/WUX image and its disc key, with a matching common key or title key."
-                : @"Pick the folder of your own Wind Waker HD dump (with code, content and meta) or its content folder.";
-            UIAlertController* alert = [UIAlertController
-                alertControllerWithTitle:@"Import Failed"
-                                 message:[NSString stringWithFormat:@"%s\n\n%@", failure.c_str(), help]
-                          preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[weakSelf actionTitled:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [weakSelf presentAlert:alert];
-            return;
-        }
-        // The new pack is used on its own from the next launch.
-        NSString* folder = [@"Load/Textures" stringByAppendingPathComponent:@(output.c_str()).lastPathComponent];
-        [[NSUserDefaults standardUserDefaults] setObject:folder forKey:@BW_TEXTURE_PACK_FOLDER_KEY];
-        g_packFiles = NSNotFound;
-        [weakSelf refreshMenu];
-        NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump, in %@. HD "
-                                                       @"Textures uses them after BlueWake restarts.", imported, folder];
-        [weakSelf offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Wind Waker HD Textures Ready" message:message];
+            [overlay finishHDImportIfActive];
+        });
     }];
 }
 
@@ -2424,6 +2571,14 @@ static NSString* BWQuestLogSummary(const BWQuestLog& log) {
     [center addObserver:self selector:@selector(applyControllerVisibility) name:GCControllerDidDisconnectNotification object:nil];
     [center addObserver:self selector:@selector(recoverAudio)
                    name:UIApplicationDidBecomeActiveNotification object:nil];
+    [center addObserver:self selector:@selector(hdImportEnteredBackground:)
+                   name:UIApplicationDidEnterBackgroundNotification object:nil];
+    [center addObserver:self selector:@selector(hdImportEnteredBackground:)
+                   name:UISceneDidEnterBackgroundNotification object:nil];
+    [center addObserver:self selector:@selector(finishHDImportIfActive)
+                   name:UIApplicationDidBecomeActiveNotification object:nil];
+    [center addObserver:self selector:@selector(finishHDImportIfActive)
+                   name:UISceneDidActivateNotification object:nil];
     // Every held touch is released when the app stops being active.
     [center addObserver:self selector:@selector(clearTouchInput) name:UIApplicationWillResignActiveNotification object:nil];
     [center addObserver:self selector:@selector(clearTouchInput) name:UISceneWillDeactivateNotification object:nil];

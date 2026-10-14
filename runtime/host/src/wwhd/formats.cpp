@@ -2,6 +2,7 @@
 // importer (wwhd.h). Ported from scripts/wwhd/formats.py and
 // scripts/import_wwhd_textures.py; the comments there explain the rules.
 #include "wwhd.h"
+#include "file_io.h"
 
 #define XXH_INLINE_ALL
 #include "xxhash.h"
@@ -99,6 +100,7 @@ static void safe_name(const std::string& name) {
 }
 
 Bytes yaz0(const uint8_t* data, size_t size) {
+    check_cancel();
     if (size < 4 || std::memcmp(data, "Yaz0", 4) != 0)
         return Bytes(data, data + size);
     const Reader r(data, size);
@@ -110,7 +112,12 @@ Bytes yaz0(const uint8_t* data, size_t size) {
     size_t src = 16;
     int bits = 0;
     uint8_t code = 0;
+    size_t next_check = 0;
     while (out.size() < out_size) {
+        if (out.size() >= next_check) {
+            WWHD_CHECKPOINT("yaz0-block");
+            next_check = out.size() + kIoChunk;
+        }
         if (bits == 0) {
             code = r.u8(src++);
             bits = 8;
@@ -160,6 +167,7 @@ static void sarc(const uint8_t* data, size_t size, const MemberVisitor& member) 
         throw FormatError("missing SFNT");
     const size_t strings = sfnt + r.u16(sfnt + 4);
     for (size_t i = 0; i < count; ++i) {
+        WWHD_CHECKPOINT("archive-member");
         const size_t node = nodes + i * 16;
         const uint32_t attr = r.u32(node + 4), start = r.u32(node + 8), end = r.u32(node + 12);
         if (!(attr >> 24))
@@ -188,6 +196,7 @@ static void rarc(const uint8_t* data, size_t size, const MemberVisitor& member) 
         const size_t node = nodes + index * 16;
         const size_t n = r.u16(node + 10), first = r.u32(node + 12);
         for (size_t i = first; i < first + n; ++i) {
+            WWHD_CHECKPOINT("archive-member");
             const size_t e = entries + i * 20;
             const uint32_t attr_name = r.u32(e + 4), offset = r.u32(e + 8), length = r.u32(e + 12);
             const std::string name = r.string(strings + (attr_name & 0xFFFFFF));
@@ -208,6 +217,7 @@ static void rarc(const uint8_t* data, size_t size, const MemberVisitor& member) 
 }
 
 void leaves(const uint8_t* data, size_t size, const std::string& path, const LeafVisitor& visit, int depth) {
+    check_cancel();
     if (depth > 8 || size > kMaxFile)
         throw FormatError("archive nesting or size limit exceeded");
     // Borrow uncompressed containers from their parent while descending.
@@ -257,6 +267,7 @@ std::string hex64(uint64_t value) {
 } // namespace
 
 std::string GCTexture::filename() const {
+    check_cancel();
     if (!cached_name.empty())
         return cached_name;
     if (!name_error.empty())
@@ -270,16 +281,25 @@ std::string GCTexture::filename() const {
             hi = std::max(hi, v);
         };
         if (format == 8) {
-            for (uint8_t b : pixels) {
+            for (size_t i = 0; i < pixels.size(); ++i) {
+                if (i % kIoChunk == 0)
+                    check_cancel();
+                const uint8_t b = pixels[i];
                 see(b >> 4);
                 see(b & 15);
             }
         } else if (format == 9) {
-            for (uint8_t b : pixels)
-                see(b);
+            for (size_t i = 0; i < pixels.size(); ++i) {
+                if (i % kIoChunk == 0)
+                    check_cancel();
+                see(pixels[i]);
+            }
         } else {
-            for (size_t i = 0; i + 1 < pixels.size(); i += 2)
+            for (size_t i = 0; i + 1 < pixels.size(); i += 2) {
+                if (i % kIoChunk == 0)
+                    check_cancel();
                 see((unsigned(pixels[i]) << 8 | pixels[i + 1]) & 0x3FFF);
+            }
         }
         if (pixels.empty() || 2 * (size_t(hi) + 1) > palette.size())
             throw FormatError("texture references missing palette entries");
@@ -330,6 +350,7 @@ void gc_textures(const Bytes& data, const std::string& path, std::vector<GCTextu
     size_t at = 32;
     const uint32_t count = r.u32(12);
     for (uint32_t i = 0; i < count; ++i) {
+        check_cancel();
         const uint8_t* magic = r.take(at, 4);
         const size_t size = r.u32(at + 4);
         if (size < 8)
@@ -340,6 +361,7 @@ void gc_textures(const Bytes& data, const std::string& path, std::vector<GCTextu
             if (c.u16(strings) != n)
                 throw FormatError("J3D texture name count differs");
             for (size_t k = 0; k < n; ++k) {
+                check_cancel();
                 const std::string name = c.string(strings + c.u16(strings + 6 + k * 4));
                 out.push_back(bti(c, headers + k * 32, path + "#" + name, name));
             }
@@ -398,12 +420,12 @@ std::string resource(std::string_view path) {
 }
 
 std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportError>& errors) {
+    check_cancel();
     std::ifstream file(iso_path, std::ios::binary);
     if (!file)
         throw FormatError("cannot open the GameCube disc " + iso_path);
     Bytes header(0x500);
-    if (!file.read(reinterpret_cast<char*>(header.data()), header.size()))
-        throw FormatError("File too small for GameCube disc header");
+    read_exact(file, header.data(), header.size(), "File too small for GameCube disc header");
     const Reader h(header);
     if (h.u32(28) != 0xC2339F3Du)
         throw FormatError("Not a GameCube disc");
@@ -416,8 +438,7 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
         throw FormatError("invalid GameCube file table");
     Bytes fst(fst_size);
     file.seekg(fst_offset);
-    if (!file.read(reinterpret_cast<char*>(fst.data()), fst.size()))
-        throw FormatError("truncated GameCube file table");
+    read_exact(file, fst.data(), fst.size(), "truncated GameCube file table");
     const Reader f(fst);
     const size_t entries = f.u32(8);
     const size_t strings = entries * 12;
@@ -429,6 +450,7 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
     std::vector<Entry> files;
     std::function<void(size_t, size_t, const std::string&)> walk = [&](size_t i, size_t end, const std::string& prefix) {
         while (i < end) {
+            WWHD_CHECKPOINT("gc-entry");
             const size_t e = i * 12;
             const uint8_t flags = f.u8(e);
             const uint32_t name_off = f.u32(e) & 0xFFFFFF;
@@ -451,6 +473,7 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
 
     std::vector<GCTexture> textures;
     for (const Entry& e : files) {
+        WWHD_CHECKPOINT("gc-resource");
         const std::string l = lower(e.path);
         if (!(ends_with(l, ".arc") || ends_with(l, ".bti") || ends_with(l, ".bmd") || ends_with(l, ".bdl") ||
               ends_with(l, ".bmt")))
@@ -459,10 +482,10 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
             throw FormatError("GameCube resource exceeds size limit");
         Bytes data(e.size);
         file.seekg(e.offset);
-        if (!file.read(reinterpret_cast<char*>(data.data()), data.size()))
-            throw FormatError("truncated GameCube disc");
+        read_exact(file, data.data(), data.size(), "truncated GameCube disc");
         try {
             leaves(data, e.path, [&](const std::string& name, const Bytes& leaf) {
+                WWHD_CHECKPOINT("gc-leaf");
                 const size_t first = textures.size();
                 try {
                     gc_textures(leaf, name, textures);
@@ -470,6 +493,7 @@ std::vector<GCTexture> index_gc(const std::string& iso_path, std::vector<ImportE
                     errors.push_back({name, ex.what()});
                 }
                 for (size_t i = first; i < textures.size(); i++) {
+                    check_cancel();
                     GCTexture& t = textures[i];
                     try {
                         t.cached_name = t.filename();

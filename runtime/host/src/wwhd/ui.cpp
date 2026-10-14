@@ -1,6 +1,7 @@
 // The generated HUD and title art of the built-in Wind Waker HD importer (ui.h).
 // FFNT section layouts as documented by 3dstools (bffnt.py) and used by
 // scripts/wwhd/font.py.
+#include "cancel.h"
 #include "ui.h"
 
 #include "addrlib.h"
@@ -61,6 +62,7 @@ BitmapFont::BitmapFont(const Bytes& data) : data_(data) {
     const auto chain = [&](size_t pointer, const char* magic, size_t link_offset, const auto& visit) {
         std::set<size_t> seen;
         while (pointer) {
+            check_cancel();
             if (pointer < 8)
                 throw FormatError("invalid font section pointer");
             const size_t section = pointer - 8;
@@ -272,6 +274,7 @@ Box gc_alpha_bounds(const GCTexture& gc) {
     Image mask(gc.width, gc.height);
     size_t offset = 0;
     for (int by = 0; by < gc.height; by += bh) {
+        check_cancel();
         for (int bx = 0; bx < gc.width; bx += bw) {
             for (int p = 0; p < bw * bh; p++) {
                 const int x = bx + p % bw, y = by + p / bw;

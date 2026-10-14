@@ -1,4 +1,5 @@
 #include "disc_image.h"
+#include "file_io.h"
 
 #include <algorithm>
 #include <array>
@@ -19,7 +20,9 @@ uint64_t le64(const uint8_t* data) {
 }
 } // namespace
 
-DiscImage::DiscImage(const std::string& path) : file_(path, std::ios::binary | std::ios::ate) {
+DiscImage::DiscImage(const std::string& path) {
+    check_cancel();
+    file_.open(path, std::ios::binary | std::ios::ate);
     if (!file_)
         throw FormatError("cannot open disc image");
     const std::streamoff end = file_.tellg();
@@ -55,6 +58,8 @@ DiscImage::DiscImage(const std::string& path) : file_(path, std::ios::binary | s
         table_.reserve(static_cast<size_t>(sectors));
         const uint64_t physical_sectors = (physical_size_ - base_) / kSectorSize;
         for (size_t i = 0; i < map.size(); i += 4) {
+            if (i % kIoChunk == 0)
+                check_cancel();
             const uint32_t sector = le32(map.data() + i);
             // A complete physical sector is required even for a partial last
             // logical sector, matching scripts/wwhd/disc.py.
@@ -75,20 +80,20 @@ void DiscImage::read_exact(uint64_t at, uint8_t* data, size_t size) {
     // at is bounded by tellg()'s nonnegative streamoff; size by kMaxFile.
     file_.clear();
     file_.seekg(static_cast<std::streamoff>(at));
-    file_.read(reinterpret_cast<char*>(data), static_cast<std::streamsize>(size));
-    if (!file_ || file_.gcount() != static_cast<std::streamsize>(size))
-        throw FormatError("disc data is missing or truncated");
+    wwhd::read_exact(file_, data, size, "disc data is missing or truncated");
 }
 
 Bytes DiscImage::read(uint64_t at, uint64_t size) {
+    check_cancel();
     // Subtraction avoids wrapping at + size for hostile caller-supplied values.
     if (size > kMaxFile || at > size_ || size > size_ - at)
         throw FormatError("disc read outside image");
     Bytes result(static_cast<size_t>(size));
     size_t done = 0;
     while (done < result.size()) {
+        WWHD_CHECKPOINT("disc-block");
         uint64_t physical = at;
-        size_t count = result.size() - done;
+        size_t count = std::min(kIoChunk, result.size() - done);
         if (!table_.empty()) {
             const uint64_t within = at % kSectorSize;
             physical = base_ + uint64_t(table_[static_cast<size_t>(at / kSectorSize)]) * kSectorSize + within;
