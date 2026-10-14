@@ -63,6 +63,7 @@ struct Settings {
     std::string texture_pack;
     bool lle_audio = false;
     bool movement_extras = false;
+    double sprint_speed = 1.5;   // Jump and Run's sprint, 1.1 to 2.0 times
     bool fast_transitions = false;
     bool quick_doors = false;
     bool stage_select = false;   // the developers' stage select (F7)
@@ -115,6 +116,7 @@ inline void bw_settings_keep_edits(Settings& saved, const Settings& before, cons
     if (before.texture_pack != session.texture_pack) saved.texture_pack = session.texture_pack;
     if (before.lle_audio != session.lle_audio) saved.lle_audio = session.lle_audio;
     if (before.movement_extras != session.movement_extras) saved.movement_extras = session.movement_extras;
+    if (before.sprint_speed != session.sprint_speed) saved.sprint_speed = session.sprint_speed;
     if (before.fast_transitions != session.fast_transitions) saved.fast_transitions = session.fast_transitions;
     if (before.quick_doors != session.quick_doors) saved.quick_doors = session.quick_doors;
     if (before.stage_select != session.stage_select) saved.stage_select = session.stage_select;

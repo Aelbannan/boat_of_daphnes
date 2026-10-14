@@ -51,6 +51,11 @@ int main() {
     before = session; session.stick_zoom = true; session.stick_zoom_speed = 1.25;
     bw_settings_keep_edits(saved, before, session);
     assert(saved.stick_zoom && saved.stick_zoom_speed == 1.25);
+    // Jump and Run's sprint: today's 1.5 until the player moves the slider.
+    assert(Settings{}.sprint_speed == 1.5 && saved.sprint_speed == 1.5);
+    before = session; session.sprint_speed = 2.0;
+    bw_settings_keep_edits(saved, before, session);
+    assert(saved.sprint_speed == 2.0);
     assert(bw_smooth_requested("display") == -1 && bw_smooth_requested("3") == 3);
     assert(bw_smooth_requested(nullptr) == 1 && bw_smooth_requested("invalid") == 1);
     const float rates[] = {59.94f, 60.f, 90.f, 100.f, 119.88f, 120.f, 144.f, 165.f, 240.f, 360.f};

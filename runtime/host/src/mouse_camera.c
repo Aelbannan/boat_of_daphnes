@@ -341,10 +341,10 @@ static void observe(const void* sdl_event, void* user) {
     if (g_blocked)
         return;
     bluewake_jump_button_event(sdl_event);
-    // Debug save states: F5 saves, F9 loads the last one (main.c).
+    // Save states, the same keys on every build: F5 saves, F8 loads the last one (main.c).
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-        (event->key.scancode == SDL_SCANCODE_F5 || event->key.scancode == SDL_SCANCODE_F9))
-        bluewake_save_state_hotkey(event->key.scancode == SDL_SCANCODE_F9);
+        (event->key.scancode == SDL_SCANCODE_F5 || event->key.scancode == SDL_SCANCODE_F8))
+        bluewake_save_state_hotkey(event->key.scancode == SDL_SCANCODE_F8);
     // The stage select (BLUEWAKE_STAGE_SELECT=1): F7 opens it from play and goes back.
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat && event->key.scancode == SDL_SCANCODE_F7)
         bluewake_stage_select_hotkey();
@@ -474,6 +474,31 @@ void bluewake_mouse_camera_configure(bool enabled, double sensitivity, bool inve
     g_invert_y = invert_y ? -1.0 : 1.0;
     if (!enabled)
         set_captured(false);
+}
+
+static bool g_pad_hold;
+
+void bluewake_pad_hold_until_released(void) { g_pad_hold = true; }
+
+// While held: at rest until nothing is pressed and the sticks are near the
+// middle, then the controller is the game's again.
+static bool pad_held(DolPadState* pad) {
+    if (!g_pad_hold)
+        return false;
+    const int near = 24;
+    const bool idle = (pad->button & 0x1F7Fu) == 0u && pad->stick_x > -near && pad->stick_x < near &&
+                      pad->stick_y > -near && pad->stick_y < near && pad->substick_x > -near &&
+                      pad->substick_x < near && pad->substick_y > -near && pad->substick_y < near &&
+                      pad->trigger_left < 40 && pad->trigger_right < 40;
+    if (idle) {
+        g_pad_hold = false;
+        return false;
+    }
+    pad->button &= ~0x1F7Fu;
+    pad->stick_x = pad->stick_y = pad->substick_x = pad->substick_y = 0;
+    pad->trigger_left = pad->trigger_right = 0;
+    pad->analog_a = pad->analog_b = 0;
+    return true;
 }
 
 void bluewake_mouse_camera_block(bool blocked) {
@@ -690,6 +715,8 @@ static void stick_turn(double x, double y, double seconds, double speed, double*
 }
 
 void bluewake_mouse_camera_pad(DolPadState* pad) {
+    if (pad_held(pad))
+        return;
     // First person and items aim with the left stick the way a flight stick
     // does (up aims down). The GameCube game has no setting for it; this one
     // turns it the other way while aiming, and only then (#154).

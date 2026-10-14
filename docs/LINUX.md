@@ -149,9 +149,43 @@ disc and module paths). Keyboard: arrows D-pad, J/K/U/I face buttons, W/A/S/D st
 H/F/T/G C-stick, E/R L/R, Q Z, Return START; game controllers work. Mouse: click the
 game and move to turn the camera, Esc releases it.
 
+| Key | |
+| --- | --- |
+| Settings | F1 or Esc after releasing the mouse |
+| HD look | F2 |
+| Save state / load the latest | F5 / F8 |
+| Stage select | F7, once it's on in settings |
+| Frame rate | F9 |
+| Smooth Motion | F10 |
+| Fullscreen | F11 or Alt+Enter |
+
+A few words at the bottom left say what each key did.
+
 The optional controller zoom is under **Controls** in the settings menu. Enable it,
 then hold the right-stick click and move that stick up or down; tapping the click
 still enters or leaves first person. Its speed is adjustable beside the option.
+
+The settings menu's **Display** tab has what the Windows one has: a **Fullscreen** button for this session
+(F11), **Start in fullscreen** for the next launch (as `--fullscreen`), **Reset the window**, **Keep the
+picture's shape** (black bars rather than stretching a 4:3 picture; a widened one always keeps its shape),
+**Pause while the window is in the background** and **Compile shaders before playing**. The settings
+that are new on Linux are off until you turn them on. The widescreen choice is under **Mods**, after HD
+textures. Under **Gameplay**, Jump & Sprint (with a **Sprint speed**) and Fast transitions are one
+switch each, as on the iPad.
+
+**Sound and files** is the last tab, as on Windows: the sound (**Fast**, Dolphin's high-level Zelda sound,
+the default, or **Exact**, the sound chip's own program, slower; next launch), and where your saves and
+session logs are, with buttons that open the folder and the logs. The menu's buttons are the same on every
+desktop build: Resume, Save state (F5), Load latest state (F8) and Quit the game.
+
+A setting that applies at the next launch shows **Restart now** beside its note: BlueWake saves your
+settings, closes and starts again by itself.
+
+**Safe mode:** if the last launch never reached a clean exit (it crashed or was killed), the next one starts
+in safe mode, as on Windows: Fast sound, 4:3, in a window, with the mods, Better Wind Waker's settings, the
+texture pack, the gameplay extras and the stage select off. Your earlier `settings.ini` is copied beside it
+first (`settings.ini.before-safe-mode-...`), and a note says so for fifteen seconds. Turn things back
+on in the settings menu. `--safe-mode` starts in safe mode on purpose.
 
 Your saves and session logs live in `~/.local/share/BlueWake`, outside the
 build, so rebuilding never touches them. The settings menu (Esc or F1) saves
