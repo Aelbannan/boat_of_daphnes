@@ -34,6 +34,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 
 ## Where things stand on October 15
 
+Status against `main` at `dc45b43`; candidate evidence below identifies its own revision.
+
 - **Behaviour timing is the Windows and Linux default** ([#335](https://github.com/chrissotraidis/bluewake/pull/335),
   merged with Chris's explicit approval). `--no-behaviour-timing` turns it off; `--conservative` keeps the plain
   translation. Mac/iOS remain opt-in. Deck and Windows play checks are recorded in [PERFORMANCE.md](PERFORMANCE.md).
@@ -47,8 +49,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   and [RecompCore#39](https://github.com/chrissotraidis/RecompCore/pull/39): a generated GPU test fails on the old
   code and passes on Metal with the follow-up. That runtime change is not pinned in `main`; Windows/Linux
   gameplay checks and approval remain. Widescreen photo shape is separate (#338 / RecompCore#37).
-- **The native HD importer uses 46% less memory** ([#315](https://github.com/chrissotraidis/bluewake/pull/315), draft,
-  `a640108`): 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
+- **The native HD importer** ([#315](https://github.com/chrissotraidis/bluewake/pull/315), draft `3b13534`)
+  has green Windows/Linux CI, audit and attribution checks. Its earlier `a640108` measurement used 46% less
+  memory: 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
   All 3,546 texture keys still match; all 33,859 PNGs are byte-identical before/after and match the Python import's
   decoded pixels. A fresh Mac menu import completed while gameplay continued; the pack loaded on restart,
   the HD HUD was visible and movement worked. Full-app peak RSS was 1,400,389,632 bytes (about 1.30 GiB),
@@ -59,22 +62,22 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   pack in nine imports, with twelve failure/preservation checks. A fresh full folder import preserves all
   33,859 PNG bytes. Desktop/iOS image and key pickers are implemented in the draft. A Mac menu import
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
-  card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
-  Android menu/lifecycle checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
-  Windows/Linux CI passed at `5fbb596`, including `71642ec` rejecting failed removal of conflicting
-  textures. Targeted failure checks pass under ASan/UBSan; a full optimized Mac import still matches all
-  3,546 keys and 33,859 PNG bytes. The cancellation update reaches scans, disc/archive/PNG work and
-  publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
-  has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full
-  pack comparison pass; UIKit/Files interaction remains unverified. Forced-process staging recovery is still
-  open. This is not mobile acceptance.
+  card. Cancellation, buffered-close and conflicting-texture removal checks preserve existing packs;
+  Mac tests, sanitizers and the full pack comparison pass. The iOS operation has Cancel and bounded background
+  cleanup, with six Foundation lifetime cases passing. Android app import and forced-process recovery are
+  recorded separately below. Remaining: authentic WUD/WUX comparison, Windows/Linux interactive import,
+  iPhone/iPad UIKit/Files import and memory, Android physical-phone/background/activity-recreation checks,
+  and optional fallback packs. These checks do not establish mobile acceptance.
 - **Contributor work:** [#319](https://github.com/chrissotraidis/bluewake/pull/319) (build documentation) is merged.
   [#339](https://github.com/chrissotraidis/bluewake/pull/339) is also merged: Mac Alt+Enter/fullscreen and normal
   Return behaviour passed; the no-settings-file safe-mode fallback worked, with the copied card unchanged.
   [#337](https://github.com/chrissotraidis/bluewake/pull/337) stays draft: feedback asks for the correct Mac/mobile
   entry paths and less duplication.
-  [#346](https://github.com/chrissotraidis/bluewake/pull/346) now isolates gallery alignment with no runtime dependency;
-  Windows/Linux gameplay checks and both CI builds pass; the fresh Mac module is compiling for its visual check.
+  [#346](https://github.com/chrissotraidis/bluewake/pull/346) is merged as `dc45b43`: gallery alignment without a
+  runtime change. Windows/Linux gameplay and CI pass. M3 Max/Metal with a fresh module, host `14bc288` and
+  runtime `57123c6` shows all three photos aligned at 16:9, 16:10 and 21:9, with navigation endpoint captures
+  in both directions; all three runs exit 0 with copied cards unchanged. These are static captures, not a
+  frame-by-frame animation check ([evidence](status/PICTO_RECOGNITION_2026-10-15.md#gallery-alignment)).
   [#338](https://github.com/chrissotraidis/bluewake/pull/338) retains the opt-in crop and its RecompCore#37 dependency;
   it still needs Mac validation and a separate runtime decision.
 - **Safe startup disables HD effects** in merged [#343](https://github.com/chrissotraidis/bluewake/pull/343), after green Windows/Linux CI.
@@ -83,14 +86,16 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   Windows/Linux checks remain in the hardware checklist.
 - **Wind Temple stage loads (#318):** the M3 Max comparison covers all 468 destinations with the loose-REL
   wait off/on: 446 versus 448 complete the 120-frame arrival check, with R04 and R08 the only changed outcomes.
-  The same four test rooms and sixteen story/cutscene entries do not complete with this save. Separate Metal
-  checks show both rooms rendering and responding to input. This uses host `14bc288`, runtime `57123c6` and an
-  older prepared module; cards and tested artifacts are unchanged. PR #350 now guards save/load while a
-  host-side wait is occupied; eight synthetic cases pass under ASan/UBSan and Windows CI passes. Linux CI
-  and fresh-module gameplay checks remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
-- **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Its `bcc1b03` follow-up now
-  updates the cached size on the resize path, addressing the source concern while F1 holds the guest. An explicit
-  F1-open resize/fullscreen and resumed-play result is still requested. No runtime integration yet.
+  The same four test rooms and sixteen story/cutscene entries do not complete with this save. That 936-run
+  sweep still uses the older module. Fresh-module Metal checks at host `14bc288` / runtime `57123c6` now render
+  R04/R08 with the one-retrace wait: R08 movement, R04 bounded input/menu amid enemies, not traversal or dungeon
+  completion. All four fresh sessions exit 0 with copied cards unchanged. [#350](https://github.com/chrissotraidis/bluewake/pull/350)
+  is merged with green Windows/Linux CI and eight sanitizer cases; native save/load during a pending wait
+  remains unchecked. The wait stays off by default. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
+- **Linux resize (#325):** the contributor's [RecompCore#38 check at `bcc1b03`](https://github.com/chrissotraidis/RecompCore/pull/38#issuecomment-6178812857)
+  covers F1-open resize/fullscreen and resumed play on Arch/X11, RTX 5070 Ti, Vulkan, with no crash or stale-size
+  snapback. [Acknowledged on #325](https://github.com/chrissotraidis/bluewake/issues/325#issuecomment-6179013037).
+  The runtime pin remains `57123c6`, awaiting Chris's integration decision; Wayland/other backends remain unchecked.
 - **Android (#93):** LiquidAzir's October 14 alternating cool-start check on the Fold 7 reports Outset at
   89.9% / 90.8% on the baseline and 100.0% / 100.0% with behaviour timing; all four runs ended at the same
   2.0 GHz clock cap. This clears the stated Outset speed gate on that phone, not other phones or sustained
@@ -105,12 +110,18 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   with completed-pack selection and cancellation. Its full native app links with the approved runtime pin,
   the Java shell compiles, and 33 generated provider cases pass on an API 36 emulator. The JNI bridge also
   passes 428 assertions and 16 imports / 96 PNG checks on both the Mac JVM and Android ART.
-  The production packaging method also passes a source-only APK check on the Mac: Java classes, native exports,
-  licenses, synthetic signing and 16 KiB ZIP/ELF alignment. API 36 startup reaches the expected missing-game-data
-  diagnostic. That blocks menu use; execution used 4 KiB pages and is not a gameplay or 16 KiB-kernel check.
-  A full decrypted-folder import through JNI on API 36 now produces all 3,546 keys and 33,859 PNGs
-  byte-identical to the Mac baseline. Its standalone process peaks at 377.8 MiB; this excludes the game/UI.
-  Files/menu/lifecycle and phone memory checks remain.
+  On the API 36 ARM64 emulator, the actual app at `ea6e55e` now passes picker cancellation, full SAF folder
+  import and restart: 33,861 files, all 33,859 PNGs byte-identical, 3,546 renderer-registered textures and the
+  HD title visible; the copied card is unchanged. Its **536.6 MiB** process high-water mark is baseline emulator
+  evidence, not a new measurement or phone acceptance. The earlier standalone JNI result was 377.8 MiB.
+  The refreshed production-app recovery APK at `bafda89` was installed in place with app data preserved.
+  Force-stop during native conversion leaves the completed 33,861-file pack and copied card unchanged;
+  startup removes the private copied input. The next real SAF import removes the abandoned output stage and
+  completes `WWHD-2`, again with all 33,859 PNGs byte-identical and temporary inputs/output stages clean.
+  Root adb was used only for read-only hash verification of the owner-only output directory after the app's
+  import; app permissions were unchanged. After returning adb to its normal shell user, a restart loads
+  all 3,546 registrations from `WWHD-2` and shows the HD title with HD look off. Windows/Linux CI, audit and attribution pass at `bafda89`. Physical-phone memory, background/activity recreation and a
+  16 KiB-kernel check remain.
   This candidate is not part of #93 or `main`; these importer results say nothing about gameplay speed.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed
   direction. #345's clearer folder status and #344's Linux portal build dependency are merged after green CI.
