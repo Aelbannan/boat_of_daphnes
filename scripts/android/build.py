@@ -51,6 +51,18 @@ ACTIVITY = "dev.bluewake.android.BlueWakeActivity"
 DEFAULT_LABEL = "BlueWake"
 MIN_SDK = 33  # execinfo backtrace() (the GX stall watchdog)
 TARGET_SDK = 35
+# What shapes a compiled game module: the source preparations, the mods compiled into it, and its compile.
+# OUT/composite/module.json records them when the module is compiled; --app-only reuses the module only
+# for the same request (AndroidBuilder.reused_module), and the APK's record describes the module it holds.
+MODULE_FLAGS = tuple(dict.fromkeys((*wb.WINDOWS_DEFAULT_OPTIMIZATIONS, "lean_memory", "lean_deadlines",
+                                    "native_entries", "behaviour_timing")))
+
+
+def module_request(args):
+    """The module options a command asks for, after parse_args's defaults and checks."""
+    request = {name: bool(getattr(args, name, False)) for name in MODULE_FLAGS}
+    request.update(mods=not args.no_mods, cpu=args.cpu, opt_level=str(args.opt_level))
+    return request
 
 
 def first_existing(*candidates):
@@ -250,6 +262,55 @@ class AndroidBuilder(wb.Builder):
             die("the game module was not produced")
         return module
 
+    # --- the compiled module's record (--app-only, the APK's record) ----------
+    def module_record_path(self):
+        return self.out / "composite/module.json"
+
+    def write_module_record(self, module):
+        """After the compile: what the module was built from and with."""
+        record = {
+            "module_sha256": sha256_file(module),
+            "options": module_request(self.args),
+            "profile": self.profile.name if self.profile is not None else None,
+            "profile_sha256": sha256_file(self.profile) if self.profile is not None else None,
+            "tiered": self.profile is not None and not self.args.no_tiered,
+            "composite_digest": (self.out / "composite-src.digest").read_text().strip(),
+            "source_commit": self.git("rev-parse", "HEAD"),
+            "source_modified": bool(self.git("status", "--porcelain")),
+            "compiler": self.clang_version,
+            "iso": str(self.iso),
+            "compiled": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        path = self.module_record_path()
+        pending = path.with_name(path.name + ".tmp")
+        pending.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        os.replace(pending, path)
+        return record
+
+    def reused_module(self):
+        """--app-only: the compiled module, checked against its record and this request before any step
+        runs, so a refused request leaves the source and the caches as they were."""
+        module, path = self.out / "composite/gGZLE01_recomp.so", self.module_record_path()
+        if not module.exists():
+            die("--app-only needs a compiled game module: build once without --app-only")
+        if not path.exists():
+            die(f"--app-only: {path} is missing, so what the game module was built with is unknown; "
+                "build once without --app-only")
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if sha256_file(module) != record.get("module_sha256"):
+            die(f"--app-only: {module} is not the module {path.name} describes; build once without --app-only")
+        built, wanted = record.get("options", {}), module_request(self.args)
+        differ = [(name, built.get(name), wanted[name]) for name in wanted if built.get(name) != wanted[name]]
+        # The profile only when one is named: an app-only build of a trained module need not name it again.
+        if self.args.profile is not None and sha256_file(self.args.profile.resolve()) != record.get("profile_sha256"):
+            differ.append(("profile", record.get("profile"), self.args.profile.name))
+        if differ:
+            die("--app-only reuses the compiled game module, which was built differently:\n"
+                + "".join(f"  {name}: the module has {has!r}, this build asks for {asks!r}\n"
+                          for name, has, asks in differ)
+                + "Build without --app-only for a module with these options, or ask for the module's own.")
+        return module, record
+
     # --- 9 app: libmain.so ---------------------------------------------------
     def build_app(self, build=None, profile=None, generate=False, name="app"):
         build = build or self.out / "app"
@@ -385,29 +446,38 @@ class AndroidBuilder(wb.Builder):
                  env=dict(os.environ, JAVA_HOME=str(self.jdk), PATH=str(jdk_bin) + os.pathsep + os.environ["PATH"]))
         if not provenance:
             return apk_out
-        # What install.py pushes to the device beside the APK: the prepared game
-        # files and the disc (never packaged, never shared).
-        provenance = {
+        (self.out / "BuilderProvenance.json").write_text(json.dumps(self.apk_provenance(), indent=2) + "\n")
+        return apk_out
+
+    def apk_provenance(self):
+        """The APK's record. The game module is described as module.json recorded it when it was compiled,
+        which is the module an --app-only build reused. install.py reads the package and the disc: the
+        prepared game files and the disc are pushed beside the APK, never packaged or shared."""
+        record = self.module_record
+        options = record["options"]
+        return {
             "profile": "bluewake-android",
             "package": self.app_id,
             "containsTranslatedGameCode": True,
             "source_commit": self.git("rev-parse", "HEAD"),
             "source_modified": bool(self.git("status", "--porcelain")),
-            "composite_digest": (self.out / "composite-src.digest").read_text().strip(),
-            "mods": bool(self.mods),
-            "lean_blocks": getattr(self.args, "lean_blocks", False),
-            "lean_memory": self.args.lean_memory,
-            "lean_deadlines": self.args.lean_deadlines,
-            "behaviour_timing": self.args.behaviour_timing,
-            "cpu": self.args.cpu,
-            "local_training": self.profile is not None,
-            "compiler": self.clang_version,
-            "module_sha256": sha256_file(module) if module is not None else "",
-            "iso": str(self.iso),
+            "module_reused": bool(self.args.app_only),
+            "module_source_commit": record["source_commit"],
+            "module_source_modified": record["source_modified"],
+            "composite_digest": record["composite_digest"],
+            "mods": options["mods"],
+            "lean_blocks": options["lean_blocks"],
+            "lean_memory": options["lean_memory"],
+            "lean_deadlines": options["lean_deadlines"],
+            "behaviour_timing": options["behaviour_timing"],
+            "module_options": options,
+            "cpu": options["cpu"],
+            "local_training": record["profile_sha256"] is not None,
+            "compiler": record["compiler"],
+            "module_sha256": record["module_sha256"],
+            "iso": record["iso"],
             "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        (self.out / "BuilderProvenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-        return apk_out
 
     # --- local optimization training, on the device -----------------------------
     # The Windows builder's training (scripts/windows/build.py train), played on
@@ -641,11 +711,60 @@ class AndroidBuilder(wb.Builder):
         self.mods_pending = self.mods
         self.train_pgo = False
         self.profile = args.profile.resolve() if args.profile else None
+        self.module_record = None
+        if args.app_only:
+            # First, before anything changes: the module to reuse must be the one this command asks for.
+            module, self.module_record = self.reused_module()
         print(f"Building The Legend of Zelda: The Wind Waker (GameCube USA GZLE01 rev 0) for Android from {args.disc}")
         step("1/10 tools")
         self.check_tools()
         step("2/10 dependencies")
         self.dependencies()
+        if args.app_only:
+            # The disc, the translation, the composite source and the mods are the module's: an app-only
+            # build leaves them, and the caches, as they are.
+            step("3-8/10 skipped: --app-only reuses the compiled game module")
+            print(f"{module} ({self.module_record['module_sha256'][:12]}, compiled from "
+                  f"{self.module_record['source_commit'][:7]})")
+        else:
+            self.game_source()
+            if args.source_only:
+                print(f"\nsource check passed: {self.out / 'composite-src'}")
+                return
+        lib = None
+        if args.device and self.profile is None and not args.app_only:
+            step("9/10 build the app (libmain.so), for the training APK")
+            lib = self.build_app(profile=self.app_profile())
+            step(f"local optimization training on {args.device} (the first time: an instrumented game module, "
+                 "then two headless playbacks of the opening on the device)")
+            self.profile = self.train_on_device(lib)
+        if not args.app_only:
+            step(f"8/10 compile the game module (-O{args.opt_level}, -mcpu={args.cpu}; this is the long step)")
+            start = time.monotonic()
+            module = self.compile_module()
+            self.module_record = self.write_module_record(module)
+            print(f"game module: {module} ({int(time.monotonic() - start) // 60} min)")
+        if args.train_app:
+            if not args.device:
+                die("--train-app needs --device")
+            step(f"the app's optimization training on {args.device} (an instrumented app, then one drawn "
+                 "playback of the opening at the game's pace)")
+            self.train_app_on_device(module)
+            lib = None
+        if lib is None or args.train_app:
+            step("9/10 build the app (libmain.so)")
+            lib = self.build_app(profile=self.app_profile())
+        print(f"app: {lib}")
+        step("10/10 package")
+        apk = self.package(module, lib)
+        print(f"\nAPK: {apk}")
+        print(f"  install with: python scripts/android/install.py --out {self.out}")
+        print("  It contains game code translated from your disc: keep it for yourself.")
+
+    def game_source(self):
+        """Steps 3 to 7 and the source's optimizations: the prepared composite source the module compiles
+        from. Not for --app-only, which reuses the compiled module and leaves its source as it is."""
+        args = self.args
         step("3/10 disc")
         self.disc()
         step("4/10 extract the game from the disc")
@@ -668,7 +787,6 @@ class AndroidBuilder(wb.Builder):
         step("6/10 generate the composite source")
         self.generate()
         if args.source_only:
-            print(f"\nsource check passed: {self.out / 'composite-src'}")
             return
         step("7/10 mods")
         if not self.mods:
@@ -677,46 +795,12 @@ class AndroidBuilder(wb.Builder):
             print("mods already in the composite source")
         else:
             self.build_mods()
-        # --app-only reuses the compiled module and leaves its source alone:
-        # prepare_blocks's steps are not meant to run twice on one tree.
-        if not args.app_only:
-            step("the source's optimizations (the Windows builder's prepare_blocks, unchanged)")
-            self.prepare_blocks()
-        lib = None
-        if args.device and self.profile is None and not args.app_only:
-            step("9/10 build the app (libmain.so), for the training APK")
-            lib = self.build_app(profile=self.app_profile())
-            step(f"local optimization training on {args.device} (the first time: an instrumented game module, "
-                 "then two headless playbacks of the opening on the device)")
-            self.profile = self.train_on_device(lib)
-        if args.app_only:
-            module = self.out / "composite/gGZLE01_recomp.so"
-            if not module.exists():
-                die("--app-only needs a compiled game module")
-        else:
-            step(f"8/10 compile the game module (-O{args.opt_level}, -mcpu={args.cpu}; this is the long step)")
-            start = time.monotonic()
-            module = self.compile_module()
-            print(f"game module: {module} ({int(time.monotonic() - start) // 60} min)")
-        if args.train_app:
-            if not args.device:
-                die("--train-app needs --device")
-            step(f"the app's optimization training on {args.device} (an instrumented app, then one drawn "
-                 "playback of the opening at the game's pace)")
-            self.train_app_on_device(module)
-            lib = None
-        if lib is None or args.train_app:
-            step("9/10 build the app (libmain.so)")
-            lib = self.build_app(profile=self.app_profile())
-        print(f"app: {lib}")
-        step("10/10 package")
-        apk = self.package(module, lib)
-        print(f"\nAPK: {apk}")
-        print(f"  install with: python scripts/android/install.py --out {self.out}")
-        print("  It contains game code translated from your disc: keep it for yourself.")
+        step("the source's optimizations (the Windows builder's prepare_blocks, unchanged)")
+        self.prepare_blocks()
 
 
-def main():
+def parse_args(argv=None):
+    """The command line, with the Windows builder's defaults and checks."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("disc", type=Path, help="your GZLE01 revision 0 disc image (.iso or .gcm)")
     parser.add_argument("--out", type=Path, default=ROOT / "build/android",
@@ -768,7 +852,7 @@ def main():
     parser.add_argument("--ndk", type=Path, help="the Android NDK (default: the newest in the SDK)")
     parser.add_argument("--sdk", type=Path, help="the Android SDK (default: ANDROID_HOME)")
     parser.add_argument("--jdk", type=Path, help="a JDK 17 (default: JAVA_HOME)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     # The Windows builder's defaults and the same checks (scripts/windows/build.py main).
     if not args.conservative:
         for name in wb.WINDOWS_DEFAULT_OPTIMIZATIONS:
@@ -814,6 +898,11 @@ def main():
         if str(rel) == "." or not ignored:
             parser.error("--out inside this checkout must be git-ignored; use build/android")
     args.out.mkdir(parents=True, exist_ok=True)
+    return args
+
+
+def main():
+    args = parse_args()
     try:
         AndroidBuilder(args).build()
     except wb.BuildError as error:

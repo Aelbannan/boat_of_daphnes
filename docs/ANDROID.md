@@ -104,7 +104,7 @@ The steps and their logs (`build/android/logs`) are the Windows builder's, then:
 | `--cpu CPU` | `-mcpu` for the module and the app (default `cortex-a78`) |
 | `--profile FILE` | Compile with this optimization profile instead of training one |
 | `--package ID`, `--label NAME` | The application id (default the profile's bundle id, `dev.bluewake.BlueWake`) and the app's name |
-| `--app-only` | Reuse the compiled game module; rebuild the app and the APK |
+| `--app-only` | Reuse the compiled game module; rebuild the app and the APK. The module's options are recorded beside it when it is compiled (`composite/module.json`); a request for other module options, behaviour timing either way for one, stops before anything is changed |
 | `--no-mods`, `--source-only` | As the Windows builder's |
 | `--debuggable` | Mark the APK debuggable (it is always profileable by `simpleperf`) |
 
