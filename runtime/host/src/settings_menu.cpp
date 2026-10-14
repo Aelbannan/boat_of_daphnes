@@ -1446,6 +1446,12 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
         }
         if (event->key.scancode == SDL_SCANCODE_F11 ||
             (event->key.scancode == SDL_SCANCODE_RETURN && (event->key.mod & SDL_KMOD_ALT) != 0)) {
+            // Return is the keyboard's START, and the pad reads the keyboard
+            // itself: Alt+Enter also paused or unpaused the game. Held from
+            // the game until it is let go, as the press that closes the menu
+            // is (Windows's keyboard hook keeps Alt+Return from SDL instead).
+            if (event->key.scancode == SDL_SCANCODE_RETURN)
+                bluewake_pad_hold_until_released();
             const bool on = !is_fullscreen();
             set_fullscreen(on);
             bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");
