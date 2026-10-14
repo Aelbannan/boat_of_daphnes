@@ -73,6 +73,18 @@ public:
         if (GetLastError() == ERROR_LOCK_VIOLATION)
 #else
         if (flock(handle_, LOCK_EX | LOCK_NB) == 0) return;
+#if defined(__linux__) && defined(F_OFD_SETLK)
+        // Android's emulated external storage rejects flock, but supports
+        // open-file-description locks. These also exclude separate opens in
+        // this process and remain owned until this handle closes.
+        if (errno == ENOSYS || errno == EOPNOTSUPP) {
+            struct flock range{};
+            range.l_type = F_WRLCK;
+            range.l_whence = SEEK_SET;
+            range.l_len = 1;
+            if (fcntl(handle_, F_OFD_SETLK, &range) == 0) return;
+        }
+#endif
         if (errno == EWOULDBLOCK || errno == EAGAIN)
 #endif
             fail("another import is using this output folder; try again after it finishes");

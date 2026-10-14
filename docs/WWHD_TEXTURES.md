@@ -404,10 +404,17 @@ Nine Mac CTests pass under ASan/UBSan, including real killed-child tests for
 partial output, interrupted recovery, a completed rename, live contention,
 Unicode paths and preserving unrelated files and link targets. The helper
 also compiles for iOS device/simulator and Android arm64 API 28. Windows/Linux
-CI includes these tests but has not yet run this revision. Android external
-storage, mobile input-copy recovery and app-level force-close/retry still need
-their own checks. This does not promise recovery after power loss or remove
-older unmarked temporary folders automatically.
+CI includes these tests. Android's external storage rejects `flock`, so Linux
+uses an open-file-description lock when that operation is unsupported. The
+same generated helper now passes on an API 36 ARM64 emulator's internal and
+external storage, including same-process contention, publication and lock
+lifetime. This shell-run check does not establish app storage permissions or
+menu acceptance. Windows first passed 70 of 71 checks; its recovery fixture
+tried to read the locked byte and now compares the empty lock's metadata
+instead. The new Windows/Linux CI results remain pending. Mobile input-copy
+recovery is separate, and app-level force-close/retry remains unverified.
+This does not promise recovery after power loss or remove older unmarked
+temporary folders automatically.
 
 ### Native iOS Simulator check (October 15, 2026)
 

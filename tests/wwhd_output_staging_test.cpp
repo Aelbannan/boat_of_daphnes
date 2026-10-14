@@ -8,17 +8,14 @@
 #include <iostream>
 #include <thread>
 
-// Regression for Android external app data: a FUSE label must not veto a
-// working OS lock. On Linux CI, any filesystem-type probe sees FUSE, while
-// locking and all file operations still use the real filesystem. This tests
-// the policy, not an Android provider or device.
+// Android external app data rejects flock. Exercise its fallback on Linux CI
+// with real open-file-description locks and file operations; only flock's
+// unsupported result is injected. The importer CLI tests normal flock too.
 #if defined(__linux__) && !defined(__ANDROID__)
-#include <linux/magic.h>
-#include <sys/vfs.h>
-extern "C" int statfs(const char*, struct statfs* info) noexcept {
-    *info = {};
-    info->f_type = FUSE_SUPER_MAGIC;
-    return 0;
+#include <cerrno>
+extern "C" int flock(int, int) noexcept {
+    errno = ENOSYS;
+    return -1;
 }
 #endif
 

@@ -34,6 +34,11 @@ def snapshot(root):
             elif entry.is_dir(follow_symlinks=False):
                 result[name] = None
                 visit(path)
+            elif path.name == LOCK:
+                # Windows byte-range locks also deny reads. Check the empty
+                # lock's identity and metadata without reading its locked byte.
+                assert stat.st_size == 0
+                result[name] = ("lock", stat.st_ino, stat.st_size, stat.st_mtime_ns)
             else:
                 result[name] = path.read_bytes()
     visit(root)
