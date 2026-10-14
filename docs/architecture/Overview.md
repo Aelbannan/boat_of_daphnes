@@ -120,5 +120,5 @@ backend, signing, and packaging requirements.
 For the complete pipeline, component references, output paths, and per-platform
 branches, continue to [Build](Build.md).
 
-For the complete application startup, guest execution, device service,
-graphics, persistence, and shutdown paths, continue to [Runtime](Runtime.md).
+For the runtime entities, their interaction boundaries, and their internals,
+continue to [Runtime](Runtime.md).
