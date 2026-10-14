@@ -63,7 +63,7 @@ Options (`--help` lists all):
 | `--no-train` / `--no-pgo` | Explicitly skip local training and compile without a profile |
 | `--retrain` | Record a new local profile instead of reusing a matching one |
 | `--host-only` | After pulling a change to the app's own code (`runtime/host/src`, `windows/src`): keep the last build's optimization profile instead of training again, so only what the change reaches recompiles |
-| `--no-mods` | Skip the mods (widescreen 16:9 and 16:10, Better Wind Waker's options) |
+| `--no-mods` | Skip the mods (widescreen 16:9, 16:10 and 21:9, Better Wind Waker's options) |
 | `--conservative` | Build the plain translation. By default the builder prepares the same optimizations as Wind Waker Recomp's builds (prepaid blocks, fixed CPU and RAM storage, inline floating point and memory access, direct calls, register inlining, and the certified native J3D, vector, game-math, skinning and matrix functions); with `--conservative`, each `--...` option adds one back |
 | `--no-lean-blocks` | BlueWake's conservative prepaid block copies instead of Elliott Tate's lean ones (on by default since October 10, as Wind Waker Recomp's builds make them). The module is about a quarter smaller and compiles faster, and the game runs 5 to 12% slower ([PERFORMANCE.md](PERFORMANCE.md#results)) |
 | `--native-entries` | Elliott Tate's second and third native sets; off by default. They apply only where the translation matches what his builder produces, so they need the lean copies (the default) |
@@ -93,7 +93,7 @@ Ninja's compile inputs.
 The independent `--native-j3d`, `--native-vec`, `--native-math`, `--native-skin` and `--native-game-math` options certify
 the original function bodies before other rewrites. `BLUEWAKE_NATIVE_J3D=1`,
 `BLUEWAKE_NATIVE_VEC=1`, `BLUEWAKE_NATIVE_MATH=1`, `BLUEWAKE_NATIVE_SKIN=1` and `BLUEWAKE_NATIVE_GAME_MATH=1` enable their respective
-supporting host/module paths
+supporting host/module paths on the Mac (the Windows and Linux hosts use them unless one is set to `0`)
 through versioned handshakes; absent support, disabled selection,
 unsupported inputs and observed boundaries retain translated execution.
 Matrix-array workers remain opt-in on macOS (`BLUEWAKE_NATIVE_WORKERS=1` through
@@ -101,8 +101,8 @@ Matrix-array workers remain opt-in on macOS (`BLUEWAKE_NATIVE_WORKERS=1` through
 and worker selection is separate from rendering interpolation.
 
 The direct-call options retain the ordinary module ABI and are selected separately
-from fixed CPU/RAM storage. To enable them in a supporting host, set
-`BLUEWAKE_DIRECT_CALLS=1`; default and older hosts use ordinary dispatch.
+from fixed CPU/RAM storage. The Windows and Linux hosts use them whenever the module
+supports them (`BLUEWAKE_DIRECT_CALLS=0` turns them off); older hosts use ordinary dispatch.
 The host must approve each skipped boundary, including scene observations,
 feature hooks and pending jump input. Register inlining also verifies the
 translated helper hashes and declines aliases, MMIO and write journals.
@@ -120,7 +120,7 @@ limits are tracked in the [reconciliation ledger](status/FORK_RECONCILIATION_202
 
 The `--gather-pipe` option also leaves the module ABI unchanged. It can be used
 with or without `--inline-fp` and records its helper hashes in build provenance.
-The host keeps direct FIFO writes off unless `BLUEWAKE_GATHER_PIPE=1` is set.
+The Windows and Linux hosts use direct FIFO writes with such a module unless `BLUEWAKE_GATHER_PIPE=0` is set.
 With that enabled, `BLUEWAKE_GATHER_PIPE_BATCH=1` additionally requests batching
 on a backend that supports byte writes. Both require a module prepared with
 `--gather-pipe`; older modules keep their ordinary MMIO path. FIFO diagnostic
@@ -154,12 +154,12 @@ A few words at the bottom left say what each key did.
 
 Game controllers work through SDL (Xbox, PlayStation, Switch Pro and others). The title screen wants A to reach
 the file menu. To choose which controller button presses each GameCube button, open settings and use
-**Controls › Controller buttons** (builds from `main` after October 4, 2026). The optional controller zoom is
+**Controls › Controller buttons**. The optional controller zoom is
 also under **Controls**: when enabled, hold the right-stick click and move that stick up or down; a tap still
 enters or leaves first person. The mouse turns the game's own camera around Link and tilts it, and a left click is A; a
 cutscene, door, Z-target or first-person view takes the camera back.
 **Controls › Mouse buttons** sets what the left, middle, right and side buttons press, and **Keyboard keys for
-the GameCube buttons** changes their keys (builds from `main` after October 5, 2026). A controller SDL doesn't
+the GameCube buttons** changes their keys. A controller SDL doesn't
 recognise works once its mapping is in a `gamecontrollerdb.txt` (from
 [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)) beside your saves; the session log's
 `[pad] N controller mappings` line shows it was read.
@@ -198,7 +198,7 @@ never touches it:
 - Aurora's pipeline cache, so later launches start drawing sooner
 
 **Portable mode:** create an empty file named `portable.txt` next to `BlueWake.exe`, and BlueWake keeps all of
-this in a `user` folder beside it instead (builds from `main` after October 4, 2026). To bring existing saves
+this in a `user` folder beside it instead. To bring existing saves
 along, copy the contents of `%APPDATA%\BlueWake` into that `user` folder first. `scripts\windows\build.py --portable`
 puts `portable.txt` in the app folder for you; a later rebuild leaves the `user` folder and `portable.txt` alone. An `.iso` or `.gcm` disc image
 is read where it is in either mode; only Dolphin's compressed formats are unpacked to a copy.
@@ -246,7 +246,7 @@ clang (GNU driver, MSVC ABI) from Visual Studio.
 
 The Windows overlay saves display, camera, mod and audio choices in `settings.ini`; mods and audio mode
 apply after restart. Touch-layout editing and save-management screens remain iOS-specific.
-Windows optimization training and full end-to-end build/play verification remain pending.
+What each Windows release build was checked for is in [Windows tasks](WINDOWS_TASKS.md).
 
 The prepaid-block candidate has bounded correctness evidence on an M3 Max:
 30,000 cases across 14 SDK/J3D entries compare every CPU/RAM byte between two
