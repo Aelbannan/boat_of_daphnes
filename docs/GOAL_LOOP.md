@@ -60,8 +60,10 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   33,859 PNG bytes. Desktop/iOS image and key pickers are implemented in the draft. A Mac menu import
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
   card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
-  Android integration, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
-  Windows/Linux CI passed at `ea31b24`. The next cancellation update reaches scans, disc/archive/PNG work and
+  Android menu/lifecycle checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
+  Windows/Linux CI passed at `5fbb596`, including `71642ec` rejecting failed removal of conflicting
+  textures. Targeted failure checks pass under ASan/UBSan; a full optimized Mac import still matches all
+  3,546 keys and 33,859 PNG bytes. The cancellation update reaches scans, disc/archive/PNG work and
   publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
   has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full
   pack comparison pass; UIKit/Files interaction remains unverified. Forced-process staging recovery is still
@@ -79,13 +81,25 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   The earlier reset omitted the HD master/overrides. Generated fixtures and a fresh Mac/Metal gameplay run
   pass: effects start off, then F2 turns them on and off. The backup and copied card remain unchanged; native
   Windows/Linux checks remain in the hardware checklist.
-- **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Review found a possible stale
-  cached size while F1 holds the guest. Cache synchronization and an F1-open resize/fullscreen check were requested;
-  this is a source concern, not a locally reproduced crash. No runtime integration yet.
-- **Android (#93):** the latest cool-start baseline is 90.4% at Outset's pier. The alternating cool-start baseline /
-  behaviour-timing runs remain unfinished; the warm timing run is not proof of full speed. The direct-call globals
-  experiment gave no gain. HD look and D-pad sources are included; the reordered Mods menu builds but still needs a
-  phone check. The native importer core at `ea31b24` now builds with NDK r29 and runs on an API 36 ARM64
+- **Wind Temple stage loads (#318):** the M3 Max comparison covers all 468 destinations with the loose-REL
+  wait off/on: 446 versus 448 complete the 120-frame arrival check, with R04 and R08 the only changed outcomes.
+  The same four test rooms and sixteen story/cutscene entries do not complete with this save. Separate Metal
+  checks show both rooms rendering and responding to input. This uses host `14bc288`, runtime `57123c6` and an
+  older prepared module; cards and tested artifacts are unchanged. PR #350 now guards save/load while a
+  host-side wait is occupied; eight synthetic cases pass under ASan/UBSan and Windows CI passes. Linux CI
+  and fresh-module gameplay checks remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
+- **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Its `bcc1b03` follow-up now
+  updates the cached size on the resize path, addressing the source concern while F1 holds the guest. An explicit
+  F1-open resize/fullscreen and resumed-play result is still requested. No runtime integration yet.
+- **Android (#93):** LiquidAzir's October 14 alternating cool-start check on the Fold 7 reports Outset at
+  89.9% / 90.8% on the baseline and 100.0% / 100.0% with behaviour timing; all four runs ended at the same
+  2.0 GHz clock cap. This clears the stated Outset speed gate on that phone, not other phones or sustained
+  speed across the game. The candidate inherits the Windows timing default and adds
+  `--no-behaviour-timing`. Review caught a cached-module provenance mismatch; `c0a2a2d` adds recorded
+  module options and early reuse validation, with generated checks passing. Final builder review and CI
+  remain on #93 before merging. The reordered Mods menu and live
+  touch D-pad option were checked on the Fold; Bluetooth with the D-pad option remains unchecked.
+  The direct-call globals experiment gave no gain. The native importer core at `ea31b24` now builds with NDK r29 and runs on an API 36 ARM64
   emulator: five generated imports, thirty PNG checks, three reader tests and wrong-key rejection pass.
   Draft [#347](https://github.com/chrissotraidis/bluewake/pull/347) now connects the menu, scoped document access and JNI importer,
   with completed-pack selection and cancellation. Its full native app links with the approved runtime pin,
@@ -94,6 +108,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   The production packaging method also passes a source-only APK check on the Mac: Java classes, native exports,
   licenses, synthetic signing and 16 KiB ZIP/ELF alignment. API 36 startup reaches the expected missing-game-data
   diagnostic. That blocks menu use; execution used 4 KiB pages and is not a gameplay or 16 KiB-kernel check.
+  A full decrypted-folder import through JNI on API 36 now produces all 3,546 keys and 33,859 PNGs
+  byte-identical to the Mac baseline. Its standalone process peaks at 377.8 MiB; this excludes the game/UI.
   Files/menu/lifecycle and phone memory checks remain.
   This candidate is not part of #93 or `main`; these importer results say nothing about gameplay speed.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed
