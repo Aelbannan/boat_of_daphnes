@@ -1768,8 +1768,70 @@ static bool g_ground_cross_valid_seen;
 static bool g_ground_cross_sentinel_seen;
 static const char* g_ground_cross_stop_reason;
 
+// The traveling merchants (daNpcRoten_c) stand on rafts. Their setup asks the
+// ground check where the floor is and then moves them there even when that
+// floor is far below their feet. Under the Greatfish raft the check hits a
+// sea-floor polygon at about -4990, so the Goron is placed on it and never
+// comes back up: later checks only step him up onto ground that is already
+// above him. When this check is his, and the hit is that far down, report the
+// deck he spawned on instead. A real raft surface is near his feet and is
+// left alone.
+static void host_roten_stand_on_deck(CPUState* cpu) {
+    const u32 check = cpu->gpr[31];
+    const u32 ground_bits = mem_read32(cpu, check + 52u);
+    // -1e9 is "no ground". A hit above -2048 (any float whose high byte is
+    // below 0xC5) is a real surface; the sea floor that sinks him is -4990.
+    if (ground_bits == 0xCE6E6B28u || (ground_bits >> 24) < 0xC5u)
+        return;
+    const u32 caller = mem_read32(cpu, cpu->gpr[1] + 36u);
+    if (caller < 0x800A2EE8u || caller >= 0x800A305Cu)
+        return;
+    if (check < 0x800000D4u || check >= 0x82000000u)
+        return;
+    const u32 acch = check - 0xD4u;
+    const u32 pos = mem_read32(cpu, acch + 0x2Cu);
+    const u32 actor = mem_read32(cpu, acch + 0x80u);
+    if (pos < 0x80000000u || pos >= 0x82000000u || actor < 0x80000000u ||
+        actor >= 0x82000000u || pos != actor + 0x1F8u)
+        return;
+    const u32 param = mem_read32(cpu, actor + 0xB0u);
+    const unsigned npc = param >> 24;
+    if (npc > 2u || mem_read8(cpu, actor + 0x9BDu) != npc)
+        return;
+    // Greatfish and Mother & Child are 0xNNff0000. Bomb Island walks rail 7.
+    if (!((npc == 0u && param == 0x00070000u) ||
+          (npc != 0u && param == (npc << 24 | 0x00ff0000u))))
+        return;
+
+    const u32 current_bits = mem_read32(cpu, pos + 4u);
+    const u32 home_bits = mem_read32(cpu, actor + 0x1D4u);
+    float current_y, home_y;
+    memcpy(&current_y, &current_bits, sizeof current_y);
+    memcpy(&home_y, &home_bits, sizeof home_y);
+    // Deck heights from the sea stage, used only once he has already been
+    // buried (home was overwritten with the sea floor).
+    static const float kDeckY[3] = {638.414306640625f, 200.0f, 600.0f};
+    const float support = home_y > -100.0f ? home_y :
+                          current_y > -100.0f ? current_y : kDeckY[npc];
+    u32 support_bits;
+    memcpy(&support_bits, &support, sizeof support_bits);
+    mem_write32(cpu, check + 52u, support_bits);
+    cpu->fpr[1] = support;
+    mem_write32(cpu, actor + 0x1D4u, support_bits);
+    const u32 old_pos = mem_read32(cpu, acch + 0x30u);
+    if (old_pos >= 0x80000000u && old_pos < 0x82000000u)
+        mem_write32(cpu, old_pos + 4u, support_bits);
+    static bool logged;
+    if (!logged && current_y < -100.0f) {
+        logged = true;
+        fprintf(stderr, "[roten] merchant %u was under the raft (%.0f); standing at %.0f\n",
+                npc, current_y, support);
+    }
+}
+
 static void host_observe_ground_cross_return(CPUState* cpu,
                                              unsigned long long blocks) {
+    host_roten_stand_on_deck(cpu);
     const u32 check = cpu->gpr[31];
     const u32 ground_bits = mem_read32(cpu, check + 52u);
     const u32 return_bits = host_f32_bits(cpu->fpr[1]);
