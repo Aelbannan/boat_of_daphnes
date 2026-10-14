@@ -1,6 +1,7 @@
 // BlueWake for Windows: the settings, the in-game settings menu (F1 or Esc),
 // the desktop hotkeys (F11 and Alt+Enter fullscreen, F10 Smooth Motion, F9 the
-// frame rate) and the window's placement.
+// frame rate, F2 the HD look; F5, F7 and F8 are the shared code's) and the
+// window's placement.
 //
 // The settings live in %APPDATA%\BlueWake\settings.ini. At launch they become
 // the host's own variables (BLUEWAKE_*, DOL_*) unless the command line already
@@ -597,7 +598,7 @@ bool slider_int(const char* label, int* value, int low, int high, const char* fo
 void restart_note(bool differs) {
     if (differs) {
         ImGui::SameLine();
-        ImGui::TextDisabled("*");
+        ImGui::TextDisabled("(next launch)");
     }
 }
 
@@ -680,65 +681,13 @@ void tab_display(SDL_Window* w) {
 
 void tab_controls() {
     Settings& d = g_session;
-    bool mouse = false;
-    if (bw_menu_checkbox("Mouse camera: click the game, then move the mouse (Esc gives it back)", &d.mouse_camera))
-        mouse = true;
-    float sensitivity = static_cast<float>(d.mouse_sensitivity);
-    if (slider_float("Mouse sensitivity", &sensitivity, 0.25f, 4.0f, "%.2f", ImGuiSliderFlags_Logarithmic)) {
-        d.mouse_sensitivity = sensitivity;
-        mouse = true;
-    }
-    if (bw_menu_checkbox("Mouse forward looks down", &d.mouse_invert_y))
-        mouse = true;
-    if (ImGui::CollapsingHeader("Mouse buttons")) {
-        BwMouseMap buttons;
-        bw_mouse_map_parse(d.mouse_buttons.c_str(), &buttons);
-        ImGui::TextWrapped("What each mouse button presses while the mouse is the camera. The first left click "
-                           "only hands the mouse to the game.");
-        if (bw_mouse_map_ui(&buttons)) {
-            char text[64];
-            bw_mouse_map_format(&buttons, text, sizeof text);
-            d.mouse_buttons = text;
-            bluewake_mouse_camera_buttons(d.mouse_buttons.c_str());
-            changed();
-        }
-    }
-    if (mouse) {
-        bluewake_mouse_camera_configure(d.mouse_camera, d.mouse_sensitivity, d.mouse_invert_y);
-        changed();
-    }
-    ImGui::Spacing();
-    bool stick = bw_menu_checkbox("Fast right-stick camera and aiming (like the mouse; click the stick for first person)",
-                                 &d.stick_camera);
-    ImGui::BeginDisabled(!d.stick_camera);
-    stick |= slider_int("Right-stick turn speed", &d.stick_speed, 120, 720, "%d degrees a second");
-    stick |= slider_int("Right-stick aim speed (first person, items)", &d.stick_aim_speed, 60, 480,
-                              "%d degrees a second");
-    stick |= bw_menu_checkbox("Hold the right-stick click and move it up/down to zoom", &d.stick_zoom);
-    ImGui::BeginDisabled(!d.stick_zoom);
-    float zoom_speed = static_cast<float>(d.stick_zoom_speed);
-    if (slider_float("Controller zoom speed", &zoom_speed, 0.25f, 2.0f, "%.3fx")) {
-        d.stick_zoom_speed = zoom_speed;
-        stick = true;
-    }
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
-    bool pad = bw_menu_checkbox("Controller: camera stick left and right inverted", &d.pad_invert_x);
-    pad |= bw_menu_checkbox("Controller: camera stick up and down inverted", &d.pad_invert_y);
-    stick |= bw_menu_checkbox("Left stick up and down inverted when aiming (first person, items)", &d.aim_invert_y);
-    stick |= bw_menu_checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
-                             &d.gyro_aim);
-    ImGui::BeginDisabled(!d.gyro_aim);
-    float gyro_speed = static_cast<float>(d.gyro_aim_speed);
-    if (slider_float("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
-        d.gyro_aim_speed = gyro_speed;
-        stick = true;
-    }
-    ImGui::EndDisabled();
+    // The Mac and Linux order (settings_menu.cpp's controls_tab): the
+    // controller's buttons and the keys, the mouse, the right stick and aiming,
+    // vibration, then the keys at a glance.
     BwButtonMap map;
     const bool remapped = bw_button_map_parse(d.button_map, &map);
     ImGui::BeginDisabled(remapped);
-    pad |= bw_menu_checkbox("Swap A and B", &d.controller_swap_ab);
+    bool pad = bw_menu_checkbox("Swap A and B", &d.controller_swap_ab);
     pad |= bw_menu_checkbox("Swap X and Y", &d.controller_swap_xy);
     ImGui::EndDisabled();
     pad |= bw_menu_checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
@@ -755,12 +704,81 @@ void tab_controls() {
             pad = true;
         }
     }
+    BwKeyMap keys;
+    bw_key_map_parse(d.key_map, &keys);
+    if (ImGui::CollapsingHeader("Keyboard keys")) {
+        ImGui::TextWrapped("Choose the key for each GameCube button. Picking one that is already used swaps the two.");
+        if (bw_key_map_ui(&keys)) {
+            d.key_map = bw_key_map_format(keys);
+            changed();
+        }
+    }
+
+    bool mouse = false;
+    if (bw_menu_checkbox("Mouse camera (click the game to use it)", &d.mouse_camera))
+        mouse = true;
+    ImGui::BeginDisabled(!d.mouse_camera);
+    float sensitivity = static_cast<float>(d.mouse_sensitivity);
+    if (slider_float("Mouse sensitivity", &sensitivity, 0.25f, 4.0f, "%.2f", ImGuiSliderFlags_Logarithmic)) {
+        d.mouse_sensitivity = sensitivity;
+        mouse = true;
+    }
+    if (bw_menu_checkbox("Invert the mouse's up and down", &d.mouse_invert_y))
+        mouse = true;
+    if (ImGui::CollapsingHeader("Mouse buttons")) {
+        BwMouseMap buttons;
+        bw_mouse_map_parse(d.mouse_buttons.c_str(), &buttons);
+        ImGui::TextWrapped("What each mouse button presses while the mouse is the camera. The first left click "
+                           "only hands the mouse to the game.");
+        if (bw_mouse_map_ui(&buttons)) {
+            char text[64];
+            bw_mouse_map_format(&buttons, text, sizeof text);
+            d.mouse_buttons = text;
+            bluewake_mouse_camera_buttons(d.mouse_buttons.c_str());
+            changed();
+        }
+    }
+    ImGui::EndDisabled();
+    if (mouse) {
+        bluewake_mouse_camera_configure(d.mouse_camera, d.mouse_sensitivity, d.mouse_invert_y);
+        changed();
+    }
+
+    ImGui::Separator();
+    bool stick = bw_menu_checkbox("Direct right-stick camera and aiming", &d.stick_camera);
+    ImGui::BeginDisabled(!d.stick_camera);
+    stick |= slider_int("Right-stick turn speed", &d.stick_speed, 120, 720, "%d degrees a second");
+    stick |= slider_int("Right-stick aim speed (first person, items)", &d.stick_aim_speed, 60, 480,
+                              "%d degrees a second");
+    stick |= bw_menu_checkbox("Hold the right-stick click and move it up/down to zoom", &d.stick_zoom);
+    ImGui::BeginDisabled(!d.stick_zoom);
+    float zoom_speed = static_cast<float>(d.stick_zoom_speed);
+    if (slider_float("Controller zoom speed", &zoom_speed, 0.25f, 2.0f, "%.3fx")) {
+        d.stick_zoom_speed = zoom_speed;
+        stick = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    pad |= bw_menu_checkbox("Invert the right stick's left and right", &d.pad_invert_x);
+    pad |= bw_menu_checkbox("Invert the right stick's up and down", &d.pad_invert_y);
+    stick |= bw_menu_checkbox("Invert the left stick's up and down when aiming (first person, items)", &d.aim_invert_y);
+    stick |= bw_menu_checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+                             &d.gyro_aim);
+    ImGui::BeginDisabled(!d.gyro_aim);
+    float gyro_speed = static_cast<float>(d.gyro_aim_speed);
+    if (slider_float("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
+        d.gyro_aim_speed = gyro_speed;
+        stick = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("    Click the right stick for first person. In the telescope and Picto Box, the left stick or "
+                        "D-pad zooms.");
     if (pad || stick) {
         apply_controller();
         apply_stick();
         changed();
     }
-    ImGui::Spacing();
+
     ImGui::SeparatorText("Haptics");
     // The game's vibration on an Xbox controller, a DualSense and others:
     // rendered from what the game asked for, or its own on-off motor.
@@ -781,17 +799,8 @@ void tab_controls() {
         apply_haptics();
         changed();
     }
-    ImGui::Spacing();
+
     ImGui::SeparatorText("Keyboard");
-    BwKeyMap keys;
-    bw_key_map_parse(d.key_map, &keys);
-    if (ImGui::CollapsingHeader("Keyboard keys for the GameCube buttons")) {
-        ImGui::TextWrapped("Choose the key for each GameCube button. Picking one that is already used swaps the two.");
-        if (bw_key_map_ui(&keys)) {
-            d.key_map = bw_key_map_format(keys);
-            changed();
-        }
-    }
     char face[96], shoulder[96];
     std::snprintf(face, sizeof face, "%s  %s  %s  %s", bw_key_name(keys.scancode[0]), bw_key_name(keys.scancode[1]),
                   bw_key_name(keys.scancode[2]), bw_key_name(keys.scancode[3]));
@@ -803,8 +812,9 @@ void tab_controls() {
             {"A  B  X  Y", face}, {"L  R  Z", shoulder}, {"START", bw_key_name(keys.scancode[7])},
             {"Jump", "Space (controller: left bumper)"}, {"Sprint", "Shift (controller: click the left stick)"},
             {"Camera zoom", "Mouse wheel, while the mouse is the camera"},
-            {"Settings", "F1 or Esc"}, {"Fullscreen", "F11 or Alt+Enter"}, {"Smooth Motion", "F10"},
-            {"Frame rate", "F9"},
+            {"Settings", "F1 or Esc"}, {"HD look", "F2"}, {"Save state / load it", "F5 / F8"},
+            {"Stage select", "F7"}, {"Frame rate", "F9"}, {"Smooth Motion", "F10"},
+            {"Fullscreen", "F11 or Alt+Enter"},
         };
         for (const auto& row : rows) {
             ImGui::TableNextRow();
@@ -871,7 +881,7 @@ void tab_gameplay() {
     bw_stage_select_save_warning();
     if (bw_stage_select_button())
         set_menu_open(false);
-    ImGui::SeparatorText("Forest Water challenge");
+    ImGui::SeparatorText("Forest Water Challenge");
     if (bw_menu_checkbox("Keep watered trees when time runs out", &d.forest_keep_trees)) {
         apply_forest_water();
         changed();
@@ -890,7 +900,7 @@ void tab_gameplay() {
         changed();
     restart_note(d.quick_doors != g_launched.quick_doors);
     ImGui::SeparatorText("Climbing");
-    if (bw_menu_checkbox("Climb any wall (experimental)", &d.climb)) {
+    if (bw_menu_checkbox("Wall climbing (experimental)", &d.climb)) {
         apply_climb();
         changed();
     }
@@ -902,8 +912,8 @@ void tab_gameplay() {
     ImGui::EndDisabled();
     // Jump and sprint, one switch as on the iPad, with the sprint's speed
     // under it (BLUEWAKE_SPRINT_SPEED at the next launch).
-    ImGui::SeparatorText("Jump and sprint");
-    if (bw_menu_checkbox("Jump and Run (Space or the left bumper jumps; Shift or the left stick click sprints)",
+    ImGui::SeparatorText("Jump & Sprint");
+    if (bw_menu_checkbox("Jump & Sprint (Space or the left bumper jumps; Shift or the left stick click sprints)",
                         &d.movement_extras))
         changed();
     restart_note(d.movement_extras != g_launched.movement_extras);
@@ -973,20 +983,7 @@ void tab_mods() {
 
 void tab_game() {
     Settings& d = g_session;
-    ImGui::TextUnformatted("Experimental debug save states");
-    if (ImGui::Button("Save state (F5)")) {
-        bluewake_save_state_hotkey(false);
-        set_menu_open(false);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Load latest state (F8)")) {
-        bluewake_save_state_hotkey(true);
-        set_menu_open(false);
-    }
-    ImGui::TextDisabled("Keep normal memory-card saves. States depend on this game translation.");
-    ImGui::Spacing();
-    ImGui::TextUnformatted("Sound");
-    restart_note(d.lle_audio != g_launched.lle_audio);
+    ImGui::SeparatorText("Sound");
     if (ImGui::RadioButton("Fast (Dolphin's high-level Zelda sound)", !d.lle_audio)) {
         d.lle_audio = false;
         changed();
@@ -995,6 +992,7 @@ void tab_game() {
         d.lle_audio = true;
         changed();
     }
+    restart_note(d.lle_audio != g_launched.lle_audio);
     ImGui::Spacing();
     ImGui::SeparatorText("Your files");
     ImGui::TextDisabled("Saves, settings and logs are kept apart from the build:");
@@ -1135,7 +1133,6 @@ void draw_menu(SDL_Window* w) {
                                    ImGuiWindowFlags_NoSavedSettings;
     if (ImGui::Begin("BlueWake settings", &open, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
-        bluewake_ui::heading("Play your way", "Display, controls and enhancements, all in one place.");
         // Esc normally closes it in the keyboard hook (bw_settings_key), which
         // keeps the key from SDL; one that reaches ImGui instead closes it too.
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -1149,9 +1146,8 @@ void draw_menu(SDL_Window* w) {
         int request = -1;
         if (pad.tab_step != 0)
             request = (shown + kTabCount + pad.tab_step) % kTabCount;
-        const ImGuiStyle& style = ImGui::GetStyle();
-        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
-                             ImGui::GetFrameHeightWithSpacing();
+        // The body takes what the footer leaves (menu_shared.h), as on Mac and Linux.
+        const float footer = bw_menu_footer_height(needs_restart());
         if (ImGui::BeginTabBar("tabs")) {
             // No title bar, so the mouse's close button sits at the end of the tabs.
             if (ImGui::TabItemButton("x", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
@@ -1178,25 +1174,36 @@ void draw_menu(SDL_Window* w) {
             }
             ImGui::EndTabBar();
         }
-        ImGui::Separator();
-        ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
-        if (needs_restart()) {
-            ImGui::TextUnformatted("* Takes effect when BlueWake starts again.");
+        const bool restart_note = needs_restart();
+        bw_menu_footer_note(restart_note);
+        if (restart_note) {
             ImGui::SameLine();
             if (ImGui::Button("Restart now"))
                 restart();
-            ImGui::SameLine();
         }
-        if (ImGui::Button("Close   (F1 or Esc)"))
+        switch (bw_menu_footer_buttons(g_path.c_str())) {
+        case BW_MENU_RESUME:
             open = false;
-        ImGui::SameLine();
-        if (ImGui::Button("Quit the game")) {
+            break;
+        case BW_MENU_SAVE_STATE:
+            bluewake_save_state_hotkey(false);
+            open = false;
+            break;
+        case BW_MENU_LOAD_STATE:
+            bluewake_save_state_hotkey(true);
+            open = false;
+            break;
+        case BW_MENU_QUIT: {
             open = false;
             if (g_dirty)
                 save_file();
             SDL_Event quit{};
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
+            break;
+        }
+        case BW_MENU_NONE:
+            break;
         }
         // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
         if (bw_menu_back(pad.back))

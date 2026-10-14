@@ -450,7 +450,7 @@ void bluewake_stage_select_hotkey(void) {
     // When F7 can't do anything, the status line says why; when it can, the
     // stage select (or its question) is what shows.
     if (!bluewake_stage_select_armed) {
-        bluewake_status_post("Stage select is off (F1, Mods)");
+        bluewake_status_post("Stage select is off (F1, Gameplay)");
         return;
     }
     if (!bluewake_stage_select_in_game && !atomic_load_explicit(&bluewake_stage_select_menu_open, memory_order_relaxed)) {
