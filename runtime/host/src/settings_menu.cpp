@@ -569,15 +569,18 @@ void hd_textures_section() {
         }
     }
     restart_note();
-    if (g_texture_pack[0] != '\0') {
+    {
         const size_t textures = g_pack_count.get(g_texture_pack);
-        if (textures > 0)
-            ImGui::TextDisabled("%zu textures in %s", textures, g_texture_pack);
+        const bw_texture_pack::PackState state =
+            bw_texture_pack::state_of(textures, g_texture_pack[0] != '\0');
+        std::string line;
+        if (g_texture_pack[0] == '\0')
+            line = "Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the game's textures.";
+        else if (textures == 0)
+            line = "No .png or .dds textures found in the chosen folder.";
         else
-            ImGui::TextDisabled("No .png or .dds textures in %s", g_texture_pack);
-    } else {
-        ImGui::TextDisabled("Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the "
-                            "game's textures.");
+            line = std::to_string(textures) + " textures in the chosen folder";
+        ImGui::TextColored(bw_texture_pack::state_color(state), "%s", line.c_str());
     }
     if (ImGui::Button("Choose texture pack folder..."))
         bw_texture_pack::choose_folder(game_window(), g_texture_pack);
