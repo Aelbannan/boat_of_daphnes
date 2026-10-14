@@ -1,7 +1,7 @@
 # Safe startup: HD look off
 
 October 15, 2026. Local branch `codex/safe-mode-hd-off`, based on `origin/main`
-`0db549f` (PR #339). Not pushed or merged.
+`0db549f` (PR #339). Proposed in [#343](https://github.com/chrissotraidis/bluewake/pull/343).
 
 ## Problem and change
 
@@ -24,8 +24,8 @@ startup behavior is preserved. Normal startup and its overrides are unchanged.
 
 ## Checks on the Mac
 
-M3 Max, macOS 26.6.2, Apple clang 21.0.0. Source-only fixtures; no game or
-personal settings loaded.
+M3 Max, macOS 26.6.2, Apple clang 21.0.0. The source fixtures use synthetic
+settings; the graphical check below uses a copied card and isolated settings.
 
 - `python3 tests/test_safe_mode_hd.py`: passed, 16 cases. The fixtures compile
   production startup, settings read/write and HD reload functions with C++17,
@@ -51,11 +51,23 @@ Local logs and the two standalone host-test binaries are in the ignored
 `build/safe-mode-hd-fixtures/` directory. The fixture script generates and removes
 its C++ files and binaries in a temporary directory.
 
+## Graphical Mac check
+
+A fresh build of `107de805`, using the existing `ee99bbc` runtime pin, was run
+at Outset on the M3 Max with Metal. The isolated settings started with the HD
+master and bloom/AO/sun-shadow overrides on. `BLUEWAKE_SAFE_MODE=1` backed up
+that file byte for byte, saved the reset and logged all eight effects off.
+The Display menu showed HD off. Closing F1 and pressing F2 enabled the effects;
+pressing it again disabled them, confirmed by the image and reload log. The
+copied card's SHA-256 was unchanged after exit.
+
+The local build is `build/app-macos` in the existing menu-review worktree;
+private logs/settings are under `build/safe-hd-app-oct15`. No renderer changes
+or personal saves were used for this check.
+
 ## Still to check
 
-No fresh graphical Mac build or gameplay run was performed. Windows SDK/CRT,
-Windows CI, and native Windows/Linux runs were not performed. The fixture uses
-POSIX environment operations to stand in for Windows `_putenv_s`; it is not a
-Windows build. The hardware check is in [Windows tasks](../WINDOWS_TASKS.md).
-The separate menu-review worktree, its branch, and the `ref/` checkouts were not
-modified. No push, pull request, merge or release was made.
+Windows CI and native Windows/Linux runs remain separate gates. The fixture
+uses POSIX environment operations to stand in for Windows `_putenv_s`; it is
+not a Windows build. The hardware check is in [Windows tasks](../WINDOWS_TASKS.md).
+No release was made.
