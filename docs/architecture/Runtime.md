@@ -37,30 +37,30 @@ them.
 
 ```mermaid
 flowchart TD
-    Platform["Platform application<br/>entry and native integration"]
-    Host["BlueWake host<br/>lifecycle and coordination"]
-    Module["Native game module<br/>translated Wind Waker code"]
-    Guest["Guest machine state<br/>CPU, memory, addresses, time"]
-    Services["GameCube-compatible services<br/>devices, storage, input, audio"]
-    Graphics["Graphics stack<br/>GXRuntime, Aurora, Dawn"]
-    Disc["Original disc data"]
-    Player["Player data<br/>settings, saves, logs"]
-    Native["Native platform<br/>OS, controllers, audio, GPU"]
+    Platform["Platform app<br/>native integration"]
+    Host["BlueWake host<br/>coordination"]
+    Module["Game module<br/>translated code"]
+    Guest["Guest state<br/>CPU, memory, time"]
+    Services["GameCube services<br/>devices and I/O"]
+    Graphics["Graphics<br/>GXRuntime, Aurora, Dawn"]
+    Disc["Disc data"]
+    Player["Player data<br/>saves and settings"]
+    Native["Native platform<br/>OS, devices, GPU"]
 
     Platform -->|"starts"| Host
-    Host -->|"loads through module ABI"| Module
-    Host <-->|"coordinates execution"| Module
-    Host <-->|"initializes and services"| Guest
-    Module <-->|"executes against"| Guest
-    Module -->|"guest operations"| Services
+    Host -->|"loads ABI"| Module
+    Host <-->|"coordinates"| Module
+    Host <-->|"initializes"| Guest
+    Module <-->|"executes"| Guest
+    Module -->|"guest I/O"| Services
     Host <-->|"adapts"| Services
-    Module -->|"GX commands"| Graphics
-    Host <-->|"initializes and presents"| Graphics
-    Disc -->|"assets and disc reads"| Services
-    Player <-->|"persistent state"| Host
-    Platform <-->|"native events and paths"| Native
-    Services <-->|"I/O"| Native
-    Graphics -->|"render and present"| Native
+    Module -->|"GX work"| Graphics
+    Host <-->|"presents"| Graphics
+    Disc -->|"reads"| Services
+    Player <-->|"persists"| Host
+    Platform <-->|"events, paths"| Native
+    Services <-->|"native I/O"| Native
+    Graphics -->|"GPU work"| Native
 ```
 
 ## Runtime entities
@@ -161,25 +161,25 @@ interaction sequence is:
 
 ```mermaid
 sequenceDiagram
-    participant P as Platform application
-    participant H as BlueWake host
-    participant M as Native game module
+    participant P as Platform
+    participant H as Host
+    participant M as Game module
     participant G as Guest state
-    participant S as Compatibility services
-    participant R as Graphics stack
+    participant S as Services
+    participant R as Graphics
 
-    P->>H: Start with paths and settings
-    H->>M: Load and validate module ABI
-    H->>G: Initialize memory, devices, and entry PC
+    P->>H: Start with paths/settings
+    H->>M: Load and validate ABI
+    H->>G: Initialize state and entry PC
     loop Guest execution
         H->>M: Dispatch from guest PC
-        M->>G: Read and update CPU and memory
-        M->>S: Perform guest I/O and request services
-        S->>G: Publish results, callbacks, and interrupts
+        M->>G: Update CPU and memory
+        M->>S: Request guest I/O
+        S->>G: Publish results and events
         M->>R: Submit GX work
-        R-->>H: Present at the retrace boundary
+        R-->>H: Present at retrace
     end
-    H-->>P: Persist data, release services, and return
+    H-->>P: Persist, release, return
 ```
 
 Execution is cyclical, not a one-way pipeline. The host gives translated code a
