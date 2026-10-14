@@ -589,6 +589,3 @@ Android arm64 support is under development in
 [PR #93](https://github.com/chrissotraidis/bluewake/pull/93). It is not yet a
 current build path, so there is no supported compile/package table or artifact
 contract yet.
-
-Continue to [Runtime](Runtime.md) for application startup, module loading, and
-the relationships between translated game code and host services.
