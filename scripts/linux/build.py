@@ -726,7 +726,7 @@ int main(void) {{
         if self.args.native_entries:
             self.run("native-entries", [sys.executable, ROOT / "scripts/windows/native_entries.py",
                                          o / "composite-src"])
-        # Game-behaviour timing (behaviour_timing.py; a prototype, off by default):
+        # Game-behaviour timing (behaviour_timing.py; on by default, --no-behaviour-timing turns it off):
         # every block runs its prepaid copy, so a device event lands at the next
         # block's start instead of on its exact instruction, and the turn's budget is
         # checked where control can loop (and at calls). Last, on the final source.
@@ -1322,7 +1322,8 @@ a user folder here instead (a rebuild leaves it alone).
 # one only where the module it loads was prepared with it.
 LINUX_DEFAULT_OPTIMIZATIONS = ("fixed_cpu", "fixed_mem1", "inline_fp", "gather_pipe", "inline_gpr",
                                "prepared_blocks", "direct_calls", "native_j3d", "native_vec", "native_math",
-                               "native_skin", "native_game_math", "lean_blocks", "lean_memory", "lean_deadlines")
+                               "native_skin", "native_game_math", "lean_blocks", "lean_memory", "lean_deadlines",
+                               "behaviour_timing")
 
 
 def main():
@@ -1397,10 +1398,12 @@ def main():
     parser.add_argument("--no-lean-deadlines", action="store_true",
                         help="keep the deadline test after every lean load and store: about 4%% slower")
     parser.add_argument("--behaviour-timing", action="store_true",
-                        help="game-behaviour timing, a prototype: every block runs its prepaid copy, so a timer or "
-                             "interrupt lands at the next block's start rather than its exact instruction, and the turn's "
-                             "budget is checked at loops and calls. About 7 to 9%% faster on an M3 Max, a smaller "
-                             "module and a quicker build; off by default (needs --prepared-blocks)")
+                        help="game-behaviour timing: every block runs its prepaid copy, so a timer or interrupt lands "
+                             "at the next block's start rather than its exact instruction, and the turn's budget is "
+                             "checked at loops and calls. 7 to 11%% faster on a Mac, Intel desktops and the Steam Deck, "
+                             "a smaller module and a quicker build (on by default; needs --prepared-blocks)")
+    parser.add_argument("--no-behaviour-timing", action="store_true",
+                        help="check the turn's budget after every block, as before behaviour timing: about 9%% slower")
     parser.add_argument("--native-entries", action="store_true",
                         help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
                              "needs --direct-calls, --gather-pipe and --native-vec)")
@@ -1446,6 +1449,8 @@ def main():
         args.lean_memory = False
     if args.no_lean_memory or args.no_lean_deadlines:
         args.lean_deadlines = False
+    if args.no_behaviour_timing:
+        args.behaviour_timing = False
     if args.host_only and (args.retrain or args.no_train or args.no_pgo):
         parser.error("--host-only keeps the last build's profile; it cannot be combined with --retrain or --no-train")
     if args.inline_gpr and not args.direct_calls:

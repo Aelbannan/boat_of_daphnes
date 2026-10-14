@@ -108,3 +108,17 @@ iPad, behaviour timing takes about 4 to 5% of what is left, less than on the Mac
 
 Not checked: played by hand, a PC, the Deck, a phone, and long runs (cutscenes with their sound in time, a save made and
 loaded).
+
+## October 13 and 14: other machines, and the default
+
+Measured by contributors, each with both builds made from the same commit:
+
+| Machine | Who | Result |
+| --- | --- | --- |
+| Intel i5-6500 and i5-12600KF, Linux | pdale-boop (#215) | 7 to 9% and 8 to 11% faster, all 27 pairs; module 15% smaller |
+| Steam Deck (SteamOS 3.8, 4 cores) | jkoehler11 (#215) | 63.6 to 69.4 retraces a second at Outset's sea (9%), three interleaved rounds each; module 518 to 444 MB |
+| Galaxy Z Fold 7 (Android) | LiquidAzir (#93) | 4% fewer instructions and 10% fewer cycles a retrace at Outset's pier; module 10.5% smaller |
+
+Played with it: pdale-boop on Linux at 21:9 and 60 FPS, and jkoehler11 on the Deck (a cutscene with music, and sailing).
+Neither noticed anything look or sound different. On that evidence the Windows and Linux builders turn it on by default
+from October 14; `--no-behaviour-timing` builds without it. The Mac, iPhone and iPad builder keeps it opt-in.
