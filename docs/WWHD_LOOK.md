@@ -12,6 +12,11 @@ time. Each piece is an option, off by default, and one switch turns on every pie
 Each piece also has its own variable, which wins over the switch (`=1` on, `=0` off), so a piece that costs too
 much on a small GPU can be left out.
 
+On Mac, Linux and Windows, safe startup turns the HD look off and clears the eight `BLUEWAKE_HD_*`
+per-effect overrides listed below. F2 or the menu can turn the whole look back on during that session.
+The reset is saved only after the earlier settings file is backed up; if the backup fails, or Mac/Linux
+uses `BLUEWAKE_SETTINGS=none`, startup resets only the session. Normal startup keeps the usual overrides.
+
 ## Where this comes from
 
 Elliott Tate showed most of the HD look running on the GameCube recompilation in a video on October 3, 2026
