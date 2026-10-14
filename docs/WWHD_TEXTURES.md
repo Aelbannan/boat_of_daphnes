@@ -49,11 +49,18 @@ Android integration remains part of the port work. The app needs no Python.
 
 The native importer implements the script's matching and conversion: from
 the supplied decrypted HD folder and GameCube disc it makes the same 3,546
-textures, in about 30 seconds on an M3 Max. The image reader passes generated
-encrypted-disc checks, including a Mac menu import. An authentic WUD/WUX
-comparison, Windows/Linux interactive import and iPhone/iPad Files-provider,
-memory and lifecycle checks remain open. These are distinct from build and
-simulator fixture results below.
+textures, in about 30 seconds on an M3 Max. On Linux (Arch, X11, NVIDIA),
+pdale-boop imported his own dump's `content` folder from the menu, from a path
+with spaces and Japanese characters: 3,546 keys and 33,859 PNGs, the same counts
+as the Mac, and the restart loaded all 3,546. Cancelling an import kept his
+previous pack selected and left no partial pack. The image reader passes
+generated encrypted-disc checks, including a Mac menu import. On the iPhone 17e
+simulator, a test app running the production iOS menu and importer (without
+the game) imported generated inputs through Files, as a folder and as a WUX
+image with key files; cancelling a key picker kept the other choices. An
+authentic WUD/WUX comparison, a Windows interactive import, and iPhone/iPad
+hardware, memory and lifecycle checks remain open. These are distinct from
+build and simulator fixture results below.
 
 The output follows the app's data folder, including Linux portable mode and
 an explicitly selected desktop settings location.
@@ -392,7 +399,11 @@ failures; forced-process recovery has separate coverage below.
 ### Recovering interrupted output (October 15, 2026)
 
 The importer holds a nonblocking OS lock for its output parent until all work
-and cleanup finish. Another import using that parent refuses promptly. New
+and cleanup finish. Another import using that parent refuses promptly.
+The lock is an empty hidden file, `.bluewake-wwhd-import.lock`, in
+`Load/Textures`. It stays after BlueWake exits, by design: removing it after
+each import would let a second import create a new file at the same name and
+get past the lock. It can be deleted while BlueWake isn't running. New
 temporary output has a versioned ownership marker written before any texture
 files. A later import recovers only that recognized, flat output; it leaves
 completed packs, older unmarked folders, unexpected contents and links alone.
@@ -506,8 +517,9 @@ pickers. The title-key menu route and a renderer restart with this small pack
 were not part of that check.
 
 Still required before advertising image support: an authentic image-to-pack
-comparison, Windows/Linux and iOS picker interaction, Android integration, and
-phone/tablet memory and lifecycle validation. The supplied reference is a
+comparison, a Windows import, image selection on Linux and on iPhone/iPad
+hardware (the iOS simulator check used generated files), and phone/tablet
+memory and lifecycle validation. Android integration is in draft #347. The supplied reference is a
 decrypted folder; generated encrypted fixtures do not establish acceptance
 of an authentic disc dump. The committed automated fixtures contain no game
 assets or private keys; the Mac menu check's HD resource and output stay private.
