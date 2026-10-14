@@ -2783,6 +2783,93 @@ static bool host_materialize_rel(CPUState* cpu, const char* name, u32 owner,
     return true;
 }
 
+/* A load time for loose RELs (#318). The game's RELs come from RELS.arc, in
+   memory, or from loose files under /rels/ on the disc, which do_load reads
+   with JKRDvdToMainRam: on the console that read takes frames, on the disc
+   thread for an async load. BlueWake has every module resident, so the room's
+   loose-REL actors (d_a_shutter2 in the Wind Temple's R04 and R08) were
+   created before Link had finished. With BLUEWAKE_LOOSE_REL_RETRACES=N, a
+   load from /rels/ waits N retraces in VIWaitForRetrace on the thread that
+   asked, then completes as before; archived RELs stay instant, as on the
+   console. Unset or 0: off. */
+#define BLUEWAKE_DO_LOAD 0x80240744u
+#define BLUEWAKE_VI_WAIT_FOR_RETRACE 0x80313A04u
+#define BLUEWAKE_VI_RETRACE_COUNT 0x803F7B3Cu
+#define BLUEWAKE_MAX_LOOSE_REL_WAITS 8u
+
+typedef struct {
+    u32 stack;  /* r1: the thread that is waiting */
+    u32 object; /* r3: the DynamicModuleControl */
+    u32 lr;     /* do_load's caller */
+    u32 until;  /* retrace count to wait for */
+} BlueWakeLooseRelWait;
+
+static u32 g_loose_rel_retraces;
+static BlueWakeLooseRelWait g_loose_rel_waits[BLUEWAKE_MAX_LOOSE_REL_WAITS];
+static unsigned g_loose_rel_reports;
+
+static void host_loose_rel_configure(void) {
+    const char* retraces = getenv("BLUEWAKE_LOOSE_REL_RETRACES");
+    const long n = retraces != NULL ? strtol(retraces, NULL, 10) : 0;
+    g_loose_rel_retraces = n > 0 ? (u32)(n < 600 ? n : 600) : 0u;
+    fprintf(stderr, "[rel] loose REL load time=%s%u%s\n",
+            g_loose_rel_retraces != 0u ? "" : "off (", g_loose_rel_retraces,
+            g_loose_rel_retraces != 0u ? " retraces (BLUEWAKE_LOOSE_REL_RETRACES)" : ")");
+}
+
+/* At do_load's entry: true when the thread was sent to wait a retrace (cpu.pc
+   is VIWaitForRetrace, which returns to do_load's entry), false to load now. */
+static bool host_loose_rel_wait(CPUState* cpu) {
+    if (g_loose_rel_retraces == 0u)
+        return false;
+    const u32 now = mem_read32(cpu, BLUEWAKE_VI_RETRACE_COUNT);
+    // Back from VIWaitForRetrace: the caller's this and return address again.
+    if (cpu->lr == BLUEWAKE_DO_LOAD) {
+        for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+            BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+            if (wait->stack != cpu->gpr[1])
+                continue;
+            cpu->gpr[3] = wait->object;
+            if ((s32)(now - wait->until) < 0) {
+                cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+                return true;
+            }
+            cpu->lr = wait->lr;
+            *wait = (BlueWakeLooseRelWait){0};
+            return false;
+        }
+        return false;
+    }
+    const u32 object = cpu->gpr[3];
+    if (object == 0u || mem_read32(cpu, object + 0x10u) != 0u)
+        return false;
+    char name[96] = {0};
+    const u32 name_address = mem_read32(cpu, object + 0x1Cu);
+    if (name_address == 0u)
+        return false;
+    guest_read_cstr(cpu, name_address, name, sizeof(name));
+    char path[128];
+    snprintf(path, sizeof(path), "/rels/%s.rel", name);
+    if (name[0] == '\0' || dvd_path_to_entrynum(path) < 0)
+        return false; // in RELS.arc: in memory on the console too
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+        BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+        if (wait->stack != 0u)
+            continue;
+        *wait = (BlueWakeLooseRelWait){cpu->gpr[1], object, cpu->lr,
+                                       now + g_loose_rel_retraces};
+        if (g_loose_rel_reports < 64u) {
+            fprintf(stderr, "[rel] loose REL \"%s\" waits %u retraces from %u\n",
+                    name, g_loose_rel_retraces, now);
+            g_loose_rel_reports++;
+        }
+        cpu->lr = BLUEWAKE_DO_LOAD;
+        cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+        return true;
+    }
+    return false; // more waiting threads than slots: load at once
+}
+
 static void host_zero_rel_bss(CPUState* cpu, const BlueWakeRelData* rel_data,
                               u32 rel_data_count, u32 module_id) {
     for (u32 i = 0; i < rel_data_count; ++i) {
@@ -7656,6 +7743,7 @@ int main(int argc, char** argv) {
     g_deferred_dvd_enabled = deferred_dvd_set ? strcmp(deferred_dvd, "1") == 0 : deferred_dvd_default;
     fprintf(stderr, "[dvd] deferred completion=%s (%s)\n", g_deferred_dvd_enabled ? "on" : "off",
             deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
+    host_loose_rel_configure();
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
         g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
@@ -9567,6 +9655,8 @@ int main(int argc, char** argv) {
                     cpu.gpr[7], cpu.lr, resource_name);
             g_resource_info_reports++;
         }
+        if (cpu.pc == 0x80240744u && host_loose_rel_wait(&cpu))
+            continue;
         if (g_dynamic_load_reports < 8u &&
             (cpu.pc == 0x80240744u || cpu.pc == 0x80240A48u)) {
             char module_name[96] = {0};
