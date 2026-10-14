@@ -303,12 +303,13 @@ SDL_Window* game_window() {
 
 bool is_fullscreen(SDL_Window* w) { return (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) != 0; }
 
+// Fullscreen for this session only: whether the game starts in fullscreen is
+// its own setting (fullscreen= in settings.ini), so trying fullscreen never
+// changes how the game starts (#320).
 void set_fullscreen(SDL_Window* w, bool on) {
     if (w == nullptr)
         return;
     SDL_SetWindowFullscreen(w, on);
-    g_session.fullscreen = on;
-    changed();
     std::fprintf(stderr, "[windows] fullscreen %s\n", on ? "on" : "off");
 }
 
@@ -568,9 +569,14 @@ void restart_note(bool differs) {
 
 void tab_display(SDL_Window* w) {
     Settings& d = g_session;
-    bool full = w != nullptr && is_fullscreen(w);
-    if (ImGui::Checkbox("Fullscreen   (F11 or Alt+Enter)", &full))
-        set_fullscreen(w, full);
+    // An action for this session, not a setting: a button.
+    const bool full = w != nullptr && is_fullscreen(w);
+    if (ImGui::Button(full ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
+        set_fullscreen(w, !full);
+    if (ImGui::Checkbox("Start in fullscreen", &d.fullscreen))
+        changed();
+    ImGui::SameLine();
+    ImGui::TextDisabled("(next launch)");
     if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
         apply_hd_look();
         changed();
