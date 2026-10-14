@@ -281,6 +281,8 @@ Yes. On iPhone and iPad, any controller iOS supports works, with rumble, camera 
 remapping under **⋯ › Controller**. On Mac, Windows and Linux, Xbox, PlayStation, Switch Pro and other
 SDL controllers work; remap buttons under **Settings › Controls › Controller buttons** (F1 or Esc
 opens settings). The same tab changes what the mouse buttons and keyboard keys press.
+On Mac and Linux the settings menu works with a controller too: the D-pad or left stick moves, A chooses, the
+game's B closes, LB and RB change tabs and the right stick scrolls.
 
 If BlueWake doesn't see your controller at all (a generic Bluetooth pad, for example), download
 `gamecontrollerdb.txt` from [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB), put it
