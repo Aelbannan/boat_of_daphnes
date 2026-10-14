@@ -1,7 +1,7 @@
 # Safe startup: HD look off
 
 October 15, 2026. Local branch `codex/safe-mode-hd-off`, based on `origin/main`
-`0db549f` (PR #339). Proposed in [#343](https://github.com/chrissotraidis/bluewake/pull/343).
+`0db549f` (PR #339). Merged through [#343](https://github.com/chrissotraidis/bluewake/pull/343) after green Windows/Linux CI.
 
 ## Problem and change
 
@@ -67,7 +67,7 @@ or personal saves were used for this check.
 
 ## Still to check
 
-Windows CI and native Windows/Linux runs remain separate gates. The fixture
+Windows/Linux CI pass. Native Windows/Linux runs remain separate gates. The fixture
 uses POSIX environment operations to stand in for Windows `_putenv_s`; it is
 not a Windows build. The hardware check is in [Windows tasks](../WINDOWS_TASKS.md).
 No release was made.
