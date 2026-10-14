@@ -460,6 +460,13 @@ optimizations. The BlueWake host application remains separate until stage 7.
 
 ## 6. Train
 
+Training shows the compiler which translated game paths are used most often.
+The builder runs deterministic headless playbacks with an instrumented module,
+merges the recorded execution counts, and feeds that profile into the final
+compile. The goal is to optimize frequently executed code for better runtime
+performance without changing game behavior; no machine-learning model is
+trained.
+
 ```mermaid
 flowchart LR
     Prepared["Prepared source"]
