@@ -12,6 +12,12 @@ ImportJob& import_job() {
     return job;
 }
 
+ImportJob::~ImportJob() {
+    cancel();
+    if (worker_.joinable())
+        worker_.join();
+}
+
 std::string hd_content_folder(const std::string& picked) {
     std::error_code ec;
     const fs::path p(picked);
@@ -35,6 +41,9 @@ bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, 
     std::lock_guard<std::mutex> hold(lock_);
     if (status_.running)
         return false;
+    // A finished worker has published its result and will not take lock_ again.
+    if (worker_.joinable())
+        worker_.join();
     status_ = Status();
     std::error_code ec;
     if (gc_disc.empty() || !fs::is_regular_file(fs::path(gc_disc), ec)) {
@@ -57,7 +66,7 @@ bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, 
         status_.replacements = p.replacements;
         status_.message = p.stage;
     };
-    std::thread([this, options] {
+    worker_ = std::thread([this, options] {
         Status done;
         done.finished = true;
         try {
@@ -73,7 +82,7 @@ bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, 
         done.files_read = status_.files_read;
         done.files_total = status_.files_total;
         status_ = done;
-    }).detach();
+    });
     return true;
 }
 

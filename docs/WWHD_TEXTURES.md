@@ -321,3 +321,13 @@ table. It does not establish memory acceptance on iPhone, iPad or Android.
 Keyboard navigation was used for the menu and the native folder picker.
 Mouse clicks did not consistently activate the ImGui controls through the
 automation surface; this run does not establish desktop mouse acceptance.
+
+### Stopping an import
+
+The desktop background job is owned until its worker exits. Closing the app
+cancels and joins the worker before destroying its progress/status state;
+completion, cancellation, a second import, missing input and shutdown are
+covered by `bluewake_wwhd_import_job_test` on the desktop build paths. This
+regression fails against the earlier detached worker and passes with AddressSanitizer
+and UndefinedBehaviorSanitizer on the Mac. It uses generated inputs and a
+controlled worker; it is not a mobile lifecycle or full-disc cancellation test.

@@ -26,7 +26,7 @@ struct ImportOptions {
     // SHA-256 of every image and file in import-report.json, as the script
     // writes them, to compare packs (slower; the app leaves it off).
     bool exact_report = false;
-    // Threads writing PNGs: 0 for the machine's cores less one (at most 8).
+    // Threads writing PNGs: 0 for the machine's cores less one (at most 4).
     unsigned threads = 0;
 };
 

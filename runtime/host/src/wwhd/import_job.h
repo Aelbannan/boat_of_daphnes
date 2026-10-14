@@ -8,11 +8,14 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace wwhd {
 
 class ImportJob {
   public:
+    // Finish cancellation before the job's state goes away at app shutdown.
+    ~ImportJob();
     struct Status {
         bool running = false;
         bool finished = false; // a result is waiting (success or failure)
@@ -35,6 +38,7 @@ class ImportJob {
     mutable std::mutex lock_;
     Status status_;
     std::atomic<bool> cancel_{false};
+    std::thread worker_;
 };
 
 ImportJob& import_job();
