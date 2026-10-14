@@ -92,7 +92,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   89.9% / 90.8% on the baseline and 100.0% / 100.0% with behaviour timing; all four runs ended at the same
   2.0 GHz clock cap. This clears the stated Outset speed gate on that phone, not other phones or sustained
   speed across the game. The candidate at `53ba33a` inherits the Windows timing default and adds
-  `--no-behaviour-timing`; fresh CI and final source review are pending. The reordered Mods menu and live
+  `--no-behaviour-timing`. Review found that `--app-only` can reuse a module while recording different
+  requested timing options; cache/provenance validation is requested before merging. Fresh CI is pending. The reordered Mods menu and live
   touch D-pad option were checked on the Fold; Bluetooth with the D-pad option remains unchecked.
   The direct-call globals experiment gave no gain. The native importer core at `ea31b24` now builds with NDK r29 and runs on an API 36 ARM64
   emulator: five generated imports, thirty PNG checks, three reader tests and wrong-key rejection pass.
