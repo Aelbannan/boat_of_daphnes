@@ -36,7 +36,9 @@
 #include <aurora/imgui.h>
 #include <dolphin/pad.h>
 #include <imgui.h>
+#include <imgui_internal.h> // FindWindowByName: the menu's position before Begin draws it
 #include "button_remap.h"
+#include "menu_shared.h"
 #include "input_remap.h"
 #include "option_notes.h"
 #include "texture_pack_menu.h"
@@ -562,6 +564,36 @@ bool needs_restart() {
            a.quick_doors != b.quick_doors || a.stage_select != b.stage_select;
 }
 
+// Sliders as on Mac and Linux: the label above, the slider the menu's width,
+// and left and right move one while it's selected, a twentieth of its range a
+// press, without A to grab it first (menu_shared.h).
+bool slider_float(const char* label, float* value, float low, float high, const char* format,
+                  ImGuiSliderFlags flags = 0) {
+    ImGui::PushID(label);
+    ImGui::TextWrapped("%s", label);
+    ImGui::SetNextItemWidth(-1.0f);
+    bool changed = ImGui::SliderFloat("##value", value, low, high, format, flags);
+    if (const int step = bw_menu_slider_nudge()) {
+        *value = std::clamp(*value + step * (high - low) / 20.0f, low, high);
+        changed = true;
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+bool slider_int(const char* label, int* value, int low, int high, const char* format) {
+    ImGui::PushID(label);
+    ImGui::TextWrapped("%s", label);
+    ImGui::SetNextItemWidth(-1.0f);
+    bool changed = ImGui::SliderInt("##value", value, low, high, format);
+    if (const int step = bw_menu_slider_nudge()) {
+        *value = std::clamp(*value + step * std::max(1, (high - low) / 20), low, high);
+        changed = true;
+    }
+    ImGui::PopID();
+    return changed;
+}
+
 void restart_note(bool differs) {
     if (differs) {
         ImGui::SameLine();
@@ -573,7 +605,7 @@ void restart_note(bool differs) {
 // display_tab), so the menus match on every platform (#320).
 void tab_display(SDL_Window* w) {
     Settings& d = g_session;
-    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
+    if (bw_menu_checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
         apply_hd_look();
         changed();
     }
@@ -582,12 +614,11 @@ void tab_display(SDL_Window* w) {
     const bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Button(full ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
         set_fullscreen(w, !full);
-    if (ImGui::Checkbox("Start in fullscreen", &d.fullscreen))
+    if (bw_menu_checkbox("Start in fullscreen", &d.fullscreen))
         changed();
     ImGui::SameLine();
     ImGui::TextDisabled("(next launch)");
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Render resolution", &d.render_scale, kScaleNames, IM_ARRAYSIZE(kScaleNames))) {
+    if (bw_menu_combo("Render resolution", &d.render_scale, kScaleNames, IM_ARRAYSIZE(kScaleNames))) {
         aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
         changed();
     }
@@ -596,8 +627,7 @@ void tab_display(SDL_Window* w) {
     static const char* const kSmooth[] = {"Off (30, the game's)", "60 frames a second",
                                           "120 frames a second (120 Hz displays)", "Match the display (up to 240)"};
     int smooth = !d.smooth_motion ? 0 : d.smooth_steps == -1 ? 3 : d.smooth_steps >= 3 ? 2 : 1;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Smooth Motion (experimental)   (F10)", &smooth, kSmooth, IM_ARRAYSIZE(kSmooth))) {
+    if (bw_menu_combo("Smooth Motion (experimental)   (F10)", &smooth, kSmooth, IM_ARRAYSIZE(kSmooth))) {
         d.smooth_motion = smooth != 0;
         if (smooth != 0)
             d.smooth_steps = smooth == 3 ? -1 : smooth == 2 ? 3 : 1;
@@ -609,13 +639,12 @@ void tab_display(SDL_Window* w) {
     ImGui::TextDisabled("    Target: %d FPS on this %.0f Hz display; pacing may reduce it.",
                         d.smooth_motion ? (bw_smooth_steps(d.smooth_steps, refresh) + 1) * 30 : 30, refresh);
     ImGui::TextDisabled("    The game itself still runs at 30. Experimental: off by default.");
-    if (ImGui::Checkbox("Show the frame rate   (F9)", &d.show_fps)) {
+    if (bw_menu_checkbox("Show the frame rate   (F9)", &d.show_fps)) {
         aurora_set_fps_overlay(d.show_fps);
         changed();
     }
     ImGui::BeginDisabled(!d.show_fps);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("FPS position", &d.fps_position, kBwFpsPositionNames, BW_FPS_POSITIONS)) {
+    if (bw_menu_combo("FPS position", &d.fps_position, kBwFpsPositionNames, BW_FPS_POSITIONS)) {
         apply_fps_position();
         changed();
     }
@@ -624,20 +653,19 @@ void tab_display(SDL_Window* w) {
     for (int i = 0; i < IM_ARRAYSIZE(kAnisotropy); i++)
         if (kAnisotropy[i] == d.anisotropy)
             filtering = i;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Texture filtering", &filtering, kAnisotropyNames, IM_ARRAYSIZE(kAnisotropyNames))) {
+    if (bw_menu_combo("Texture filtering", &filtering, kAnisotropyNames, IM_ARRAYSIZE(kAnisotropyNames))) {
         d.anisotropy = kAnisotropy[filtering];
         aurora_set_forced_anisotropy(static_cast<unsigned>(d.anisotropy));
         changed();
     }
-    if (ImGui::Checkbox("Keep the picture's shape (black bars rather than stretching)", &d.keep_aspect))
+    if (bw_menu_checkbox("Keep the picture's shape (black bars rather than stretching)", &d.keep_aspect))
         changed();
     restart_note(d.keep_aspect != g_launched.keep_aspect);
-    if (ImGui::Checkbox("Pause while the window is in the background", &d.pause_unfocused)) {
+    if (bw_menu_checkbox("Pause while the window is in the background", &d.pause_unfocused)) {
         aurora_set_pause_on_focus_lost(d.pause_unfocused);
         changed();
     }
-    if (ImGui::Checkbox("Compile shaders before playing", &d.shaders_first))
+    if (bw_menu_checkbox("Compile shaders before playing", &d.shaders_first))
         changed();
     restart_note(d.shaders_first != g_launched.shaders_first);
     if (ImGui::IsItemHovered())
@@ -653,15 +681,14 @@ void tab_display(SDL_Window* w) {
 void tab_controls() {
     Settings& d = g_session;
     bool mouse = false;
-    if (ImGui::Checkbox("Mouse camera: click the game, then move the mouse (Esc gives it back)", &d.mouse_camera))
+    if (bw_menu_checkbox("Mouse camera: click the game, then move the mouse (Esc gives it back)", &d.mouse_camera))
         mouse = true;
     float sensitivity = static_cast<float>(d.mouse_sensitivity);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::SliderFloat("Mouse sensitivity", &sensitivity, 0.25f, 4.0f, "%.2f", ImGuiSliderFlags_Logarithmic)) {
+    if (slider_float("Mouse sensitivity", &sensitivity, 0.25f, 4.0f, "%.2f", ImGuiSliderFlags_Logarithmic)) {
         d.mouse_sensitivity = sensitivity;
         mouse = true;
     }
-    if (ImGui::Checkbox("Mouse forward looks down", &d.mouse_invert_y))
+    if (bw_menu_checkbox("Mouse forward looks down", &d.mouse_invert_y))
         mouse = true;
     if (ImGui::CollapsingHeader("Mouse buttons")) {
         BwMouseMap buttons;
@@ -681,32 +708,29 @@ void tab_controls() {
         changed();
     }
     ImGui::Spacing();
-    bool stick = ImGui::Checkbox("Fast right-stick camera and aiming (like the mouse; click the stick for first person)",
+    bool stick = bw_menu_checkbox("Fast right-stick camera and aiming (like the mouse; click the stick for first person)",
                                  &d.stick_camera);
     ImGui::BeginDisabled(!d.stick_camera);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    stick |= ImGui::SliderInt("Right-stick turn speed", &d.stick_speed, 120, 720, "%d degrees a second");
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    stick |= ImGui::SliderInt("Right-stick aim speed (first person, items)", &d.stick_aim_speed, 60, 480,
+    stick |= slider_int("Right-stick turn speed", &d.stick_speed, 120, 720, "%d degrees a second");
+    stick |= slider_int("Right-stick aim speed (first person, items)", &d.stick_aim_speed, 60, 480,
                               "%d degrees a second");
-    stick |= ImGui::Checkbox("Hold the right-stick click and move it up/down to zoom", &d.stick_zoom);
+    stick |= bw_menu_checkbox("Hold the right-stick click and move it up/down to zoom", &d.stick_zoom);
     ImGui::BeginDisabled(!d.stick_zoom);
     float zoom_speed = static_cast<float>(d.stick_zoom_speed);
-    if (ImGui::SliderFloat("Controller zoom speed", &zoom_speed, 0.25f, 2.0f, "%.3fx")) {
+    if (slider_float("Controller zoom speed", &zoom_speed, 0.25f, 2.0f, "%.3fx")) {
         d.stick_zoom_speed = zoom_speed;
         stick = true;
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();
-    bool pad = ImGui::Checkbox("Controller: camera stick left and right inverted", &d.pad_invert_x);
-    pad |= ImGui::Checkbox("Controller: camera stick up and down inverted", &d.pad_invert_y);
-    stick |= ImGui::Checkbox("Left stick up and down inverted when aiming (first person, items)", &d.aim_invert_y);
-    stick |= ImGui::Checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
+    bool pad = bw_menu_checkbox("Controller: camera stick left and right inverted", &d.pad_invert_x);
+    pad |= bw_menu_checkbox("Controller: camera stick up and down inverted", &d.pad_invert_y);
+    stick |= bw_menu_checkbox("Left stick up and down inverted when aiming (first person, items)", &d.aim_invert_y);
+    stick |= bw_menu_checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
                              &d.gyro_aim);
     ImGui::BeginDisabled(!d.gyro_aim);
     float gyro_speed = static_cast<float>(d.gyro_aim_speed);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::SliderFloat("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
+    if (slider_float("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
         d.gyro_aim_speed = gyro_speed;
         stick = true;
     }
@@ -714,11 +738,11 @@ void tab_controls() {
     BwButtonMap map;
     const bool remapped = bw_button_map_parse(d.button_map, &map);
     ImGui::BeginDisabled(remapped);
-    pad |= ImGui::Checkbox("Swap A and B", &d.controller_swap_ab);
-    pad |= ImGui::Checkbox("Swap X and Y", &d.controller_swap_xy);
+    pad |= bw_menu_checkbox("Swap A and B", &d.controller_swap_ab);
+    pad |= bw_menu_checkbox("Swap X and Y", &d.controller_swap_xy);
     ImGui::EndDisabled();
-    pad |= ImGui::Checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
-    if (ImGui::Checkbox("D-pad moves the cursor in Items and Quest Status", &d.dpad_menus)) {
+    pad |= bw_menu_checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
+    if (bw_menu_checkbox("D-pad moves the cursor in Items and Quest Status", &d.dpad_menus)) {
         apply_dpad_menus();
         changed();
     }
@@ -742,14 +766,12 @@ void tab_controls() {
     // rendered from what the game asked for, or its own on-off motor.
     static const char* const kHaptics[] = {"Off", "Classic (the game's own on and off)",
                                            "Enhanced (shaped, with the triggers)"};
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    bool haptics = ImGui::Combo("Controller vibration", &d.haptics, kHaptics, IM_ARRAYSIZE(kHaptics));
+    bool haptics = bw_menu_combo("Controller vibration", &d.haptics, kHaptics, IM_ARRAYSIZE(kHaptics));
     ImGui::BeginDisabled(d.haptics != 2);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    haptics |= ImGui::SliderInt("Vibration strength", &d.haptics_strength, 0, 100, "%d%%");
+    haptics |= slider_int("Vibration strength", &d.haptics_strength, 0, 100, "%d%%");
     ImGui::EndDisabled();
     ImGui::BeginDisabled(d.haptics != 2);
-    haptics |= ImGui::Checkbox("Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)",
+    haptics |= bw_menu_checkbox("Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)",
                                &d.haptics_triggers);
     ImGui::EndDisabled();
     ImGui::TextDisabled(d.haptics == 2   ? "    Hits, falls, explosions and quakes as the game times them, shaped by their strength."
@@ -806,7 +828,7 @@ void hd_textures_section(Settings& d) {
         changed();
     }
     ImGui::SeparatorText("Wind Waker HD textures");
-    if (ImGui::Checkbox("HD textures", &d.hd_textures))
+    if (bw_menu_checkbox("HD textures", &d.hd_textures))
         changed();
     restart_note(d.hd_textures != g_launched.hd_textures || d.texture_pack != g_launched.texture_pack);
     const std::string folder = texture_pack_folder(d);
@@ -840,7 +862,7 @@ void hd_textures_section(Settings& d) {
 // next launch.
 void tab_gameplay() {
     Settings& d = g_session;
-    if (ImGui::Checkbox("Developers' stage select (F7)", &d.stage_select))
+    if (bw_menu_checkbox("Developers' stage select (F7)", &d.stage_select))
         changed();
     restart_note(d.stage_select != g_launched.stage_select);
     ImGui::TextDisabled("    F7 during play opens the menu the developers used to jump to any room, from your");
@@ -850,31 +872,30 @@ void tab_gameplay() {
     if (bw_stage_select_button())
         set_menu_open(false);
     ImGui::SeparatorText("Forest Water challenge");
-    if (ImGui::Checkbox("Keep watered trees when time runs out", &d.forest_keep_trees)) {
+    if (bw_menu_checkbox("Keep watered trees when time runs out", &d.forest_keep_trees)) {
         apply_forest_water();
         changed();
     }
     ImGui::TextDisabled("    Forest Water still expires. Refill and carry on with the trees still to water.");
-    if (ImGui::Checkbox("30-minute Forest Water timer", &d.forest_30_minutes)) {
+    if (bw_menu_checkbox("30-minute Forest Water timer", &d.forest_30_minutes)) {
         apply_forest_water();
         changed();
     }
     ImGui::TextDisabled("    Applies the next time Link scoops Forest Water.");
     ImGui::SeparatorText("Doors and exits");
-    if (ImGui::Checkbox("Fast transitions (short fades, no waiting in the black)", &d.fast_transitions))
+    if (bw_menu_checkbox("Fast transitions (short fades, no waiting in the black)", &d.fast_transitions))
         changed();
     restart_note(d.fast_transitions != g_launched.fast_transitions);
-    if (ImGui::Checkbox("Quick doors (no walk-in or door closing behind Link)", &d.quick_doors))
+    if (bw_menu_checkbox("Quick doors (no walk-in or door closing behind Link)", &d.quick_doors))
         changed();
     restart_note(d.quick_doors != g_launched.quick_doors);
     ImGui::SeparatorText("Climbing");
-    if (ImGui::Checkbox("Climb any wall (experimental)", &d.climb)) {
+    if (bw_menu_checkbox("Climb any wall (experimental)", &d.climb)) {
         apply_climb();
         changed();
     }
     ImGui::BeginDisabled(!d.climb);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
-    if (ImGui::SliderInt("Climbing stamina", &d.climb_stamina, 4, 30, "%d seconds")) {
+    if (slider_int("Climbing stamina", &d.climb_stamina, 4, 30, "%d seconds")) {
         apply_climb();
         changed();
     }
@@ -882,14 +903,13 @@ void tab_gameplay() {
     // Jump and sprint, one switch as on the iPad, with the sprint's speed
     // under it (BLUEWAKE_SPRINT_SPEED at the next launch).
     ImGui::SeparatorText("Jump and sprint");
-    if (ImGui::Checkbox("Jump and Run (Space or the left bumper jumps; Shift or the left stick click sprints)",
+    if (bw_menu_checkbox("Jump and Run (Space or the left bumper jumps; Shift or the left stick click sprints)",
                         &d.movement_extras))
         changed();
     restart_note(d.movement_extras != g_launched.movement_extras);
     ImGui::BeginDisabled(!d.movement_extras);
     float sprint = static_cast<float>(d.sprint_speed);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
-    if (ImGui::SliderFloat("Sprint speed", &sprint, 1.1f, 2.0f, "%.2fx")) {
+    if (slider_float("Sprint speed", &sprint, 1.1f, 2.0f, "%.2fx")) {
         d.sprint_speed = std::round(std::clamp(sprint, 1.1f, 2.0f) * 100.0f) / 100.0;
         changed();
     }
@@ -909,15 +929,14 @@ void tab_mods() {
     for (int i = 0; i < IM_ARRAYSIZE(kAspectValues); i++)
         if (d.aspect == kAspectValues[i])
             aspect = i;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Widescreen", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
+    if (bw_menu_combo("Widescreen", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
         d.aspect = kAspectValues[aspect];
         changed();
     }
     restart_note(d.aspect != g_launched.aspect);
     ImGui::TextDisabled("    Widescreen widens the camera and moves the HUD to the edges.");
     ImGui::Spacing();
-    if (ImGui::Checkbox("Better Wind Waker", &d.betterww))
+    if (bw_menu_checkbox("Better Wind Waker", &d.betterww))
         changed();
     restart_note(d.betterww != g_launched.betterww);
     ImGui::TextDisabled("    Wind Waker HD's changes. Each can be turned on or off:");
@@ -933,7 +952,7 @@ void tab_mods() {
         any = true;
         bool value = bw_settings_option_value(d, name, default_on);
         ImGui::PushID(name);
-        if (ImGui::Checkbox(title != nullptr ? title : name, &value)) {
+        if (bw_menu_checkbox(title != nullptr ? title : name, &value)) {
             d.options[name] = value;
             changed();
         }
@@ -1049,12 +1068,18 @@ void load_font(SDL_Window* w) {
 
 void draw_menu(SDL_Window* w) {
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // The controller, read here and handed to ImGui as keys (menu_shared.h).
+    const BwMenuPad pad = bw_menu_controller(g_session.button_map, g_session.controller_swap_ab);
     const float scale = ui_scale(w);
     bluewake_ui::begin_theme(scale);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
-                            ImVec2(0.5f, 0.5f));
     if (g_stage_select_question) {
+        if (pad.back) {  // B cancels the question, as Esc does
+            io.AddKeyEvent(ImGuiKey_Escape, true);
+            io.AddKeyEvent(ImGuiKey_Escape, false);
+        }
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
+                                ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowBgAlpha(0.94f);
         int answer = 0;
         if (ImGui::Begin("Developers' stage select", nullptr,
@@ -1069,16 +1094,45 @@ void draw_menu(SDL_Window* w) {
             set_menu_open(false);
         return;
     }
-    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(io.DisplaySize.x * 0.95f, io.DisplaySize.y * 0.9f));
+    // A size of its own rather than its contents', so each tab's body scrolls
+    // inside it and the footer stays put, as in the Mac and Linux menu: it opens
+    // in the middle, and can be moved and resized, but only inside the game's window.
+    const ImVec2 display = io.DisplaySize;
+    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(std::min(display.x - 24.f, 900.f * scale),
+                                    std::min(display.y - 24.f, 720.f * scale)), ImGuiCond_Appearing);
+    // Resizing stays between a size that still holds the tabs, hint and buttons
+    // and the edges of the game's window, less a margin, from where the menu is.
+    const ImVec2 largest(std::max(1.f, display.x - 24.f), std::max(1.f, display.y - 24.f));
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(std::min(460.f * scale, largest.x), std::min(320.f * scale, largest.y)), largest,
+        [](ImGuiSizeCallbackData* data) {
+            // Growing stops at the edge; a menu already past it (moved there) isn't shrunk.
+            const ImVec2 screen = ImGui::GetIO().DisplaySize;
+            const auto limit = [](float desired, float current, float room) {
+                return desired <= room ? desired : std::max(room, std::min(current, desired));
+            };
+            data->DesiredSize.x = limit(data->DesiredSize.x, data->CurrentSize.x, screen.x - 12.f - data->Pos.x);
+            data->DesiredSize.y = limit(data->DesiredSize.y, data->CurrentSize.y, screen.y - 12.f - data->Pos.y);
+        });
     ImGui::SetNextWindowBgAlpha(0.94f);
+    // Dragged, or resized from the top or left, it stays inside the game's
+    // window. ImGui moves a dragged window as the frame starts, so this has to
+    // come before Begin draws it there; if it is ever bigger than the game's
+    // window, the top left (the tabs) stays in view.
+    if (const ImGuiWindow* window = ImGui::FindWindowByName("BlueWake settings")) {
+        const ImVec2 kept(std::max(12.f, std::min(window->Pos.x, display.x - 12.f - window->Size.x)),
+                          std::max(12.f, std::min(window->Pos.y, display.y - 12.f - window->Size.y)));
+        if (kept.x != window->Pos.x || kept.y != window->Pos.y)
+            ImGui::SetNextWindowPos(kept);
+    }
+    // A click on the game or outside the menu leaves no window focused, and
+    // then the controller has nothing to move through: give the menu focus back.
+    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
+        ImGui::SetNextWindowFocus();
     bool open = true;
-    // A scrollbar only when the menu is taller than the window allows (the Mods
-    // tab in a small window): at fractional scales the auto-sized window came
-    // out a pixel short of its contents and showed one for nothing.
-    static bool overflows;
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
-                                   (overflows ? 0 : ImGuiWindowFlags_NoScrollbar);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoSavedSettings;
     if (ImGui::Begin("BlueWake settings", &open, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
         bluewake_ui::heading("Play your way", "Display, controls and enhancements, all in one place.");
@@ -1086,30 +1140,46 @@ void draw_menu(SDL_Window* w) {
         // keeps the key from SDL; one that reaches ImGui instead closes it too.
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
             open = false;
+        // The bumpers switch tabs. Each tab's body scrolls on its own but is
+        // flattened for navigation, so the D-pad moves from the tabs through the
+        // options to the buttons below without A to enter it and B to leave it.
+        static const char* const kTabs[] = {"Display", "Gameplay", "Mods", "Controls", "Sound and files"};
+        constexpr int kTabCount = IM_ARRAYSIZE(kTabs);
+        static int shown = 0;
+        int request = -1;
+        if (pad.tab_step != 0)
+            request = (shown + kTabCount + pad.tab_step) % kTabCount;
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float footer = style.ItemSpacing.y * 2.f + ImGui::GetTextLineHeightWithSpacing() +
+                             ImGui::GetFrameHeightWithSpacing();
         if (ImGui::BeginTabBar("tabs")) {
-            if (ImGui::BeginTabItem("Display")) {
-                tab_display(w);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Gameplay")) {
-                tab_gameplay();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Mods")) {
-                tab_mods();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Controls")) {
-                tab_controls();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Sound and files")) {
-                tab_game();
+            // No title bar, so the mouse's close button sits at the end of the tabs.
+            if (ImGui::TabItemButton("x", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+                open = false;
+            for (int i = 0; i < kTabCount; ++i) {
+                if (!ImGui::BeginTabItem(kTabs[i], nullptr, i == request ? ImGuiTabItemFlags_SetSelected : 0))
+                    continue;
+                shown = i;
+                ImGui::PushID(i);
+                ImGui::BeginChild("##body", ImVec2(0, -footer), ImGuiChildFlags_NavFlattened);
+                ImGui::PushTextWrapPos(0.f); // text wraps at the menu's edge
+                switch (i) {
+                case 0: tab_display(w); break;
+                case 1: tab_gameplay(); break;
+                case 2: tab_mods(); break;
+                case 3: tab_controls(); break;
+                default: tab_game(); break;
+                }
+                ImGui::PopTextWrapPos();
+                bw_menu_stick_scroll(pad.scroll);
+                ImGui::EndChild();
+                ImGui::PopID();
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
         }
         ImGui::Separator();
+        ImGui::TextDisabled("A chooses, B closes, LB and RB change tabs, the right stick scrolls.");
         if (needs_restart()) {
             ImGui::TextUnformatted("* Takes effect when BlueWake starts again.");
             ImGui::SameLine();
@@ -1128,7 +1198,9 @@ void draw_menu(SDL_Window* w) {
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
         }
-        overflows = ImGui::GetScrollMaxY() > 4.0f * scale;
+        // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
+        if (bw_menu_back(pad.back))
+            open = false;
     }
     ImGui::End();
     bluewake_ui::end_theme();
