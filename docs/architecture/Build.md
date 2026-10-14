@@ -460,25 +460,26 @@ optimizations. The BlueWake host application remains separate until stage 7.
 
 ## 6. Train
 
-Training shows the compiler which translated game paths are used most often.
-The builder runs deterministic headless playbacks with an instrumented module,
-merges the recorded execution counts, and feeds that profile into the final
-compile. The goal is to optimize frequently executed code for better runtime
-performance without changing game behavior; no machine-learning model is
-trained.
+Stage 5 ends with prepared C source, not a compiled game module. To train, the
+builder first compiles that source into a temporary instrumented module, then
+runs deterministic headless playbacks and merges the recorded execution
+counts. Stage 7 compiles the final module using that profile so frequently
+executed code runs faster without changing game behavior; no machine-learning
+model is trained.
 
 ```mermaid
 flowchart LR
-    Prepared["Prepared source"]
+    Prepared["Stage 5 prepared<br/>C source"]
     Fingerprint["Input<br/>fingerprint"]
-    Instrumented["Instrumented<br/>module"]
+    Compile["Temporary instrumented<br/>compilation"]
+    Instrumented["Training module<br/>with counters"]
     Playback["Headless<br/>playbacks"]
     Raw["Raw profiles"]
     Merge["Merge profiles"]
     Profile["PGO profile"]
 
     Prepared --> Fingerprint
-    Fingerprint -->|cache miss| Instrumented --> Playback --> Raw --> Merge --> Profile
+    Fingerprint -->|cache miss| Compile --> Instrumented --> Playback --> Raw --> Merge --> Profile
     Fingerprint -->|cache hit| Profile
 ```
 
