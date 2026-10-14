@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 13, 2026.
+Updated October 14, 2026.
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -30,6 +30,31 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 1. Lean what we have, and catch up with Elliott | 0.7.0 and the next two weeks | Lean block copies (default since today), draw fusion, his faster loads and natives rounds 4, 5 and 7, his upload changes, hidden symbols, Smooth Motion pacing | Faster on the benchmark, and the game plays the same |
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
+
+## Where things stand on October 14
+
+- **Menus and hotkeys are the same on every desktop build** (#320, pdale-boop; merged #324, #326 to #330, #332): F1
+  settings, F2 HD look, F5 save state, F7 stage select, F8 load state, F9 frame rate, F10 Smooth Motion, F11 / Alt+Enter
+  fullscreen, with a status line for each. Windows keeps F6 as a second save key. The Mac and Linux menu works with a
+  controller and has Windows' Display and Sound and files settings. Linux has Restart now and safe mode. The Windows
+  menu has the Mac and Linux layout. Checked on Linux and Windows by pdale-boop. On the Mac (M3 Max) I checked the
+  keyboard: F1, F8, F9, F10, F11, Esc and `settings.ini`. No controller or mouse check on the Mac yet.
+- **The Wind Temple's R04 and R08** (#318): pdale-boop matched the stage load against Dolphin. `d_a_shutter2.rel` is a
+  loose file on the disc, so on the console it arrives after Link is built. #331 gives loose RELs a load time back
+  (`BLUEWAKE_LOOSE_REL_RETRACES=1`, off by default). Two full sweeps: only R04 and R08 change. Next: the Mac, then on
+  by default.
+- **Behaviour timing as the default** (#215, #335): the Steam Deck is 9% faster (jkoehler11), and it played without
+  differences there and on Linux. #335 turns it on in the Windows and Linux builders: a draft for Chris.
+- **The Picto Box** (#267, #333): jslay88 found why Lenzo refuses correct photos: `GXPeekARGB` was never answered. The
+  fix is RecompCore#36 plus #334. `bluewake-next` is level with BlueWake's pin, so moving the pin brings only this
+  fix. Waiting on a photo on the Mac and Chris's OK for the pin.
+- **Greatfish merchant** (#313): fixed in `main` (#323, jslay88), confirmed by the reporter.
+- **Flicker** (#136): draw fusion ruled out. The fix is in how Smooth Motion places the sky between frames.
+- **Linux window resize crash** (#325): pdale-boop will send an Aurora fix to RecompCore (reconfigure the surface on
+  `Lost`, as for `Outdated`).
+- **Closed:** #308 (no hang on `main`), #313. #322 (German) is counted in #60.
+- **My open drafts, brought up to date with `main`:** #321 (softer HD look, waiting on Chris), #316 (iOS menu
+  switches, waiting on a tap on the iPad), #315 (the HD importer in the app).
 
 ## Where things stand on October 13
 
