@@ -130,3 +130,8 @@ draws became 0.87 million, and on four E-cores Forest Haven went from 30.6 to 40
 profiler (`DOL_AURORA_GPU_PROF=1`). Fusion is on for Windows, where he tested it, and for Linux, played on a Steam Deck
 (#215); the host turns it off on the Mac, iPhone and Android (`DOL_GX_FUSE=1` turns it on). His later commits (the compact vertex layout and the
 upload changes) conflict with patch 0157 and are not here yet.
+
+Patch 0177 is jslay88's RecompCore #36: the Picto Box reads its actor ids from the current EFB instead of
+receiving zero for every pixel. It needs BlueWake's host MMIO handler from #334. Cold-cache alpha-only
+pipeline compilation remains a separate follow-up (RecompCore#39), not part of this pin.
+Mac recognition and remaining checks: [Picto validation](../../docs/status/PICTO_RECOGNITION_2026-10-15.md).

@@ -489,10 +489,11 @@ static void start_profile(void) {
     fprintf(stderr, "[profile] sampling the game thread into %s\n", g_profile_path);
 }
 
-// Desktop hotkeys: F11 toggles fullscreen (Return, the other half of the usual
-// Alt+Return, is the game's START), F10 Smooth Motion and F9 the frame rate. A keyboard
-// hook on the game thread, which pumps the window's messages, sees them before
-// SDL; Aurora's single event-observer slot belongs to the mouse camera.
+// Desktop hotkeys: F1 or Esc the settings, F2 the HD look, F6 a second save
+// state key, F9 the frame rate, F10 Smooth Motion, and F11 or Alt+Return
+// fullscreen (Return is the game's START). A keyboard hook on the game thread,
+// which pumps the window's messages, sees them before SDL; Aurora's single
+// event-observer slot belongs to the mouse camera.
 static HHOOK g_hotkey_hook;
 
 static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
@@ -505,8 +506,9 @@ static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
     if (trace)
         fprintf(stderr, "[keys] code=%d vk=0x%02X %s%s%s\n", code, (unsigned)key, down ? "down" : "up",
                 repeat ? " repeat" : "", alt ? " alt" : "");
-    // A key BlueWake handles (win_settings.cpp) is kept from the game: F1, F9,
-    // F10, F11, Esc for the menu, and Alt+Enter, whose Return would be START.
+    // A key BlueWake handles (win_settings.cpp, bw_settings_key) is kept from
+    // the game: F1, F2, F6, F9, F10, F11, Esc, and Alt+Enter, whose Return
+    // would be START.
     if (code == HC_ACTION && down && !repeat && bw_settings_key((unsigned)key, alt))
         return 1;
     if (code == HC_ACTION && key == VK_RETURN && alt)
