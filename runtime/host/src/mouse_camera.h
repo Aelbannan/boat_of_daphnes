@@ -90,5 +90,9 @@ void bluewake_mouse_camera_reload(void);
 // The Windows options overlay applies these directly and blocks gameplay input.
 void bluewake_mouse_camera_configure(bool enabled, double sensitivity, bool invert_y);
 void bluewake_mouse_camera_block(bool blocked);
+// When a menu closes: the controller's buttons, sticks and triggers stay at
+// rest for the game until they have all been let go, so the press that closed
+// the menu (B, or A on a button) doesn't reach the game.
+void bluewake_pad_hold_until_released(void);
 
 #endif

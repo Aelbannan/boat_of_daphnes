@@ -57,6 +57,7 @@
 #include "return_census.h"
 #include "scheduler_contract.h"
 #include "save_state.h"
+#include "status_line.h"
 #include "climb.h"
 #include "gxruntime/hle.h"
 #include <aurora/gfx.h>
@@ -234,13 +235,17 @@ static DolAudioDma g_audio_dma;
 static BluewakeAudioCapture g_audio_capture;
 // SRAM on EXI channel 0 (ipl_sram.h); off unless BLUEWAKE_SRAM is set.
 static BluewakeIplSram g_ipl_sram;
-// EFB depth peeks (GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2)) answered
+// EFB peeks. GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2) and is answered
 // from Aurora's asynchronous depth snapshot. Wind Waker's sun counts as visible
 // only where the peeked depth is far (0xFFFFFF); every peek used to read 0, so
 // the sun was always hidden and its glare and lens flare never drew. On with
 // the Aurora renderer (BLUEWAKE_EFB_PEEK=0 turns it off); Dolphin with EFB
 // access on, its setting for this game, draws the same glare (CURRENT.md,
 // 2026-09-24). The headless renderer, which the certified route uses, keeps 0.
+// GXPeekARGB reads 0xC8000000 + (y << 12) + (x << 2). The Picto Box paints each
+// actor's slot into that alpha and reads it back in the same frame; a read of 0
+// credits every pixel to whoever was registered first, so Lenzo is handed the
+// wrong person. The first peek of a frame drains the FIFO and copies the EFB.
 static bool g_efb_peek_enabled;
 static unsigned g_efb_peek_reports;
 static bool g_audio_capture_failure_reported;
@@ -1768,8 +1773,70 @@ static bool g_ground_cross_valid_seen;
 static bool g_ground_cross_sentinel_seen;
 static const char* g_ground_cross_stop_reason;
 
+// The traveling merchants (daNpcRoten_c) stand on rafts. Their setup asks the
+// ground check where the floor is and then moves them there even when that
+// floor is far below their feet. Under the Greatfish raft the check hits a
+// sea-floor polygon at about -4990, so the Goron is placed on it and never
+// comes back up: later checks only step him up onto ground that is already
+// above him. When this check is his, and the hit is that far down, report the
+// deck he spawned on instead. A real raft surface is near his feet and is
+// left alone.
+static void host_roten_stand_on_deck(CPUState* cpu) {
+    const u32 check = cpu->gpr[31];
+    const u32 ground_bits = mem_read32(cpu, check + 52u);
+    // -1e9 is "no ground". A hit above -2048 (any float whose high byte is
+    // below 0xC5) is a real surface; the sea floor that sinks him is -4990.
+    if (ground_bits == 0xCE6E6B28u || (ground_bits >> 24) < 0xC5u)
+        return;
+    const u32 caller = mem_read32(cpu, cpu->gpr[1] + 36u);
+    if (caller < 0x800A2EE8u || caller >= 0x800A305Cu)
+        return;
+    if (check < 0x800000D4u || check >= 0x82000000u)
+        return;
+    const u32 acch = check - 0xD4u;
+    const u32 pos = mem_read32(cpu, acch + 0x2Cu);
+    const u32 actor = mem_read32(cpu, acch + 0x80u);
+    if (pos < 0x80000000u || pos >= 0x82000000u || actor < 0x80000000u ||
+        actor >= 0x82000000u || pos != actor + 0x1F8u)
+        return;
+    const u32 param = mem_read32(cpu, actor + 0xB0u);
+    const unsigned npc = param >> 24;
+    if (npc > 2u || mem_read8(cpu, actor + 0x9BDu) != npc)
+        return;
+    // Greatfish and Mother & Child are 0xNNff0000. Bomb Island walks rail 7.
+    if (!((npc == 0u && param == 0x00070000u) ||
+          (npc != 0u && param == (npc << 24 | 0x00ff0000u))))
+        return;
+
+    const u32 current_bits = mem_read32(cpu, pos + 4u);
+    const u32 home_bits = mem_read32(cpu, actor + 0x1D4u);
+    float current_y, home_y;
+    memcpy(&current_y, &current_bits, sizeof current_y);
+    memcpy(&home_y, &home_bits, sizeof home_y);
+    // Deck heights from the sea stage, used only once he has already been
+    // buried (home was overwritten with the sea floor).
+    static const float kDeckY[3] = {638.414306640625f, 200.0f, 600.0f};
+    const float support = home_y > -100.0f ? home_y :
+                          current_y > -100.0f ? current_y : kDeckY[npc];
+    u32 support_bits;
+    memcpy(&support_bits, &support, sizeof support_bits);
+    mem_write32(cpu, check + 52u, support_bits);
+    cpu->fpr[1] = support;
+    mem_write32(cpu, actor + 0x1D4u, support_bits);
+    const u32 old_pos = mem_read32(cpu, acch + 0x30u);
+    if (old_pos >= 0x80000000u && old_pos < 0x82000000u)
+        mem_write32(cpu, old_pos + 4u, support_bits);
+    static bool logged;
+    if (!logged && current_y < -100.0f) {
+        logged = true;
+        fprintf(stderr, "[roten] merchant %u was under the raft (%.0f); standing at %.0f\n",
+                npc, current_y, support);
+    }
+}
+
 static void host_observe_ground_cross_return(CPUState* cpu,
                                              unsigned long long blocks) {
+    host_roten_stand_on_deck(cpu);
     const u32 check = cpu->gpr[31];
     const u32 ground_bits = mem_read32(cpu, check + 52u);
     const u32 return_bits = host_f32_bits(cpu->fpr[1]);
@@ -2721,6 +2788,93 @@ static bool host_materialize_rel(CPUState* cpu, const char* name, u32 owner,
     return true;
 }
 
+/* A load time for loose RELs (#318). The game's RELs come from RELS.arc, in
+   memory, or from loose files under /rels/ on the disc, which do_load reads
+   with JKRDvdToMainRam: on the console that read takes frames, on the disc
+   thread for an async load. BlueWake has every module resident, so the room's
+   loose-REL actors (d_a_shutter2 in the Wind Temple's R04 and R08) were
+   created before Link had finished. With BLUEWAKE_LOOSE_REL_RETRACES=N, a
+   load from /rels/ waits N retraces in VIWaitForRetrace on the thread that
+   asked, then completes as before; archived RELs stay instant, as on the
+   console. Unset or 0: off. */
+#define BLUEWAKE_DO_LOAD 0x80240744u
+#define BLUEWAKE_VI_WAIT_FOR_RETRACE 0x80313A04u
+#define BLUEWAKE_VI_RETRACE_COUNT 0x803F7B3Cu
+#define BLUEWAKE_MAX_LOOSE_REL_WAITS 8u
+
+typedef struct {
+    u32 stack;  /* r1: the thread that is waiting */
+    u32 object; /* r3: the DynamicModuleControl */
+    u32 lr;     /* do_load's caller */
+    u32 until;  /* retrace count to wait for */
+} BlueWakeLooseRelWait;
+
+static u32 g_loose_rel_retraces;
+static BlueWakeLooseRelWait g_loose_rel_waits[BLUEWAKE_MAX_LOOSE_REL_WAITS];
+static unsigned g_loose_rel_reports;
+
+static void host_loose_rel_configure(void) {
+    const char* retraces = getenv("BLUEWAKE_LOOSE_REL_RETRACES");
+    const long n = retraces != NULL ? strtol(retraces, NULL, 10) : 0;
+    g_loose_rel_retraces = n > 0 ? (u32)(n < 600 ? n : 600) : 0u;
+    fprintf(stderr, "[rel] loose REL load time=%s%u%s\n",
+            g_loose_rel_retraces != 0u ? "" : "off (", g_loose_rel_retraces,
+            g_loose_rel_retraces != 0u ? " retraces (BLUEWAKE_LOOSE_REL_RETRACES)" : ")");
+}
+
+/* At do_load's entry: true when the thread was sent to wait a retrace (cpu.pc
+   is VIWaitForRetrace, which returns to do_load's entry), false to load now. */
+static bool host_loose_rel_wait(CPUState* cpu) {
+    if (g_loose_rel_retraces == 0u)
+        return false;
+    const u32 now = mem_read32(cpu, BLUEWAKE_VI_RETRACE_COUNT);
+    // Back from VIWaitForRetrace: the caller's this and return address again.
+    if (cpu->lr == BLUEWAKE_DO_LOAD) {
+        for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+            BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+            if (wait->stack != cpu->gpr[1])
+                continue;
+            cpu->gpr[3] = wait->object;
+            if ((s32)(now - wait->until) < 0) {
+                cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+                return true;
+            }
+            cpu->lr = wait->lr;
+            *wait = (BlueWakeLooseRelWait){0};
+            return false;
+        }
+        return false;
+    }
+    const u32 object = cpu->gpr[3];
+    if (object == 0u || mem_read32(cpu, object + 0x10u) != 0u)
+        return false;
+    char name[96] = {0};
+    const u32 name_address = mem_read32(cpu, object + 0x1Cu);
+    if (name_address == 0u)
+        return false;
+    guest_read_cstr(cpu, name_address, name, sizeof(name));
+    char path[128];
+    snprintf(path, sizeof(path), "/rels/%s.rel", name);
+    if (name[0] == '\0' || dvd_path_to_entrynum(path) < 0)
+        return false; // in RELS.arc: in memory on the console too
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+        BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+        if (wait->stack != 0u)
+            continue;
+        *wait = (BlueWakeLooseRelWait){cpu->gpr[1], object, cpu->lr,
+                                       now + g_loose_rel_retraces};
+        if (g_loose_rel_reports < 64u) {
+            fprintf(stderr, "[rel] loose REL \"%s\" waits %u retraces from %u\n",
+                    name, g_loose_rel_retraces, now);
+            g_loose_rel_reports++;
+        }
+        cpu->lr = BLUEWAKE_DO_LOAD;
+        cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+        return true;
+    }
+    return false; // more waiting threads than slots: load at once
+}
+
 static void host_zero_rel_bss(CPUState* cpu, const BlueWakeRelData* rel_data,
                               u32 rel_data_count, u32 module_id) {
     for (u32 i = 0; i < rel_data_count; ++i) {
@@ -3437,6 +3591,18 @@ static u64 host_mmio_read(CPUState* ctx, u32 address, u8 size) {
         return memory_value;
     if (bluewake_ipl_sram_contains(&g_ipl_sram, address) && size == 4u)
         return bluewake_ipl_sram_read(&g_ipl_sram, address);
+    if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
+        (address & 0x00C00000u) == 0u) {
+        const u16 x = (u16)((address >> 2) & 0x3FFu);
+        const u16 y = (u16)((address >> 12) & 0x3FFu);
+        // The id pass is still in the FIFO until this drain. One copy serves
+        // the rest of the viewfinder.
+        if (!aurora_color_peek_ready())
+            dol_platform_gx_flush();
+        u32 argb = 0u;
+        (void)aurora_peek_argb(x, y, &argb);
+        return argb;
+    }
     if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
         (address & 0x00C00000u) == 0x00400000u) {
         const u16 x = (u16)((address >> 2) & 0x3FFu);
@@ -6947,7 +7113,35 @@ static void host_state_parse_requests(void) {
     }
 }
 
-// F5 / F9 from the window's event observer (mouse_camera.c), main thread.
+// The status line (status_line.h): posted by the game thread or the window's
+// key handlers, read by an overlay. The number is odd while the text is being
+// written, so a reader never copies half of one message.
+static char g_status_text[64];
+static atomic_uint g_status_seq;
+
+void bluewake_status_post(const char* text) {
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_acq_rel);
+    snprintf(g_status_text, sizeof g_status_text, "%s", text);
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_release);
+}
+
+unsigned bluewake_status_read(char* text, size_t size) {
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const unsigned before = atomic_load_explicit(&g_status_seq, memory_order_acquire);
+        if (before & 1u)
+            continue;
+        if (size != 0) {
+            memcpy(text, g_status_text, size < sizeof g_status_text ? size : sizeof g_status_text);
+            text[size - 1] = '\0';
+        }
+        atomic_thread_fence(memory_order_acquire);
+        if (atomic_load_explicit(&g_status_seq, memory_order_relaxed) == before)
+            return before / 2u;
+    }
+    return 0u;
+}
+
+// F5 / F8 from the window's event observer (mouse_camera.c), main thread.
 void bluewake_save_state_hotkey(bool load) {
     if (load)
         g_state_hotkey_load = true;
@@ -6999,6 +7193,8 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
                     (unsigned long long)g_host_retrace_count);
         if (waited > 3600u) {
             fprintf(stderr, "[state] no clean point for a minute; save dropped\n");
+            if (g_state_hotkey_save)
+                bluewake_status_post("State not saved: the game was busy");
             for (u32 i = 0; i < g_state_request_count; ++i)
                 if (g_state_requests[i].retrace <= g_host_retrace_count)
                     g_state_requests[i].done = true;
@@ -7023,7 +7219,7 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
         mkdir(host_state_dir(), 0755);
         snprintf(path, sizeof path, "%s/quick-%llu.bwstate", host_state_dir(),
                  (unsigned long long)g_host_retrace_count);
-        host_state_save(path, cpu, mod, loop);
+        bluewake_status_post(host_state_save(path, cpu, mod, loop) ? "State saved" : "State not saved");
     }
     g_state_save_armed = false;
 }
@@ -7045,12 +7241,18 @@ static inline void host_state_turn(CPUState* cpu, const StaticRecompModuleDesc* 
             g_state_hotkey_load = false;
             const char* unsafe = host_state_unsafe_reason(cpu, loop);
             if (g_state_last_path[0] == '\0' &&
-                !host_state_latest(g_state_last_path, sizeof g_state_last_path))
-                fprintf(stderr, "[state] F9: no state in %s yet (F5 saves one)\n", host_state_dir());
-            else if (unsafe != NULL)
-                fprintf(stderr, "[state] F9: not now (%s)\n", unsafe);
-            else if (!host_state_load(g_state_last_path, cpu, mod, loop))
-                fprintf(stderr, "[state] F9: load failed; the machine may be inconsistent\n");
+                !host_state_latest(g_state_last_path, sizeof g_state_last_path)) {
+                fprintf(stderr, "[state] load: no state in %s yet (F5 saves one)\n", host_state_dir());
+                bluewake_status_post("No state yet (F5 saves one)");
+            } else if (unsafe != NULL) {
+                fprintf(stderr, "[state] load: not now (%s)\n", unsafe);
+                bluewake_status_post("State not loaded: the game was busy");
+            } else if (!host_state_load(g_state_last_path, cpu, mod, loop)) {
+                fprintf(stderr, "[state] load failed; the machine may be inconsistent\n");
+                bluewake_status_post("State not loaded");
+            } else {
+                bluewake_status_post("State loaded");
+            }
             g_state_poll_retrace = g_host_retrace_count;
             return;
         }
@@ -7594,6 +7796,7 @@ int main(int argc, char** argv) {
     g_deferred_dvd_enabled = deferred_dvd_set ? strcmp(deferred_dvd, "1") == 0 : deferred_dvd_default;
     fprintf(stderr, "[dvd] deferred completion=%s (%s)\n", g_deferred_dvd_enabled ? "on" : "off",
             deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
+    host_loose_rel_configure();
     {
         const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
         g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
@@ -9505,6 +9708,8 @@ int main(int argc, char** argv) {
                     cpu.gpr[7], cpu.lr, resource_name);
             g_resource_info_reports++;
         }
+        if (cpu.pc == 0x80240744u && host_loose_rel_wait(&cpu))
+            continue;
         if (g_dynamic_load_reports < 8u &&
             (cpu.pc == 0x80240744u || cpu.pc == 0x80240A48u)) {
             char module_name[96] = {0};

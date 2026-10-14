@@ -69,7 +69,7 @@ Options (`--help` lists all):
 | `--native-entries` | Elliott Tate's second and third native sets; off by default. They apply only where the translation matches what his builder produces, so they need the lean copies (the default) |
 | `--no-lean-memory` | Loads and stores in the prepaid copies as before Elliott Tate's lean memory (on by default since October 12), and so without lean deadlines either: about 5% slower. Lean memory changes nothing with `--no-lean-blocks` |
 | `--no-lean-deadlines` | Keeps the deadline test after every load and store. Lean deadlines (on by default since October 12) test it only on an access's way out of RAM, where the deadline can move: About 4 to 5% faster on a Mac, the same game state ([PERFORMANCE.md](PERFORMANCE.md#results)). `--native-entries` declines its natives with it, since their hashes cover the copies, so use `--no-lean-deadlines` with `--native-entries` |
-| `--behaviour-timing` | A prototype, off by default: every block of game code runs its prepaid copy, so a timer or an interrupt lands at the start of the next block instead of on its exact instruction, and the turn's budget is checked where the code can loop. About 7 to 9% faster on a Mac, with a smaller module and a quicker build; the game state is not identical to a build without it, but the 468-place stage select sweep and the sound came out the same ([the note](status/BEHAVIOUR_TIMING_2026-10-12.md)) |
+| `--no-behaviour-timing` | Checks the turn's budget after every block, as before behaviour timing. Behaviour timing (on by default since October 14) runs every block of game code from its prepaid copy, so a timer or an interrupt lands at the start of the next block instead of on its exact instruction, and the budget is checked where the code can loop. It was 7 to 9% faster on a Mac, 7 to 11% on two Intel desktops and 9% on the Steam Deck, with a module 8 to 15% smaller and a quicker build. The game state isn't identical to a build without it, but the 468-place stage select sweep and the sound came out the same, and it played normally on the Deck and on desktops ([the note](status/BEHAVIOUR_TIMING_2026-10-12.md), #215) |
 | `--no-cold` | Compile code the training never ran for speed too; slower in every test so far, so off |
 | `--jobs N` | Parallel compile jobs (default: the cores, as far as free memory allows) |
 | `--march LEVEL` | CPU level for the game module (default `x86-64-v3`) |
@@ -142,10 +142,15 @@ Run `build\windows\BlueWake\BlueWake.exe`.
 | START | Return |
 | Camera | Click the game, then move the mouse (Esc releases it) |
 | Settings | F1 or Esc after releasing the mouse |
-| Jump / Run | Space / Shift; enable them in settings |
-| Fullscreen | F11 |
-| Smooth Motion | F10 |
+| Jump / Sprint | Space / Shift; turn on Jump & Sprint in settings (Gameplay) |
+| HD look | F2 |
+| Save state / load the latest | F5 / F8 |
+| Stage select | F7, once it's on in settings |
 | Frame rate | F9 |
+| Smooth Motion | F10 |
+| Fullscreen | F11 or Alt+Enter |
+
+A few words at the bottom left say what each key did.
 
 Game controllers work through SDL (Xbox, PlayStation, Switch Pro and others). The title screen wants A to reach
 the file menu. To choose which controller button presses each GameCube button, open settings and use
