@@ -6490,9 +6490,9 @@ static void host_apply_aspect(void) {
 // When. A save waits for a clean point: the top of a turn whose pc is
 // GXSetDrawDone's return (0x80322BC8) - the frame's GX commands are complete,
 // so after a load the next frame is drawn whole - with no exception pending,
-// no REL prolog half done, no HLE card callback queued or running, no scene
-// change (overlap) or quick door under way. A request that has not met a
-// draw-done point within 120 retraces takes the next clean retrace boundary
+// no REL prolog half done or loose REL wait, no HLE card callback queued or
+// running, no scene change (overlap) or quick door under way. A request that
+// has not met a draw-done point within 120 retraces takes the next clean retrace boundary
 // instead (the GX front end carries any partial command either way).
 #define HOST_STATE_DRAW_DONE_PC 0x80322BC8u
 #define HOST_STATE_MAX_REQUESTS 8u
@@ -7158,6 +7158,11 @@ static const char* host_state_unsafe_reason(const CPUState* cpu,
         return "REL prolog in progress";
     if (!dol_hle_callback_idle())
         return "memory card callback in flight";
+    // A parked guest thread needs its host-only object and return address.
+    // Keep the slot until that thread resumes, even if its deadline has passed.
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i)
+        if (g_loose_rel_waits[i].stack != 0u)
+            return "loose REL load in progress";
     if (bluewake_quick_doors_busy())
         return "quick door in progress";
     if (mem_read32((CPUState*)cpu, 0x803F6160u) >= 0x80000000u)
