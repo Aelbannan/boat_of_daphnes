@@ -17,13 +17,13 @@ module, and coordinates guest execution with compatibility and graphics
 services.
 
 ```mermaid
-flowchart LR
-    Package["Packaged application"]
-    Entry["Platform entry layer"]
-    Paths["Resources, settings,<br/>and player-data paths"]
+flowchart TD
+    Package["Packaged app"]
+    Entry["Platform entry"]
+    Paths["Resources +<br/>data paths"]
     Host["bluewake_host_main"]
-    Module["Native game module"]
-    Runtime["Guest state, services,<br/>and graphics"]
+    Module["Game module"]
+    Runtime["State + services<br/>+ graphics"]
 
     Package --> Entry --> Paths --> Host
     Host --> Module

@@ -18,13 +18,13 @@ BlueWake-specific adapters coordinated by the host.
 
 ```mermaid
 flowchart TD
-    Game["Translated loads, stores,<br/>and service calls"]
-    Boundary["MMIO and host-service boundary"]
-    Time["Guest time and interrupts"]
+    Game["Guest loads, stores<br/>+ service calls"]
+    Boundary["MMIO + host<br/>service boundary"]
+    Time["Time + interrupts"]
     Disc["Disc and storage"]
-    Input["Controller input"]
-    Audio["Audio, DSP, and ARAM"]
-    Platform["Native files, controllers,<br/>audio, and scheduling"]
+    Input["Input"]
+    Audio["Audio + DSP<br/>+ ARAM"]
+    Platform["Native files +<br/>devices"]
 
     Game --> Boundary
     Boundary --> Time

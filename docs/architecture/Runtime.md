@@ -50,11 +50,11 @@ flowchart TD
     Platform -->|"starts"| Host
     Host -->|"loads ABI"| Module
     Host <-->|"coordinates"| Module
-    Host <-->|"initializes, reads<br/>and updates"| Guest
-    Module <-->|"reads and updates<br/>during execution"| Guest
+    Host <-->|"initializes,<br/>reads and<br/>updates"| Guest
+    Module <-->|"reads and updates<br/>while executing"| Guest
     Module -->|"guest I/O"| Services
     Host <-->|"adapts"| Services
-    Services <-->|"reads state and<br/>publishes results"| Guest
+    Services <-->|"reads state /<br/>publishes results"| Guest
     Module -->|"GX work"| Graphics
     Host <-->|"presents"| Graphics
     Disc -->|"reads"| Services
@@ -187,21 +187,21 @@ sequenceDiagram
     participant S as Services
     participant R as Graphics
 
-    P->>H: Start with paths/settings
-    H->>M: Load and validate ABI
-    H->>G: Initialize state and entry PC
+    P->>H: Start
+    H->>M: Load ABI
+    H->>G: Initialize
     loop Guest execution
-        H->>M: Dispatch from guest PC
-        M->>G: Update CPU and memory
-        M->>S: Request guest I/O
-        S->>G: Publish results and events
-        opt Host integration requires access
-            H->>G: Read or update guest state
+        H->>M: Dispatch
+        M->>G: Update state
+        M->>S: Guest I/O
+        S->>G: Publish events
+        opt Host hook
+            H->>G: Read/update state
         end
-        M->>R: Submit GX work
-        R-->>H: Present at retrace
+        M->>R: GX work
+        R-->>H: Present
     end
-    H-->>P: Persist, release, return
+    H-->>P: Stop
 ```
 
 Execution is cyclical, not a one-way pipeline. The host gives translated code a

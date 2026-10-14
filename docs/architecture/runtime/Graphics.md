@@ -17,14 +17,14 @@ Dawn connects that work to the platform graphics API.
 ## Component boundaries
 
 ```mermaid
-flowchart LR
-    Game["Translated game code"]
+flowchart TD
+    Game["Translated<br/>game code"]
     FIFO["GX gather pipe<br/>and display lists"]
-    GX["GXRuntime<br/>command and state model"]
+    GX["GXRuntime<br/>command model"]
     Aurora["Aurora<br/>renderer"]
-    Dawn["Dawn<br/>platform GPU layer"]
-    GPU["Native graphics API<br/>and display"]
-    Host["BlueWake host<br/>initialization and retrace"]
+    Dawn["Dawn<br/>GPU layer"]
+    GPU["Native GPU<br/>and display"]
+    Host["BlueWake host<br/>retrace + present"]
 
     Game --> FIFO --> GX --> Aurora --> Dawn --> GPU
     Host --> GX

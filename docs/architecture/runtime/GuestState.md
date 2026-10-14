@@ -31,13 +31,13 @@ when execution crosses the host/module ABI.
 
 ```mermaid
 flowchart TD
-    DOL["Original main.dol"]
+    DOL["main.dol"]
     REL["REL metadata and<br/>data images"]
-    Loader["Guest image loader"]
-    Memory["MEM1 and guest aliases"]
-    OS["Low-memory OS globals"]
-    Devices["Reset device state"]
-    PC["Module entry-point PC"]
+    Loader["Image loader"]
+    Memory["MEM1 + aliases"]
+    OS["OS globals"]
+    Devices["Device state"]
+    PC["Entry PC"]
 
     DOL --> Loader --> Memory
     REL --> Memory

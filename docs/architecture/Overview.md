@@ -44,19 +44,19 @@ same process at runtime.
 ```mermaid
 flowchart TD
     subgraph Build["Build time"]
-        Disc["Supported GameCube disc"]
-        Extract["Validate and extract<br/>DOL and REL modules"]
-        Translator["DolRecomp<br/>PowerPC translation"]
-        Generated["Generated C<br/>composite source tree"]
-        Prepared["Mods and verified<br/>source preparations"]
-        Training["Optional local<br/>PGO training"]
-        HostSource["BlueWake host and<br/>platform source"]
-        RuntimeSource["RecompCore / GXRuntime<br/>and Aurora"]
-        GameCompiler["Target compiler<br/>(translated module)"]
-        AppCompiler["Target compiler<br/>(platform application)"]
-        GameModule["Native translated<br/>game module"]
-        Executable["Platform application"]
-        Package["Runnable platform package"]
+        Disc["Game disc"]
+        Extract["Extract<br/>DOL + RELs"]
+        Translator["DolRecomp<br/>translate PPC"]
+        Generated["Generated C"]
+        Prepared["Prepared C<br/>+ optional mods"]
+        Training["Optional PGO"]
+        HostSource["Host + platform<br/>source"]
+        RuntimeSource["Runtime +<br/>renderer source"]
+        GameCompiler["Game-module<br/>compiler"]
+        AppCompiler["Application<br/>compiler"]
+        GameModule["Native game<br/>module"]
+        Executable["Platform app"]
+        Package["Runnable package"]
 
         Disc --> Extract --> Translator --> Generated --> Prepared --> GameCompiler --> GameModule
         Prepared --> Training --> GameCompiler
@@ -68,28 +68,28 @@ flowchart TD
     end
 
     subgraph Runtime["Runtime — one application process"]
-        Startup["Platform startup"]
+        Startup["Startup"]
         Host["BlueWake host"]
-        Game["Translated Wind Waker code"]
-        Guest["Guest CPU state and memory"]
-        Services["GameCube-compatible services<br/>timing, storage, input, and audio"]
-        Graphics["GXRuntime / Aurora / Dawn<br/>platform graphics API"]
-        Assets["Original game data and assets"]
+        Game["Game module"]
+        Guest["Guest state"]
+        Services["GameCube<br/>services"]
+        Graphics["Graphics stack"]
+        Assets["Disc assets"]
 
         Startup --> Host
-        Host -->|"loads and starts"| Game
-        Host <-->|"coordinates and integrates"| Game
-        Host <-->|"reads and updates"| Guest
-        Game <-->|"reads and updates"| Guest
+        Host -->|"loads"| Game
+        Host <-->|"coordinates"| Game
+        Host <-->|"state access"| Guest
+        Game <-->|"reads / updates"| Guest
         Host <--> Services
         Game <--> Services
         Host <--> Graphics
-        Game -->|"submits original GX work"| Graphics
-        Assets -->|"loaded into guest state"| Guest
+        Game -->|"GX work"| Graphics
+        Assets -->|"load"| Guest
     end
 
     Package --> Startup
-    Disc -. "supplies runtime game data" .-> Assets
+    Disc -. "runtime data" .-> Assets
 ```
 
 The diagram shows component and data flow, not an exact call sequence. The

@@ -27,11 +27,11 @@ new high-level game API.
 ## Module loading and ABI
 
 ```mermaid
-flowchart LR
+flowchart TD
     Host["BlueWake host"]
-    Loader["Platform dynamic loader"]
-    Export["staticrecomp_get_module"]
-    Descriptor["StaticRecompModuleDesc"]
+    Loader["Dynamic<br/>loader"]
+    Export["Module<br/>export"]
+    Descriptor["Module<br/>descriptor"]
     State["Shared CPUState<br/>and MEM1"]
 
     Host --> Loader --> Export --> Descriptor
@@ -58,13 +58,13 @@ loop can continue through successive blocks, returning to the host when time,
 an exception, a callback, or another service boundary requires it.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Host["Host turn"]
-    Budget["Guest cycle budget"]
+    Budget["Cycle<br/>budget"]
     PC["Guest PC"]
-    Dispatch["Generated dispatch"]
-    Native["Translated native block"]
-    Boundary{"Service boundary?"}
+    Dispatch["Generated<br/>dispatch"]
+    Native["Native block"]
+    Boundary{"Service<br/>boundary?"}
 
     Host --> Budget --> PC --> Dispatch --> Native --> Boundary
     Boundary -->|"no"| PC
