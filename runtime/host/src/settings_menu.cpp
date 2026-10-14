@@ -24,6 +24,7 @@ extern "C" {
 
 #include "gxruntime/aurora_backend.h"
 #include "desktop_theme.h"
+#include "status_line_overlay.h"
 
 #include <SDL3/SDL.h>
 #include <aurora/aurora.h>
@@ -162,9 +163,15 @@ std::string options_value() {
     return list;
 }
 
+void capture_launch_choices();
+
 void save() {
     if (g_path.empty() || !g_dirty)
         return;
+    // The aspect, Better Wind Waker and the texture pack are written from the
+    // menu's copies, read when it first opens: a key (F2, F9, F10, F11) that
+    // saves before then would otherwise write them empty.
+    capture_launch_choices();
     const auto slash = g_path.rfind('/');
     if (slash != std::string::npos) {
         // Application Support/BlueWake, one level at a time.
@@ -363,6 +370,28 @@ void refresh_smooth_rate() {
     aurora_set_frame_interp_steps(bw_smooth_steps(requested, mode != nullptr ? mode->refresh_rate : 0.f));
 }
 
+// Fullscreen, the frame rate and Smooth Motion, from the Display tab or their
+// keys (F11 or Alt+Enter, F9, F10), the same keys as on Windows (#320).
+void set_fullscreen(bool on) {
+    set_env("DOL_AURORA_FULLSCREEN", on ? "1" : "0");
+    if (SDL_Window* window = game_window())
+        SDL_SetWindowFullscreen(window, on);
+}
+
+void set_show_fps(bool on) {
+    set_env("DOL_AURORA_SHOW_FPS", on ? "1" : "0");
+    aurora_set_fps_overlay(on);
+}
+
+// steps: "1", "3" or "display"; nullptr turns it off.
+void set_smooth_motion(const char* steps) {
+    set_env("DOL_AURORA_FRAME_INTERP", steps != nullptr ? "1" : "0");
+    if (steps != nullptr)
+        set_env("DOL_AURORA_FRAME_INTERP_STEPS", steps);
+    refresh_smooth_rate();
+    aurora_set_frame_interpolation(steps != nullptr);
+}
+
 void display_tab() {
     static const char* const kAspects[] = {"4:3 (the game's)", "16:10", "16:9", "21:9"};
     static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
@@ -387,11 +416,8 @@ void display_tab() {
                        "and bloom. Off by default.");
 
     bool fullscreen = env_on("DOL_AURORA_FULLSCREEN", false);
-    if (checkbox("Fullscreen", &fullscreen)) {
-        set_env("DOL_AURORA_FULLSCREEN", fullscreen ? "1" : "0");
-        if (SDL_Window* window = game_window())
-            SDL_SetWindowFullscreen(window, fullscreen);
-    }
+    if (checkbox("Fullscreen   (F11)", &fullscreen))
+        set_fullscreen(fullscreen);
 
     static const char* const kScales[] = {"The window's pixels", "1x (480 lines)", "2x (960)", "3x (1440)",
                                           "4x (1920)"};
@@ -406,20 +432,13 @@ void display_tab() {
         "120 frames a second (120 Hz displays)", "Match the display (up to 240)"};
     const int requested = bw_smooth_requested(env("DOL_AURORA_FRAME_INTERP_STEPS", "1").c_str());
     int smooth = !env_on("DOL_AURORA_FRAME_INTERP", false) ? 0 : requested == -1 ? 3 : requested >= 3 ? 2 : 1;
-    if (combo("Smooth Motion (experimental)", &smooth, kSmooth, 4)) {
-        set_env("DOL_AURORA_FRAME_INTERP", smooth != 0 ? "1" : "0");
-        if (smooth != 0)
-            set_env("DOL_AURORA_FRAME_INTERP_STEPS", smooth == 3 ? "display" : smooth == 2 ? "3" : "1");
-        refresh_smooth_rate();
-        aurora_set_frame_interpolation(smooth != 0);
-    }
+    if (combo("Smooth Motion (experimental)   (F10)", &smooth, kSmooth, 4))
+        set_smooth_motion(smooth == 0 ? nullptr : smooth == 3 ? "display" : smooth == 2 ? "3" : "1");
     ImGui::TextDisabled("The game runs at 30; display changes and overloads can lower the presentation rate.");
 
     bool fps = env_on("DOL_AURORA_SHOW_FPS", false);
-    if (checkbox("Show the frame rate", &fps)) {
-        set_env("DOL_AURORA_SHOW_FPS", fps ? "1" : "0");
-        aurora_set_fps_overlay(fps);
-    }
+    if (checkbox("Show the frame rate   (F9)", &fps))
+        set_show_fps(fps);
     ImGui::BeginDisabled(!fps);
     int position = bw_fps_position(env("DOL_AURORA_FPS_POSITION").c_str());
     if (combo("FPS position", &position, kBwFpsPositionNames, BW_FPS_POSITIONS)) {
@@ -857,6 +876,8 @@ void controls_tab() {
     ImGui::BulletText("WASD move, arrows the D-pad, T F G H the C-stick");
     ImGui::BulletText("J  A     K  B     U  X     I  Y     Q  Z     E  L     R  R     Enter  Start");
     ImGui::BulletText("Space jump, Shift (held) sprint");
+    ImGui::BulletText("F1 or Esc this menu, F2 the HD look, F5 save state, F8 load it, F7 the stage select,");
+    ImGui::BulletText("F9 the frame rate, F10 Smooth Motion, F11 or Alt+Enter fullscreen");
     ImGui::BulletText("Mouse: click the game, then move to turn the camera and aim; left click is A,");
     ImGui::BulletText("the wheel zooms; Esc gives the mouse back, and Esc again opens this menu");
     ImGui::TextUnformatted("Controller");
@@ -994,6 +1015,7 @@ void draw(void*) {
     test_hook();
     draw_climb_wheel();
     draw_renderer_notice(now);
+    bluewake_ui::draw_status_line(now);
     if (bluewake_stage_select_take_question()) {
         open_menu();
         g_stage_select_question = g_open;
@@ -1076,7 +1098,7 @@ void draw(void*) {
         if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) request = (shown + 1) % kTabCount;
         // The body takes what the footer leaves: the hint, the next-launch note
         // when there is one, and the buttons on one row or, if narrow, two.
-        static const char* const kButtons[] = {"Resume", "Save state (F5)", "Load latest state (F9)", "Quit the game"};
+        static const char* const kButtons[] = {"Resume", "Save state (F5)", "Load latest state (F8)", "Quit the game"};
         const ImGuiStyle& style = ImGui::GetStyle();
         float buttons = -style.ItemSpacing.x;
         for (const char* label : kButtons)
@@ -1237,7 +1259,33 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
             set_env("BLUEWAKE_HD_LOOK", on ? "1" : "0");
             bluewake_hd_look_reload();
             save();
+            bluewake_status_post(on ? "HD look on" : "HD look off");
             std::fprintf(stderr, "[settings] Wind Waker HD look %s (F2)\n", on ? "on" : "off");
+            return true;
+        }
+        if (event->key.scancode == SDL_SCANCODE_F9) {
+            const bool on = !env_on("DOL_AURORA_SHOW_FPS", false);
+            set_show_fps(on);
+            save();
+            bluewake_status_post(on ? "Frame rate on" : "Frame rate off");
+            return true;
+        }
+        if (event->key.scancode == SDL_SCANCODE_F10) {
+            // On at the rate chosen in the menu (60 if none), or off.
+            const bool on = !env_on("DOL_AURORA_FRAME_INTERP", false);
+            const std::string steps = env("DOL_AURORA_FRAME_INTERP_STEPS", "1");
+            set_smooth_motion(on ? steps.c_str() : nullptr);
+            save();
+            bluewake_status_post(on ? "Smooth Motion on" : "Smooth Motion off");
+            std::fprintf(stderr, "[settings] Smooth Motion %s (F10)\n", on ? "on" : "off");
+            return true;
+        }
+        if (event->key.scancode == SDL_SCANCODE_F11 ||
+            (event->key.scancode == SDL_SCANCODE_RETURN && (event->key.mod & SDL_KMOD_ALT) != 0)) {
+            const bool on = !env_on("DOL_AURORA_FULLSCREEN", false);
+            set_fullscreen(on);
+            save();
+            bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");
             return true;
         }
         if (event->key.scancode == SDL_SCANCODE_ESCAPE) {

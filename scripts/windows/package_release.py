@@ -71,7 +71,8 @@ Keyboard: W A S D control stick, T F G H C-stick, arrow keys D-pad,
 J K U I = A B X Y, E R Q = L R Z, Return START.
 Mouse: click the game, then move the mouse to turn the camera (Esc gives the
 mouse back). Game controllers work too (Xbox, PlayStation, Switch Pro, ...).
-F1 or Esc settings, F11 fullscreen, F10 Smooth Motion (off by default), F9 frame rate.
+F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion (off by default),
+F9 frame rate, F5 save state, F8 load it, F2 HD look, F7 stage select.
 BlueWake.exe --help lists the command-line options.
 
 Saves, settings and session logs: %APPDATA%\\BlueWake. To keep them beside
