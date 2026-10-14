@@ -460,18 +460,21 @@ optimizations. The BlueWake host application remains separate until stage 7.
 
 ## 6. Train
 
-Stage 5 ends with prepared C source, not a compiled game module. To train, the
-builder first compiles that source into a temporary instrumented module, then
-runs deterministic headless playbacks and merges the recorded execution
-counts. Stage 7 compiles the final module using that profile so frequently
-executed code runs faster without changing game behavior; no machine-learning
-model is trained.
+Stage 5 ends with prepared C source under `OUT/composite-src/`, not a compiled
+game module. When training is enabled and the fingerprint check finds no
+reusable profile, **Stage 6 compiles that Stage 5 source immediately after the
+fingerprint check and before any playback runs**. This first compilation
+produces a temporary native game module with execution counters. The builder
+runs deterministic headless playbacks with that module and merges the recorded
+counts. Stage 7 then compiles the prepared source again, using the profile to
+optimize frequently executed code in the final module without changing game
+behavior; no machine-learning model is trained.
 
 ```mermaid
 flowchart LR
     Prepared["Stage 5 prepared<br/>C source"]
     Fingerprint["Input<br/>fingerprint"]
-    Compile["Temporary instrumented<br/>compilation"]
+    Compile["Stage 6: compile Stage 5<br/>source for training"]
     Instrumented["Training module<br/>with counters"]
     Playback["Headless<br/>playbacks"]
     Raw["Raw profiles"]
@@ -492,7 +495,7 @@ shared [`train_local_pgo.py`](../../scripts/builder/train_local_pgo.py).
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
 | Fingerprint inputs | Hashes prepared source, compiler settings, and playback code; reuses a profile only when the receipt matches. | Safe cache decision | `OUT/pgo-local/training.json` | [Linux](../../scripts/linux/build.py#L955-L978), [Windows](../../scripts/windows/build.py#L1022-L1045), [shared Apple trainer](../../scripts/builder/train_local_pgo.py) |
-| Instrument the module | Compiles the composite with LLVM profile-generation flags. | Module that records executed translated functions | Instrumented build under `OUT/pgo-local/` | [Linux](../../scripts/linux/build.py#L979-L1000), [Windows](../../scripts/windows/build.py#L1046-L1067), [Apple hook](../../scripts/builder/profiles/bluewake.sh#L204-L215) |
+| Compile Stage 5 source for training | On a cache miss, Stage 6 compiles the prepared composite with LLVM profile-generation flags before running any playback. | Temporary native module that records executed translated functions | Instrumented build under `OUT/pgo-local/` | [Linux](../../scripts/linux/build.py#L979-L1000), [Windows](../../scripts/windows/build.py#L1046-L1067), [Apple hook](../../scripts/builder/profiles/bluewake.sh#L204-L215) |
 | Run playbacks | Boots the instrumented module headlessly and exercises the opening plus configured tours and mod combinations. | Raw execution counters from representative game paths | `*.profraw` under `OUT/pgo-local/` | [Linux playbacks](../../scripts/linux/build.py#L1001-L1080), [Windows playbacks](../../scripts/windows/build.py#L1068-L1147), [training script](../../scripts/builder/train_local_pgo.py) |
 | Validate and merge | Rejects incomplete runs, merges counters with `llvm-profdata`, and confirms translated functions were recorded. | Compiler-readable local PGO profile | `OUT/pgo-local/composite.profdata` | [Linux merge](../../scripts/linux/build.py#L1081-L1105), [Windows merge](../../scripts/windows/build.py#L1148-L1173) |
 | Feed final compile | Hashes or copies the profile into the compiler inputs so a changed profile forces recompilation; optional tiering identifies unvisited chunks. | Hot translated paths optimized from observed execution | `OUT/profiles/composite-*.profdata` or `OUT/composite.profdata` | [Linux compile profile](../../scripts/linux/build.py#L771-L822), [Apple merge](../../scripts/builder/profiles/bluewake.sh#L216-L258) |
