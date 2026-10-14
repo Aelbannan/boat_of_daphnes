@@ -4,10 +4,16 @@
 
 - [Purpose](#purpose)
 - [High-level view](#high-level-view)
-  - [Runtime entities](#runtime-entities)
+- [Runtime entities](#runtime-entities)
+  - [Platform application](#platform-application)
+  - [BlueWake host](#bluewake-host)
+  - [Native game module](#native-game-module)
+  - [Guest machine state](#guest-machine-state)
+  - [Compatibility services](#compatibility-services)
+  - [Graphics stack](#graphics-stack)
+  - [Runtime data](#runtime-data)
 - [Interaction boundaries](#interaction-boundaries)
 - [Runtime lifecycle](#runtime-lifecycle)
-- [Entity internals](#entity-internals)
 
 ## Purpose
 
@@ -57,7 +63,7 @@ flowchart TD
     Graphics -->|"render and present"| Native
 ```
 
-### Runtime entities
+## Runtime entities
 
 | Entity | Runtime responsibility | Owns or exposes | Internals |
 | --- | --- | --- | --- |
@@ -68,6 +74,74 @@ flowchart TD
 | Compatibility services | Present GameCube-style devices and operating-system behavior to translated code while using native facilities underneath. | MMIO devices, callbacks, interrupts, disc, card, input, audio, and DSP state | [Compatibility services](runtime/Services.md) |
 | Graphics stack | Converts the game's GX command stream into native GPU work and presents completed frames. | GX state, renderer resources, command submission, and presentation | [Graphics stack](runtime/Graphics.md) |
 | Runtime data | Supplies original assets and preserves mutable player state without embedding either into translated code. | Disc image, memory card, SRAM, settings, logs, and save states | [Runtime inputs and persistence](runtime/Host.md#runtime-inputs-and-persistence) |
+
+### Platform application
+
+The platform application is BlueWake's boundary with Linux, Windows, macOS,
+iOS, or tvOS. Its entry layer resolves packaged resources and writable storage,
+creates the native application environment, and passes normalized paths and
+settings into the shared host. Platform-specific lifecycle and presentation
+events return through this layer.
+
+**Internals:** [Platform entry layers](runtime/Host.md#platform-entry-layers).
+
+### BlueWake host
+
+The host coordinates the running process. It validates launch configuration,
+loads the translated module, initializes guest state and native services, and
+alternates bounded translated execution with device, callback, interrupt, and
+presentation work. It also owns orderly shutdown and durable host-side data.
+
+**Internals:** [Host lifecycle](runtime/Host.md#host-lifecycle) and
+[shutdown](runtime/Host.md#shutdown).
+
+### Native game module
+
+The game module is a native shared library containing the translated DOL and
+REL functions. It publishes its entry point, dispatch tables, metadata,
+callbacks, and optional shared storage through `StaticRecompModuleDesc`. The
+host invokes it using guest addresses and shared machine state rather than a
+rewritten high-level game API.
+
+**Internals:** [Native game module](runtime/GameModule.md).
+
+### Guest machine state
+
+Guest state is the GameCube-visible machine shared by the host and translated
+code. It preserves CPU registers, MEM1, guest addresses, aliases, timing,
+exceptions, and the program counter across every host/module transition. The
+DOL and REL layouts provide runtime data and addresses even though their
+instructions were translated ahead of time.
+
+**Internals:** [Guest machine state](runtime/GuestState.md).
+
+### Compatibility services
+
+Compatibility services implement the hardware and operating-system behavior
+observed by the original program. MMIO, timing, interrupts, disc access,
+memory-card operations, controller input, audio, DSP, and callbacks retain
+guest-visible semantics while adapters connect them to native facilities.
+
+**Internals:** [Compatibility services](runtime/Services.md).
+
+### Graphics stack
+
+The graphics stack accepts the game's original GX FIFO and display-list work.
+GXRuntime interprets the GameCube command stream, Aurora turns the resulting
+state into renderer work, and Dawn reaches the target platform's GPU API. The
+host coordinates initialization, synchronization, retrace, and presentation.
+
+**Internals:** [Graphics stack](runtime/Graphics.md).
+
+### Runtime data
+
+Runtime data crosses two distinct boundaries. The supported disc and DOL
+supply read-only original data, while settings, memory card, SRAM, logs, and
+save states are mutable player data kept in platform-managed storage. Neither
+category is part of the translated code's internal implementation.
+
+**Internals:** [Runtime inputs and persistence](runtime/Host.md#runtime-inputs-and-persistence)
+and [disc and storage services](runtime/Services.md#disc-and-storage).
 
 ## Interaction boundaries
 
@@ -111,19 +185,6 @@ sequenceDiagram
 Execution is cyclical, not a one-way pipeline. The host gives translated code a
 bounded amount of guest time, services devices at a safe boundary, publishes
 pending callbacks or interrupts, and resumes at the guest program counter.
-
-## Entity internals
-
-- [Host and platform integration](runtime/Host.md) — startup, coordination,
-  runtime inputs, persistence, and shutdown.
-- [Native game module](runtime/GameModule.md) — module contents, ABI loading,
-  and translated-code dispatch.
-- [Guest machine state](runtime/GuestState.md) — CPU and memory ownership, DOL
-  and REL boot state, addresses, and guest time.
-- [Compatibility services](runtime/Services.md) — MMIO, timing, interrupts,
-  disc, storage, input, audio, and DSP.
-- [Graphics stack](runtime/Graphics.md) — GX collection and parsing, Aurora,
-  Dawn, and presentation.
 
 Return to the [architecture overview](Overview.md), or review how these runtime
 artifacts are produced in the [build architecture](Build.md).
