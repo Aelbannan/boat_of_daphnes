@@ -5,8 +5,9 @@ says which step is being done on which day. Owner: Chris. Updated October 15, 20
 
 **Current defaults:** #335 is merged with Chris's approval: new Windows/Linux builds use behaviour timing;
 `--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
-The Deck and Windows play checks below support that decision. Android's alternating cool-start comparison is
-still pending; its warm run does not establish full speed. Earlier measurements below retain their original dates.
+The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
+comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
+opt-out; final review/CI of the app-only cached-module validation follow-up remain before merging. Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -79,7 +80,7 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | `--lean-blocks` on by default for Windows and Linux (and Android, which uses the Windows defaults) | **Accepted by Chris, October 10,** on #208's numbers: 5 to 8% on fast cores, 8 to 12% on slow and four-core CPUs, played the same. `--no-lean-blocks` builds the conservative copies. | Chris |
 | Draw fusion (RecompCore patch 0166) on by default | **On for Windows** (Elliott tested it there) **and Linux** (jkoehler11 on a Steam Deck, #215: a tenth of the draws, the GX worker from 45% to 24%, nothing missing on screen; the Deck's frame rate is set by the game thread, so it stays about 27); off on Mac and iPhone until played on each, and on Android, where it halves the draws but not the game thread's work (#93). `DOL_GX_FUSE` overrides it. | Chris, October 10; Linux October 11 |
 | Lean memory, lean deadlines and the lazy overlap watch | **Defaults since #277** in the Windows/Linux builders and host. #297 is merged: training keeps the full watch only until opening player control, then profiles the lazy path. Apple preparations remain opt-in. | Chris, October 12 |
-| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in, Android awaits the cool-start run. | Chris, October 15 (JST) |
+| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes, with final review/CI of the app-only validation follow-up pending. | Chris, October 15 (JST) |
 
 ## Results
 
@@ -122,11 +123,13 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | Oct 13 | Behaviour timing, [jkoehler11's benchmark](https://github.com/chrissotraidis/bluewake/issues/215#issuecomment-6150367473) | Steam Deck, SteamOS 3.8.28, VanGogh 4c/8t | Same Outset sea state; both builds trained from one commit, headless, three interleaved rounds | 63.3 / 63.6 / 63.6 retraces/s; module 518 MB | 69.3 / 69.4 / 69.6 retraces/s; module 444 MB (about 9% faster, 14% smaller) | Contributor played a cutscene with music and sailed; nothing looked or sounded different ([play check](https://github.com/chrissotraidis/bluewake/issues/215#issuecomment-6152922191)) |
 | Oct 13 | Behaviour timing, [LiquidAzir's measurement](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6137137751) | Galaxy Z Fold 7 | Outset pier; baseline cool, timing run warm at 36 °C | 134.5 M instructions / 34.9 M cycles per retrace; module 383 MB; compile 43 min | 128.6 M / 31.5 M (4% / 10% less); module 342 MB; compile 34 min | Speed is **not comparable** across temperatures. Latest cool baseline 90.4%; alternating cool-start timing runs unfinished |
 | Oct 13 | Hidden direct-call globals, [LiquidAzir's test](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6135037258) | Galaxy Z Fold 7 | Same `main`, Outset pier, cool starts | 134.5 M instructions / 34.9 M cycles per retrace; 91% speed | 134.3 M / 35.4 M; 91% (no gain) | Not committed; no performance case for integration |
+| Oct 14 | Behaviour timing, [LiquidAzir's alternating cool-start runs](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6176898869) | Galaxy Z Fold 7, Snapdragon 8 Elite | Outset pier; four 60-second counts, each starting at 33.9 °C/full clocks, all ending at 2.0 GHz | 89.9% / 90.8%; 136.3 M / 135.8 M instructions, 35.8 M / 35.4 M cycles per retrace | 100.0% / 100.0%; 128.5 M / 129.0 M instructions, 32.0 M cycles per retrace | Contributor-reported, same earlier builds based on `42610f2`, installed alternately with increasing version numbers. Clears the Outset gate on this phone; no other-phone or sustained-gameplay claim |
 
 Windows gameplay with behaviour timing was also checked by pdale-boop on October 13 (Windows 11, i5-12600KF,
 RTX 5070 Ti): menus, stage/spawn sweeps with the test card unchanged, all three Lenzo photos using the unmerged
 Picto fix, Windfall and the Wind Temple. No differences reported ([evidence on #335](https://github.com/chrissotraidis/bluewake/pull/335#issuecomment-6159363773)).
-That supports the timing default; it does not mean the separate Picto runtime change is pinned.
+That supports the timing default. Picto recognition was subsequently checked separately and pinned in #341;
+the later cold-cache follow-up remains draft #342.
 
 The `--lean-blocks` rows: both builds from `acfaf32` with the parallel training (#202), each in a fresh `--out`
 folder, built and measured from the desktop session. Unpaced, Smooth Motion off, medians of three runs, builds
