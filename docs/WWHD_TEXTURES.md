@@ -8,7 +8,7 @@ still required to play.
 
 ## Where it is in the app
 
-Every build has the same section, first in its Mods tab or menu:
+Mac, Linux, Windows, iPhone and iPad share the same section, first in their Mods tab or menu:
 **Mods › Wind Waker HD textures**. It holds the **HD textures** switch, how
 many textures the chosen pack has, and a way to add a pack:
 
@@ -28,13 +28,18 @@ nothing to install:
    in a new folder, `Load/Textures/WWHD` in its data folder (`WWHD-2` and so
    on if that exists). A bar shows the progress; you can close the menu and play
    while it works, or cancel it.
-3. When it finishes, the new pack is selected and **HD textures** is on. Restart
+3. When it finishes, reopen Mods to see the result. The new pack is selected
+   and **HD textures** is on. Resume the game to save the choice, then restart
    BlueWake to load it.
 
 It is the script below, built into the app: from the same discs it makes the
 same 3,546 textures. The native importer takes about 30 seconds on an M3 Max. WUX and WUD
-images still need the script for now, as does iPhone and iPad, which will get
-the same button.
+images still need the script. The same native entry is built for iPhone and
+iPad in this draft, but an on-device import is still unverified. Android
+integration remains part of the port work.
+
+The output follows the app's data folder, including Linux portable mode and
+an explicitly selected desktop settings location.
 
 ## The import script
 
@@ -296,3 +301,23 @@ build/wwhd-tools/bin/python tests/wwhd_compare_packs.py OLD-PACK NEW-PACK
 
 Keep both packs and their reports private. Windows/Linux compilation and
 imports on phone/tablet hardware still need their own checks.
+
+### Mac in-app check (October 15, 2026)
+
+On the M3 Max with Metal, the native import was started through F1 > Mods
+from the supplied decrypted USA content folder while a copied GameCube save
+was running at Outset. Closing the menu let gameplay continue during the
+conversion. The menu reported 3,546 textures and selected the resulting pack
+in the isolated session's data folder. After selecting that installed pack,
+resuming to save the preference and restarting, the renderer registered all
+3,546 replacements; the HD HUD and textures were visible and movement worked.
+The copied card's SHA-256 was unchanged.
+
+The complete process peaked at 1,400,389,632 bytes (1,336 MiB) resident RAM,
+sampled every 250 ms across startup, gameplay and import. This includes the
+game and renderer and is not directly comparable to the standalone importer
+table. It does not establish memory acceptance on iPhone, iPad or Android.
+
+Keyboard navigation was used for the menu and the native folder picker.
+Mouse clicks did not consistently activate the ImGui controls through the
+automation surface; this run does not establish desktop mouse acceptance.
