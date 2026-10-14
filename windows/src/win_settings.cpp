@@ -180,6 +180,7 @@ void load_file() {
         else if (k == "texture_pack") d.texture_pack = v;
         else if (k == "lle_audio") d.lle_audio = parse_bool(v);
         else if (k == "movement_extras") d.movement_extras = parse_bool(v);
+        else if (k == "sprint_speed") d.sprint_speed = std::clamp(std::atof(v.c_str()), 1.1, 2.0);
         else if (k == "fast_transitions") d.fast_transitions = parse_bool(v);
         else if (k == "quick_doors") d.quick_doors = parse_bool(v);
         else if (k == "stage_select") d.stage_select = parse_bool(v);
@@ -234,8 +235,8 @@ void save_file() {
                  d.keep_aspect, d.betterww, d.hd_textures, d.lle_audio);
     for (const auto& [name, on] : d.options)
         std::fprintf(f, "option.%s=%d\n", name.c_str(), on);
-    std::fprintf(f, "movement_extras=%d\nfast_transitions=%d\nquick_doors=%d\n",
-                 d.movement_extras, d.fast_transitions, d.quick_doors);
+    std::fprintf(f, "movement_extras=%d\nsprint_speed=%.2f\nfast_transitions=%d\nquick_doors=%d\n",
+                 d.movement_extras, d.sprint_speed, d.fast_transitions, d.quick_doors);
     std::fprintf(f, "stage_select=%d\n", d.stage_select);
     const bool ok = bw_atomic_finish_dirty(f, pending, g_path.c_str(), &g_dirty);
     free(pending);
@@ -556,7 +557,8 @@ bool needs_restart() {
     return a.aspect != b.aspect || a.keep_aspect != b.keep_aspect || a.betterww != b.betterww ||
            a.options != b.options || a.hd_textures != b.hd_textures || a.texture_pack != b.texture_pack ||
            a.lle_audio != b.lle_audio ||
-           a.movement_extras != b.movement_extras || a.fast_transitions != b.fast_transitions ||
+           a.movement_extras != b.movement_extras || a.sprint_speed != b.sprint_speed ||
+           a.fast_transitions != b.fast_transitions ||
            a.quick_doors != b.quick_doors || a.stage_select != b.stage_select;
 }
 
@@ -567,8 +569,15 @@ void restart_note(bool differs) {
     }
 }
 
+// The Display tab, in the Mac and Linux menu's order (settings_menu.cpp's
+// display_tab), so the menus match on every platform (#320).
 void tab_display(SDL_Window* w) {
     Settings& d = g_session;
+    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
+        apply_hd_look();
+        changed();
+    }
+    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
     // An action for this session, not a setting: a button.
     const bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Button(full ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
@@ -577,22 +586,23 @@ void tab_display(SDL_Window* w) {
         changed();
     ImGui::SameLine();
     ImGui::TextDisabled("(next launch)");
-    if (ImGui::Checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
-        apply_hd_look();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::Combo("Render resolution", &d.render_scale, kScaleNames, IM_ARRAYSIZE(kScaleNames))) {
+        aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
         changed();
     }
-    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
-    if (ImGui::Checkbox("Smooth Motion (experimental)   (F10)", &d.smooth_motion)) {
+    // Off, or on at a rate: the saved smooth_motion and smooth_motion_fps, so
+    // F10 still turns it on at the rate last chosen.
+    static const char* const kSmooth[] = {"Off (30, the game's)", "60 frames a second",
+                                          "120 frames a second (120 Hz displays)", "Match the display (up to 240)"};
+    int smooth = !d.smooth_motion ? 0 : d.smooth_steps == -1 ? 3 : d.smooth_steps >= 3 ? 2 : 1;
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::Combo("Smooth Motion (experimental)   (F10)", &smooth, kSmooth, IM_ARRAYSIZE(kSmooth))) {
+        d.smooth_motion = smooth != 0;
+        if (smooth != 0)
+            d.smooth_steps = smooth == 3 ? -1 : smooth == 2 ? 3 : 1;
         apply_smooth_rate(w);
         aurora_set_frame_interpolation(d.smooth_motion);
-        changed();
-    }
-    static const char* const rates[] = {"60 FPS", "120 FPS", "Match the display (up to 240 FPS)"};
-    int rate = d.smooth_steps == -1 ? 2 : d.smooth_steps >= 3 ? 1 : 0;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 23);
-    if (ImGui::Combo("Smooth Motion rate", &rate, rates, IM_ARRAYSIZE(rates))) {
-        d.smooth_steps = rate == 2 ? -1 : rate == 1 ? 3 : 1;
-        apply_smooth_rate(w);
         changed();
     }
     const float refresh = display_refresh(w);
@@ -610,12 +620,6 @@ void tab_display(SDL_Window* w) {
         changed();
     }
     ImGui::EndDisabled();
-    ImGui::Spacing();
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
-    if (ImGui::Combo("Render resolution", &d.render_scale, kScaleNames, IM_ARRAYSIZE(kScaleNames))) {
-        aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
-        changed();
-    }
     int filtering = 0;
     for (int i = 0; i < IM_ARRAYSIZE(kAnisotropy); i++)
         if (kAnisotropy[i] == d.anisotropy)
@@ -831,19 +835,39 @@ void hd_textures_section(Settings& d) {
     ImGui::Spacing();
 }
 
-void tab_enhancements() {
+// The Gameplay tab, in the Mac and Linux menu's order (settings_menu.cpp's
+// gameplay_tab). Climbing and Forest Water apply at once; the rest at the
+// next launch.
+void tab_gameplay() {
     Settings& d = g_session;
-    hd_textures_section(d);
-    ImGui::SeparatorText("Gameplay (after restart)");
-    if (ImGui::Checkbox("Jump and Run", &d.movement_extras))
+    if (ImGui::Checkbox("Developers' stage select (F7)", &d.stage_select))
         changed();
-    restart_note(d.movement_extras != g_launched.movement_extras);
-    if (ImGui::Checkbox("Fast transitions", &d.fast_transitions))
+    restart_note(d.stage_select != g_launched.stage_select);
+    ImGui::TextDisabled("    F7 during play opens the menu the developers used to jump to any room, from your");
+    ImGui::TextDisabled("    own file; F7 in the menu goes back. On a controller, Back (View on Xbox, Share or");
+    ImGui::TextDisabled("    Create on PlayStation) opens these settings and the button below does the same.");
+    bw_stage_select_save_warning();
+    if (bw_stage_select_button())
+        set_menu_open(false);
+    ImGui::SeparatorText("Forest Water challenge");
+    if (ImGui::Checkbox("Keep watered trees when time runs out", &d.forest_keep_trees)) {
+        apply_forest_water();
+        changed();
+    }
+    ImGui::TextDisabled("    Forest Water still expires. Refill and carry on with the trees still to water.");
+    if (ImGui::Checkbox("30-minute Forest Water timer", &d.forest_30_minutes)) {
+        apply_forest_water();
+        changed();
+    }
+    ImGui::TextDisabled("    Applies the next time Link scoops Forest Water.");
+    ImGui::SeparatorText("Doors and exits");
+    if (ImGui::Checkbox("Fast transitions (short fades, no waiting in the black)", &d.fast_transitions))
         changed();
     restart_note(d.fast_transitions != g_launched.fast_transitions);
-    if (ImGui::Checkbox("Quick doors", &d.quick_doors))
+    if (ImGui::Checkbox("Quick doors (no walk-in or door closing behind Link)", &d.quick_doors))
         changed();
     restart_note(d.quick_doors != g_launched.quick_doors);
+    ImGui::SeparatorText("Climbing");
     if (ImGui::Checkbox("Climb any wall (experimental)", &d.climb)) {
         apply_climb();
         changed();
@@ -855,31 +879,42 @@ void tab_enhancements() {
         changed();
     }
     ImGui::EndDisabled();
-    if (ImGui::Checkbox("Forest Water: keep watered trees when time runs out", &d.forest_keep_trees)) {
-        apply_forest_water();
+    // Jump and sprint, one switch as on the iPad, with the sprint's speed
+    // under it (BLUEWAKE_SPRINT_SPEED at the next launch).
+    ImGui::SeparatorText("Jump and sprint");
+    if (ImGui::Checkbox("Jump and Run (Space or the left bumper jumps; Shift or the left stick click sprints)",
+                        &d.movement_extras))
+        changed();
+    restart_note(d.movement_extras != g_launched.movement_extras);
+    ImGui::BeginDisabled(!d.movement_extras);
+    float sprint = static_cast<float>(d.sprint_speed);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
+    if (ImGui::SliderFloat("Sprint speed", &sprint, 1.1f, 2.0f, "%.2fx")) {
+        d.sprint_speed = std::round(std::clamp(sprint, 1.1f, 2.0f) * 100.0f) / 100.0;
         changed();
     }
-    ImGui::TextDisabled("    Forest Water still expires. Refill and carry on with the trees still to water.");
-    if (ImGui::Checkbox("Forest Water: 30-minute timer", &d.forest_30_minutes)) {
-        apply_forest_water();
-        changed();
-    }
-    ImGui::TextDisabled("    Applies the next time Link scoops Forest Water.");
+    restart_note(d.sprint_speed != g_launched.sprint_speed);
+    ImGui::EndDisabled();
+}
+
+// Mods: HD textures first, then widescreen and Better Wind Waker, as in the
+// Mac and Linux Mods tab and the iPhone and iPad Mods menu.
+void tab_mods() {
+    Settings& d = g_session;
+    hd_textures_section(d);
     ImGui::Spacing();
-    ImGui::TextUnformatted("Picture");
-    restart_note(d.aspect != g_launched.aspect);
-    const char* const aspects[][2] = {{"4:3", "4:3, the game's own"},
-                                      {"16:10", "16:10 widescreen"},
-                                      {"16:9", "16:9 widescreen"},
-                                      {"21:9", "21:9 ultrawide"}};
-    for (const auto& a : aspects) {
-        if (ImGui::RadioButton(a[1], d.aspect == a[0])) {
-            d.aspect = a[0];
-            changed();
-        }
-        ImGui::SameLine();
+    static const char* const kAspects[] = {"Off (4:3, the game's)", "16:10", "16:9", "21:9"};
+    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
+    int aspect = 0;
+    for (int i = 0; i < IM_ARRAYSIZE(kAspectValues); i++)
+        if (d.aspect == kAspectValues[i])
+            aspect = i;
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+    if (ImGui::Combo("Widescreen", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
+        d.aspect = kAspectValues[aspect];
+        changed();
     }
-    ImGui::NewLine();
+    restart_note(d.aspect != g_launched.aspect);
     ImGui::TextDisabled("    Widescreen widens the camera and moves the HUD to the edges.");
     ImGui::Spacing();
     if (ImGui::Checkbox("Better Wind Waker", &d.betterww))
@@ -915,16 +950,6 @@ void tab_enhancements() {
         ImGui::TextDisabled("This build has no Better Wind Waker options (build with mods).");
     ImGui::Unindent();
     ImGui::EndDisabled();
-    ImGui::Spacing();
-    if (ImGui::Checkbox("Developers' stage select (F7)", &d.stage_select))
-        changed();
-    restart_note(d.stage_select != g_launched.stage_select);
-    ImGui::TextDisabled("    F7 during play opens the menu the developers used to jump to any room, from your");
-    ImGui::TextDisabled("    own file; F7 in the menu goes back. On a controller, Back (View on Xbox, Share or");
-    ImGui::TextDisabled("    Create on PlayStation) opens these settings and the button below does the same.");
-    bw_stage_select_save_warning();
-    if (bw_stage_select_button())
-        set_menu_open(false);
 }
 
 void tab_game() {
@@ -1066,12 +1091,16 @@ void draw_menu(SDL_Window* w) {
                 tab_display(w);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Controls")) {
-                tab_controls();
+            if (ImGui::BeginTabItem("Gameplay")) {
+                tab_gameplay();
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Mods")) {
-                tab_enhancements();
+                tab_mods();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Controls")) {
+                tab_controls();
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Sound and files")) {
@@ -1372,8 +1401,15 @@ extern "C" void bw_settings_apply_launch(void) {
         d.fast_transitions = std::getenv("BLUEWAKE_FAST_FORWARD")[0] != '0';
     if (env_set("BLUEWAKE_QUICK_DOORS"))
         d.quick_doors = std::getenv("BLUEWAKE_QUICK_DOORS")[0] != '0';
+    if (env_set("BLUEWAKE_SPRINT_SPEED")) {
+        const double speed = std::atof(std::getenv("BLUEWAKE_SPRINT_SPEED"));
+        if (speed > 1.01)
+            d.sprint_speed = std::clamp(speed, 1.1, 2.0);
+    }
+    char sprint[16];
+    std::snprintf(sprint, sizeof sprint, "%.2f", d.sprint_speed);
     env_default("BLUEWAKE_JUMP_BUTTON", d.movement_extras ? "1" : "0");
-    env_default("BLUEWAKE_SPRINT_SPEED", d.movement_extras ? "1.5" : "1");
+    env_default("BLUEWAKE_SPRINT_SPEED", d.movement_extras ? sprint : "1");
     env_default("BLUEWAKE_FAST_FORWARD", d.fast_transitions ? "1" : "0");
     env_default("BLUEWAKE_FADE_FRAMES", d.fast_transitions ? "6" : "0");
     env_default("BLUEWAKE_QUICK_DOORS", d.quick_doors ? "1" : "0");
