@@ -61,7 +61,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
   card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
   Android menu/lifecycle checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
-  Windows/Linux CI passed at `254195d`. The cancellation update reaches scans, disc/archive/PNG work and
+  Windows/Linux CI passed at `5fbb596`, including `71642ec` rejecting failed removal of conflicting
+  textures. Targeted failure checks pass under ASan/UBSan; a full optimized Mac import still matches all
+  3,546 keys and 33,859 PNG bytes. The cancellation update reaches scans, disc/archive/PNG work and
   publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
   has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full
   pack comparison pass; UIKit/Files interaction remains unverified. Forced-process staging recovery is still
@@ -83,17 +85,19 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   wait off/on: 446 versus 448 complete the 120-frame arrival check, with R04 and R08 the only changed outcomes.
   The same four test rooms and sixteen story/cutscene entries do not complete with this save. Separate Metal
   checks show both rooms rendering and responding to input. This uses host `14bc288`, runtime `57123c6` and an
-  older prepared module; cards and tested artifacts are unchanged. Fresh-module checks and the save-state
-  interaction remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
+  older prepared module; cards and tested artifacts are unchanged. PR #350 now guards save/load while a
+  host-side wait is occupied; eight synthetic cases pass under ASan/UBSan and Windows CI passes. Linux CI
+  and fresh-module gameplay checks remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
 - **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Its `bcc1b03` follow-up now
   updates the cached size on the resize path, addressing the source concern while F1 holds the guest. An explicit
   F1-open resize/fullscreen and resumed-play result is still requested. No runtime integration yet.
 - **Android (#93):** LiquidAzir's October 14 alternating cool-start check on the Fold 7 reports Outset at
   89.9% / 90.8% on the baseline and 100.0% / 100.0% with behaviour timing; all four runs ended at the same
   2.0 GHz clock cap. This clears the stated Outset speed gate on that phone, not other phones or sustained
-  speed across the game. The candidate at `53ba33a` inherits the Windows timing default and adds
-  `--no-behaviour-timing`. Review found that `--app-only` can reuse a module while recording different
-  requested timing options; cache/provenance validation is requested before merging. Fresh CI is pending. The reordered Mods menu and live
+  speed across the game. The candidate inherits the Windows timing default and adds
+  `--no-behaviour-timing`. Review caught a cached-module provenance mismatch; `c0a2a2d` adds recorded
+  module options and early reuse validation, with generated checks passing. Final builder review and CI
+  remain on #93 before merging. The reordered Mods menu and live
   touch D-pad option were checked on the Fold; Bluetooth with the D-pad option remains unchecked.
   The direct-call globals experiment gave no gain. The native importer core at `ea31b24` now builds with NDK r29 and runs on an API 36 ARM64
   emulator: five generated imports, thirty PNG checks, three reader tests and wrong-key rejection pass.

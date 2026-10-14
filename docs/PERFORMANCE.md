@@ -7,7 +7,7 @@ says which step is being done on which day. Owner: Chris. Updated October 15, 20
 `--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
 The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
 comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
-opt-out; an app-only cached-module provenance fix and final CI remain before merging. Earlier measurements below retain their original dates.
+opt-out; final review/CI of the app-only cached-module validation follow-up remain before merging. Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -80,7 +80,7 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | `--lean-blocks` on by default for Windows and Linux (and Android, which uses the Windows defaults) | **Accepted by Chris, October 10,** on #208's numbers: 5 to 8% on fast cores, 8 to 12% on slow and four-core CPUs, played the same. `--no-lean-blocks` builds the conservative copies. | Chris |
 | Draw fusion (RecompCore patch 0166) on by default | **On for Windows** (Elliott tested it there) **and Linux** (jkoehler11 on a Steam Deck, #215: a tenth of the draws, the GX worker from 45% to 24%, nothing missing on screen; the Deck's frame rate is set by the game thread, so it stays about 27); off on Mac and iPhone until played on each, and on Android, where it halves the draws but not the game thread's work (#93). `DOL_GX_FUSE` overrides it. | Chris, October 10; Linux October 11 |
 | Lean memory, lean deadlines and the lazy overlap watch | **Defaults since #277** in the Windows/Linux builders and host. #297 is merged: training keeps the full watch only until opening player control, then profiles the lazy path. Apple preparations remain opt-in. | Chris, October 12 |
-| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes, with the app-only reuse/provenance fix and final CI pending. | Chris, October 15 (JST) |
+| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes, with final review/CI of the app-only validation follow-up pending. | Chris, October 15 (JST) |
 
 ## Results
 
