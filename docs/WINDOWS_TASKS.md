@@ -59,7 +59,9 @@ hand ([details](status/WINDOWS_BUILD_0.5.0.md)).
 
 - **Unmerged Picto recognition candidate (#334 + RecompCore#36):** pdale-boop completed all three Lenzo photos,
   with bad shots rejected and good ones accepted ([confirmation](https://github.com/chrissotraidis/bluewake/pull/334#issuecomment-6159163583)).
-  Our Mac recognition test is ongoing; this is not yet in `main` or the runtime pin. Widescreen gallery/crop #338
+  Mac positive/negative recognition passes; RecompCore#36 is merged and #39 fixes the cold-cache identification
+  pass. The combined BlueWake integration is not yet in `main` or the pin; recheck a first photo on a fresh Windows
+  shader cache with #39. Widescreen gallery/crop #338
   has separate Windows/Linux checks and a separate RecompCore#37 dependency.
 - 0.6.0, by pdale-boop: the history intro's music (#97, deferred DVD completion, on by default on Windows), the
   dungeon map in Dragon Roost Cavern (#74, also confirmed by its reporter), the baton (#156), the aiming option

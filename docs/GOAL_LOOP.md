@@ -40,9 +40,12 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   Existing downloads have not changed; 0.8.0 is still held for the HD work and release checks.
 - **Picto recognition is being checked on the Mac.** jslay88 confirms the fix on Linux (Lenzo accepts the letter)
   and an M4 Pro Mac; pdale-boop completed all three Lenzo photos on Windows, with bad photos rejected. Those are
-  contributor checks. Our Metal recognition test is ongoing. Chris authorized moving the runtime pin if it passes;
+  contributor checks. Our Metal test recognizes Lenzo and rejects an empty wall. A cold-cache check also exposed skipped alpha-only
+  identification draws; the local follow-up waits for those pipelines and passes the first-photo check.
   [RecompCore#36](https://github.com/chrissotraidis/RecompCore/pull/36) and [#334](https://github.com/chrissotraidis/bluewake/pull/334)
-  are still open, and BlueWake still pins `ee99bbc`. #267 still needs its original reporter's confirmation.
+  supply the readback fix; RecompCore#36 is merged. [RecompCore#39](https://github.com/chrissotraidis/RecompCore/pull/39)
+  carries the first-use follow-up. Chris approved the pin move; the combined integration still needs CI before
+  BlueWake moves from `ee99bbc`. #267 still needs its original reporter's confirmation.
 - **The native HD importer uses 46% less memory** ([#315](https://github.com/chrissotraidis/bluewake/pull/315), draft,
   `5b2bc11`): 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
   All 3,546 texture keys still match; all 33,859 PNGs are byte-identical before/after and match the Python import's
