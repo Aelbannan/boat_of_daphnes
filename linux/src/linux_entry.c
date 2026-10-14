@@ -322,7 +322,7 @@ static void usage(void) {
             "  --fps              show the frame rate\n"
             "  --stretch          fill the window instead of keeping the game's aspect\n"
             "  --no-mouse-camera  keep the mouse out of the camera\n"
-            "  --safe-mode        Recover startup with HLE audio and mods off\n"
+            "  --safe-mode        start safe: Fast sound, 4:3, a window, no mods, options or extras\n"
             "  --hle-audio        Fast audio for this session\n"
             "  --lle-audio        run the DSP's own microcode instead of the HLE ucode\n"
             "  --stage-select-saves  keep saving on after using the stage select (it can\n"
@@ -569,6 +569,13 @@ int main(int argc, char** argv) {
     if (status == 0 && bluewake_settings_restart_requested() && g_launch_env != NULL) {
         fprintf(stderr, "[settings] restarting with the new settings\n");
         restore_terminal_streams();
+        // Not --safe-mode again: the restart is to leave it with the settings
+        // chosen since.
+        int kept = 0;
+        for (int i = 0; i < argc; ++i)
+            if (i == 0 || strcmp(argv[i], "--safe-mode") != 0)
+                argv[kept++] = argv[i];
+        argv[kept] = NULL;
         execve("/proc/self/exe", argv, g_launch_env);
         fprintf(stderr, "[settings] restart failed: %s\n", strerror(errno));
     }
