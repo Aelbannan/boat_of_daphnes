@@ -1384,6 +1384,12 @@ static NSUInteger g_packFiles = NSNotFound;
             overlay->_hdImportCompletion = ^{
                 BWGameOverlay* current = weakSelf;
                 if (current == nil) return;
+                NSString* folder = nil;
+                if (result == BWHDImportOperation::Result::succeeded) {
+                    folder = [@"Load/Textures" stringByAppendingPathComponent:@(output.c_str()).lastPathComponent];
+                    [[NSUserDefaults standardUserDefaults] setObject:folder forKey:@BW_TEXTURE_PACK_FOLDER_KEY];
+                }
+                // Recount after selecting the completed pack; other results keep the old selection.
                 g_packFiles = NSNotFound;
                 [current refreshMenu];
                 if (result == BWHDImportOperation::Result::cancelled) {
@@ -1394,9 +1400,6 @@ static NSUInteger g_packFiles = NSNotFound;
                         : @"Pick your Wind Waker HD dump folder (with code, content and meta) or its content folder.";
                     [current showMessage:@"Import Failed" text:[NSString stringWithFormat:@"%s\n\n%@", failure.c_str(), help]];
                 } else {
-                    NSString* folder = [@"Load/Textures" stringByAppendingPathComponent:@(output.c_str()).lastPathComponent];
-                    [[NSUserDefaults standardUserDefaults] setObject:folder forKey:@BW_TEXTURE_PACK_FOLDER_KEY];
-                    [current refreshMenu];
                     NSString* message = [NSString stringWithFormat:@"%zu textures were made from your Wind Waker HD dump, in %@. "
                         @"HD Textures uses them after BlueWake restarts.", imported, folder];
                     [current offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Wind Waker HD Textures Ready" message:message];
