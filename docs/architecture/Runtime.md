@@ -2,6 +2,7 @@
 
 ## Contents
 
+- [High-level view](#high-level-view)
 - [End-to-end overview](#end-to-end-overview)
 - [Runtime component overview](#runtime-component-overview)
   - [Concepts](#concepts)
@@ -38,6 +39,45 @@ module containing ahead-of-time translated PowerPC code. They run in one
 process and share guest CPU and memory state. The host preserves the hardware
 and operating-system behavior that the translated game expects while routing
 work to native platform services.
+
+## High-level view
+
+```mermaid
+flowchart TD
+    Package["Runnable package"]
+    Disc["Original disc"]
+
+    subgraph Runtime["Runtime — one application process"]
+        Startup["Platform startup"]
+        Host["BlueWake host"]
+        Game["Translated game<br/>code"]
+        Guest["Guest CPU state<br/>and memory"]
+        Services["GameCube<br/>services<br/>timing, storage<br/>input, audio"]
+        Graphics["GXRuntime<br/>Aurora + Dawn<br/>graphics API"]
+        Assets["Original game<br/>data and assets"]
+
+        Startup --> Host
+        Host -->|"loads"| Game
+        Host <-->|"coordinates"| Game
+        Host <-->|"reads / updates"| Guest
+        Game <-->|"reads / updates"| Guest
+        Host <--> Services
+        Game <--> Services
+        Host <--> Graphics
+        Game -->|"submits GX work"| Graphics
+        Assets -->|"loads into"| Guest
+    end
+
+    Package --> Startup
+    Disc -. "supplies data" .-> Assets
+```
+
+This carries forward the runtime boundary from the
+[architecture overview](Overview.md#high-level-view). The packaged application
+enters the handwritten BlueWake host, which loads the translated game module;
+both then cooperate through shared guest state, compatibility services,
+graphics, and original game data. The next diagram changes perspective from
+these component relationships to the runtime execution sequence.
 
 ## End-to-end overview
 
