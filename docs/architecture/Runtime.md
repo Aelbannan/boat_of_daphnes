@@ -50,10 +50,11 @@ flowchart TD
     Platform -->|"starts"| Host
     Host -->|"loads ABI"| Module
     Host <-->|"coordinates"| Module
-    Host <-->|"initializes"| Guest
-    Module <-->|"executes"| Guest
+    Host <-->|"initializes, reads<br/>and updates"| Guest
+    Module <-->|"reads and updates<br/>during execution"| Guest
     Module -->|"guest I/O"| Services
     Host <-->|"adapts"| Services
+    Services <-->|"reads state and<br/>publishes results"| Guest
     Module -->|"GX work"| Graphics
     Host <-->|"presents"| Graphics
     Disc -->|"reads"| Services
@@ -63,15 +64,18 @@ flowchart TD
     Graphics -->|"GPU work"| Native
 ```
 
+These edges describe conceptual access and data flow, not necessarily a direct
+function call between every pair of entities.
+
 ## Runtime entities
 
 | Entity | Runtime responsibility | Owns or exposes | Internals |
 | --- | --- | --- | --- |
 | Platform application | Enters through the target OS, resolves bundle paths and writable storage, and forwards native events. | Process entry, platform paths, windows, and application lifecycle | [Host and platform integration](runtime/Host.md) |
-| BlueWake host | Validates configuration, loads the module, initializes runtime systems, and coordinates execution and shutdown. | Runtime lifecycle and host-side adapters | [Host and platform integration](runtime/Host.md) |
-| Native game module | Provides native functions translated from the DOL and RELs plus the metadata and dispatch ABI required to call them. | Translated code, dispatch tables, module descriptor, and optional shared storage | [Native game module](runtime/GameModule.md) |
+| BlueWake host | Initializes and coordinates guest execution and reads or modifies guest state when delivering events, services, callbacks, interrupts, or game-specific integrations. | Runtime lifecycle and host-side adapters | [Host and platform integration](runtime/Host.md) |
+| Native game module | Executes translated instructions that read and update guest registers, memory, PC, and timing state. | Translated code, dispatch tables, module descriptor, and optional shared storage | [Native game module](runtime/GameModule.md) |
 | Guest machine state | Preserves the CPU, memory, address, timing, and exception model visible to the original program. | `CPUState`, MEM1, guest aliases, program counter, and cycle counters | [Guest machine state](runtime/GuestState.md) |
-| Compatibility services | Present GameCube-style devices and operating-system behavior to translated code while using native facilities underneath. | MMIO devices, callbacks, interrupts, disc, card, input, audio, and DSP state | [Compatibility services](runtime/Services.md) |
+| Compatibility services | Maintain guest-visible device state and publish results through their integration with guest state. | MMIO devices, callbacks, interrupts, disc, card, input, audio, and DSP state | [Compatibility services](runtime/Services.md) |
 | Graphics stack | Converts the game's GX command stream into native GPU work and presents completed frames. | GX state, renderer resources, command submission, and presentation | [Graphics stack](runtime/Graphics.md) |
 | Runtime data | Supplies original assets and preserves mutable player state without embedding either into translated code. | Disc image, memory card, SRAM, settings, logs, and save states | [Runtime inputs and persistence](runtime/Host.md#runtime-inputs-and-persistence) |
 
@@ -88,9 +92,23 @@ events return through this layer.
 ### BlueWake host
 
 The host coordinates the running process. It validates launch configuration,
-loads the translated module, initializes guest state and native services, and
-alternates bounded translated execution with device, callback, interrupt, and
-presentation work. It also owns orderly shutdown and durable host-side data.
+loads the translated module, and initializes and coordinates guest execution.
+During play it also reads or modifies guest machine state to deliver services,
+interrupts, callbacks, and game-specific integrations such as camera control.
+It owns orderly shutdown and durable host-side data.
+
+PR [#213](https://github.com/chrissotraidis/bluewake/pull/213) is one concrete
+example. Conceptually, its controller gesture handling updates host-side input
+state; [`zoom_frame`](../../runtime/host/src/mouse_camera.c#L1057-L1100) uses
+that state to advance `g_zoom` and adjust camera structures through
+guest-memory helpers; translated camera and rendering code then uses the
+shared camera data. The gesture state machine lives in
+[`stick_zoom.h`](../../runtime/host/src/stick_zoom.h#L22-L82), and its host input
+integration is in
+[`bluewake_mouse_camera_pad`](../../runtime/host/src/mouse_camera.c#L717-L785).
+This extends existing host camera integration: it does not edit generated game
+source, replace the complete original camera routine, or primarily zoom by
+modifying PowerPC registers directly.
 
 **Internals:** [Host lifecycle](runtime/Host.md#host-lifecycle) and
 [shutdown](runtime/Host.md#shutdown).
@@ -149,6 +167,7 @@ and [disc and storage services](runtime/Services.md#disc-and-storage).
 | --- | --- | --- | --- |
 | Platform application → host | Resolved paths, launch settings, and native lifecycle events | Keeps OS-specific startup outside shared runtime logic | [Platform entry layers](runtime/Host.md#platform-entry-layers) |
 | Host ↔ game module | `StaticRecompModuleDesc`, callbacks, dispatch, and shared-storage exports | Allows the host and translated code to be compiled separately | [Module loading and ABI](runtime/GameModule.md#module-loading-and-abi) |
+| Host ↔ guest state | Access to shared CPU state and guest memory through runtime interfaces and guest-memory helpers | Supports execution control, event delivery, and game-specific integrations | [Host lifecycle](runtime/Host.md#host-lifecycle), [ownership and address model](runtime/GuestState.md#ownership-and-address-model) |
 | Module ↔ guest state | Shared `CPUState`, memory access, guest PC, and address aliases | Preserves the machine model expected by translated PowerPC code | [Ownership and address model](runtime/GuestState.md#ownership-and-address-model) |
 | Guest execution ↔ services | MMIO, HLE calls, deadlines, callbacks, and interrupts | Turns guest-visible hardware operations into host-managed work | [Service boundary](runtime/Services.md#service-boundary) |
 | Game module → graphics | GX gather-pipe data and display lists | Preserves the original graphics command model while using a native renderer | [GX command path](runtime/Graphics.md#gx-command-path) |
@@ -176,6 +195,9 @@ sequenceDiagram
         M->>G: Update CPU and memory
         M->>S: Request guest I/O
         S->>G: Publish results and events
+        opt Host integration requires access
+            H->>G: Read or update guest state
+        end
         M->>R: Submit GX work
         R-->>H: Present at retrace
     end
@@ -185,6 +207,8 @@ sequenceDiagram
 Execution is cyclical, not a one-way pipeline. The host gives translated code a
 bounded amount of guest time, services devices at a safe boundary, publishes
 pending callbacks or interrupts, and resumes at the guest program counter.
+The sequence is conceptual: host hooks access guest state only at relevant
+integration points, not on every dispatch.
 
 Return to the [architecture overview](Overview.md), or review how these runtime
 artifacts are produced in the [build architecture](Build.md).
