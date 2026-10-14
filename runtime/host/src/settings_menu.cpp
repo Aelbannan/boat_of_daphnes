@@ -1329,7 +1329,7 @@ void draw(void*) {
 // Safe mode (BLUEWAKE_SAFE_MODE: --safe-mode, or a launch that never got to a
 // clean exit, from linux_entry.c), as on Windows: the settings file is copied
 // aside, then this session and the file get the safe choices: Fast sound,
-// 4:3, in a window, no mods, options or texture pack, and the gameplay extras
+// 4:3, in a window, no HD look, mods, options or texture pack, and the gameplay extras
 // off. If the copy fails the file is left alone and only this session is safe.
 void apply_safe_mode() {
     const char* asked = std::getenv("BLUEWAKE_SAFE_MODE");
@@ -1349,10 +1349,20 @@ void apply_safe_mode() {
         {"BLUEWAKE_SPRINT_SPEED", "1"},      {"BLUEWAKE_FAST_FORWARD", "0"},
         {"BLUEWAKE_FADE_FRAMES", "0"},       {"BLUEWAKE_QUICK_DOORS", "0"},
         {"BLUEWAKE_STAGE_SELECT_TOGGLE", "0"},
+        {"BLUEWAKE_HD_LOOK", "0"},
+        // Clear overrides so the HD switch can enable every effect again later.
+        {"BLUEWAKE_HD_DISTANT_ISLANDS", ""}, {"BLUEWAKE_HD_BLOOM", ""},
+        {"BLUEWAKE_HD_FAR_BLUR", ""},        {"BLUEWAKE_HD_AO", ""},
+        {"BLUEWAKE_HD_CLOUD_SHADOWS", ""},   {"BLUEWAKE_HD_SUN_SHADOWS", ""},
+        {"BLUEWAKE_HD_EDGE_LIGHT", ""},      {"BLUEWAKE_HD_TORCH_LIGHT", ""},
     };
-    for (const auto& pair : kSafe)
+    for (const auto& pair : kSafe) {
         setenv(pair[0], pair[1], 1);
-    std::fprintf(stderr, "[safe-mode] Fast sound, 4:3, a window, no mods or options%s\n",
+        // Per-effect overrides are otherwise kept verbatim as unmanaged keys.
+        if (backed_up)
+            g_other.erase(pair[0]);
+    }
+    std::fprintf(stderr, "[safe-mode] Fast sound, 4:3, a window, no HD look, mods or options%s\n",
                  backed_up ? "; the earlier settings were copied beside settings.ini" : "");
     if (backed_up) {
         g_dirty = true;

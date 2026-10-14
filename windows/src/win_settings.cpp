@@ -1452,6 +1452,7 @@ extern "C" void bw_settings_load(const char* data_dir) {
             g_saved.betterww = false;
             g_saved.options.clear();
             g_saved.hd_textures = false;
+            g_saved.hd_look = false;
             g_saved.lle_audio = false;
             g_saved.movement_extras = false;
             g_saved.fast_transitions = false;
@@ -1471,7 +1472,17 @@ extern "C" void bw_settings_load(const char* data_dir) {
         _putenv_s("BLUEWAKE_FAST_FORWARD", "0");
         _putenv_s("BLUEWAKE_FADE_FRAMES", "0");
         _putenv_s("BLUEWAKE_QUICK_DOORS", "0");
-        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio and restart defaults\n");
+        _putenv_s("BLUEWAKE_HD_LOOK", "0");
+        // Clear overrides so the HD switch can enable every effect again later.
+        _putenv_s("BLUEWAKE_HD_DISTANT_ISLANDS", "");
+        _putenv_s("BLUEWAKE_HD_BLOOM", "");
+        _putenv_s("BLUEWAKE_HD_FAR_BLUR", "");
+        _putenv_s("BLUEWAKE_HD_AO", "");
+        _putenv_s("BLUEWAKE_HD_CLOUD_SHADOWS", "");
+        _putenv_s("BLUEWAKE_HD_SUN_SHADOWS", "");
+        _putenv_s("BLUEWAKE_HD_EDGE_LIGHT", "");
+        _putenv_s("BLUEWAKE_HD_TORCH_LIGHT", "");
+        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio, no HD look and restart defaults\n");
     }
     g_launched = g_saved;
 }
@@ -1479,6 +1490,9 @@ extern "C" void bw_settings_load(const char* data_dir) {
 extern "C" void bw_settings_apply_launch(void) {
     // What the command line chose wins for this session (and is shown).
     g_session = g_saved;
+    // apply_hd_look() reads the session later, even if the backup failed.
+    if (g_safe_mode)
+        g_session.hd_look = false;
     Settings& d = g_session;
     if (env_set("BLUEWAKE_JUMP_BUTTON"))
         d.movement_extras = std::getenv("BLUEWAKE_JUMP_BUTTON")[0] != '0';
