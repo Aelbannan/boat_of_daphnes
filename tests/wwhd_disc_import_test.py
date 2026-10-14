@@ -164,11 +164,11 @@ def check_png(data, size, label):
     check(raw == expected, f"{label}: unexpected pixels, scanlines or mip size")
 
 
-def check_pack(output, exact=True):
+def check_pack(output, exact=True, expected_conflicts=0):
     report = json.loads((output / "import-report.json").read_text(encoding="utf-8"))
-    check(report["replacement_count"] == 1 and report["conflicts_skipped"] == 0
+    check(report["replacement_count"] == 1 and report["conflicts_skipped"] == expected_conflicts
           and report["unsupported"] == [] and len(report["textures"]) == 1,
-          f"{output.name}: expected one replacement without errors")
+          f"{output.name}: unexpected replacements, conflicts or errors")
     texture = report["textures"][0]
     check(texture["original_size"] == [16, 16] and texture["hd_size"] == [32, 32]
           and texture["mipmaps"] == len(MIP_SIZES), f"{output.name}: texture metadata")
@@ -218,7 +218,7 @@ def run(cli, root):
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("WWHD_TEST_") and key != "WWHD_EXACT_REPORT"}
     def invoke(source, output, arguments=(), failure=None, *, gc_input=gc, exact=True,
-               cancel=None, after=1, expected_code=1, evidence=None):
+               cancel=None, after=1, expected_code=1, evidence=None, remove_name=None, conflicts=0):
         before = snapshot(outputs)
         command = [str(cli), str(source), str(gc_input), str(output)] + [str(a) for a in arguments]
         child_environment = dict(environment)
@@ -226,6 +226,8 @@ def run(cli, root):
             child_environment["WWHD_EXACT_REPORT"] = "1"
         if cancel:
             child_environment.update(WWHD_TEST_CANCEL=cancel, WWHD_TEST_AFTER=str(after))
+        if remove_name:
+            child_environment["WWHD_TEST_REMOVE_NAME"] = remove_name
         result = subprocess.run(command, cwd=root, env=child_environment, capture_output=True,
                                 text=True, timeout=30, check=False)
         detail = f"{output.name}: exit {result.returncode}\n{result.stdout}\n{result.stderr}"
@@ -243,10 +245,38 @@ def run(cli, root):
         prefix = relative + "/"
         outside = {p: data for p, data in after.items() if p != relative and not p.startswith(prefix)}
         check(outside == before, "successful import modified another output or left staging: " + detail)
-        return check_pack(output, exact)
+        return check_pack(output, exact, conflicts)
 
     baseline = outputs / "folder-pack"
     expected_pngs = invoke(folder, baseline)
+    # A and B share original texture bytes but disagree in HD. C remains a
+    # valid replacement, so ignoring an A/B deletion failure would publish a
+    # pack containing rejected artwork rather than fail for an empty pack.
+    conflict_gc = root / "conflicting-originals.iso"
+    conflict_disc = make_gamecube()
+    fst = bytearray(48) + b"A.bti\0B.bti\0C.bti\0"
+    fixture.put(fst, 0, "III", 0x01000000, 0, 4)
+    for index, offset in enumerate((0x800, 0x800, 0x1000), 1):
+        fixture.put(fst, index * 12, "III", (index - 1) * 6, offset, 288)
+    conflict_disc[0x1000:0x1120] = conflict_disc[0x800:0x920]
+    conflict_disc[0x1020:0x1120] = bytes([43]) * 256
+    fixture.put(conflict_disc, 0x424, "II", 0x500, len(fst))
+    conflict_disc[0x500:0x500 + len(fst)] = fst
+    conflict_gc.write_bytes(conflict_disc)
+    conflict_folder = root / "conflicting-resources"
+    conflict_folder.mkdir()
+    for name in ("A", "B", "C"):
+        texture = bytearray(bfres)
+        texture[0x200] = ord(name)
+        if name == "B":
+            texture[0x800:] = bytes((31, 61, 29, 255)) * ((len(texture) - 0x800) // 4)
+        (conflict_folder / (name + ".bfres")).write_bytes(texture)
+    invoke(conflict_folder, outputs / "conflict-pruned", gc_input=conflict_gc, conflicts=1)
+    rejected_name = next(name for name in expected_pngs if "_mip" not in name)
+    for exact in (True, False):
+        invoke(conflict_folder, outputs / f"remove-failure-{exact}", gc_input=conflict_gc,
+               exact=exact, cancel="remove-conflict", remove_name=rejected_name,
+               failure="cannot remove generated texture", evidence="Test blocked removal:")
     title_args = (key_paths["disc"], "", key_paths["title"])
     modes = {
         "title": title_args,
@@ -386,7 +416,8 @@ def run(cli, root):
           f"independent pixels/CRC; {unicode_imports} Unicode-path imports match ASCII PNGs; "
           f"{failures} failure/preservation checks; {cancellations} deterministic cancellations; "
           f"2 async PNG byte comparisons; post-publication cancel succeeds; "
-          f"{close_failures} buffered-close failures (POSIX only)")
+          f"{close_failures} buffered-close failures (POSIX only); "
+          "conflict pruning and 2 removal-failure preservation checks")
 
 
 def main():

@@ -677,8 +677,12 @@ ImportResult import_pack(const ImportOptions& o) {
                                     alternatives = p.alternatives;
                                     alternatives.push_back(p.hd);
                                     writer.drain();
-                                    for (const std::string& name : p.generated)
+                                    WWHD_CHECKPOINT("remove-replaced");
+                                    for (const std::string& name : p.generated) {
                                         fs::remove(staging / name, ec);
+                                        if (ec)
+                                            throw WriteError("cannot remove generated texture " + name + ": " + ec.message());
+                                    }
                                     conflicts.erase(key);
                                 }
                                 Match m;
@@ -726,8 +730,12 @@ ImportResult import_pack(const ImportOptions& o) {
         check_cancel();
         for (const std::string& key : conflicts) {
             check_cancel();
-            for (const std::string& name : matches[key].generated)
+            WWHD_CHECKPOINT("remove-conflict");
+            for (const std::string& name : matches[key].generated) {
                 fs::remove(staging / name, ec);
+                if (ec)
+                    throw WriteError("cannot remove generated texture " + name + ": " + ec.message());
+            }
         }
         std::string textures;
         size_t accepted = 0;

@@ -380,6 +380,15 @@ Cancellation cannot interrupt an OS read that is already stalled. Abrupt process
 termination also bypasses exception cleanup and can leave hidden staging folders;
 ownership/restart recovery and reporting failed cleanup remain open work.
 
+A further output check rejects the import if removing a conflicting texture or
+replacing its old mipmaps fails. Previously those filesystem errors were ignored,
+so rejected artwork could survive in a completed pack. A generated three-texture
+fixture reproduces the old success-after-failure result. The fixed importer
+passes conflict pruning and both synchronous/threaded removal-failure cases on
+the Mac under ASan/UBSan, preserving existing packs and removing staging. The
+same generated checks run in Windows/Linux CI. This does not cover forced-process
+recovery or a failure to remove the staging directory itself.
+
 ### Native iOS Simulator check (October 15, 2026)
 
 An isolated test app linked all eight production importer source files from

@@ -67,8 +67,11 @@ your own decrypted folder, then a USA WUD/WUX image and its keys:
 
 The M3 Max Mac completed the full folder import (3,546 textures) and a generated
 encrypted WUX menu import; the latter's nine PNGs matched the CLI and its copied
-card was unchanged. The expanded core passed Windows CI at `b23787d`. These
-results do not establish Windows picker or authentic-disc acceptance.
+card was unchanged. The image/key and cancellation core passed Windows/Linux CI
+at `254195d`. A later fix refuses to publish when conflicting generated textures
+cannot be removed; its generated synchronous/threaded failure cases pass on the
+Mac under ASan/UBSan and are included in the next CI run. These results do not
+establish Windows picker or authentic-disc acceptance.
 
 ## 2. Shipped, still to check by hand
 
