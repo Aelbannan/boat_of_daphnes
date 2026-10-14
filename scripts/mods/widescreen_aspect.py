@@ -14,9 +14,9 @@ a target aspect A it is interpolated between the game's own 4:3 value and the
 The 4:3 values are the game's (read from main.dol for the constants, from the
 decompiled tuning constructors for the runtime structures). A constant load can
 only reach the existing pool around r2, so it takes the nearest constant there;
-the choices for 16:10 are within about a pixel except a picture's width (-3),
-and those for 21:9 (t = 2.25, beyond the 16:9 code) within half a pixel; a 21:9
-picture's x and width are written into unused pool slots (PAD_SLOTS).
+the choices for 16:10 are within about a pixel, and those for 21:9 (t = 2.25,
+beyond the 16:9 code) within half a pixel. The Picto Box gallery's picture
+viewport is computed instead (picture_viewport) and written into pool padding.
 
     widescreen_aspect.py 16:10 > mods/widescreen/GZLE01-16x10.gecko
     widescreen_aspect.py 21:9 > mods/widescreen/GZLE01-21x9.gecko
@@ -69,20 +69,8 @@ LIS_FLOAT = (0x800037E4, -9.0)
 R2 = 0x803FFD00
 # Loads that the 16:9 code points at pool constants: the 16:9 constant's r2
 # offset -> {aspect: r2 offset of the constant to use}. 114 is the HUD shift
-# (0 at 4:3), 206 the rupee counter x (320 at 4:3), 79 and 480 a picture's x
-# and width (0 and 640 at 4:3), 1.3333 the boomerang sight's x scale (1 at 4:3).
-# A picture keeps its 4:3 shape, so its width is 640 * (4/3) / A, not the
-# interpolated one (280 at 21:9 squeezed Picto Box photos to 77% of their
-# width), and its x centres it: (640 - width) / 2.
-# At 21:9 the Picto Box gallery's picture viewport comes from the 2D layout
-# instead (picture_viewport): the gallery draws a photo in its own 2D
-# projection, -9 to 650 across (the C_MTXOrtho at 0x80227BB8), squeezed into
-# this viewport, while the photo's frame is drawn on the screen's 2D layout,
-# which the widescreen code widens (0x803F7D68, 0x803F7D6C). The two match when
-# the viewport spans -9 to 650 of the screen's layout. At 21:9 that is x 139.3,
-# width 357.8; 367 (the nearest pool constant to 640 * (4/3) / A) made the
-# photos either side of the middle one drift out of their frames. No pool
-# constant is that close, so the two are written into PAD_SLOTS.
+# (0 at 4:3), 206 the rupee counter x (320 at 4:3), 1.3333 the boomerang
+# sight's x scale (1 at 4:3).
 # -130 and 130 are the x and width of the black bars the added code draws over
 # the side margins (the telescope's mask): 130 covers 16:10 and 16:9, so only
 # 21:9 (margins of 265.5 and 272.6) needs larger ones; the bars only overlap.
@@ -91,16 +79,20 @@ POOL_SWAPS = {
     -18768: {"21:9": -29036},  # 130.0  -> 292.5  (needs >= 288 and 272.6)
     -27188: {"16:10": -21536, "21:9": -19536},  # 114.0  -> 68.0, 257.0 (wants 68.4, 256.5)
     -28500: {"16:10": -19520, "21:9": -24296},  # 206.0  -> 250.5, 63.0 (wants 251.6, 63.5)
-    -17768: {"16:10": -27376, "21:9": -32748},  # 79.0   -> 55.0, picture_viewport (wants 54.9)
-    -17640: {"16:10": -31680, "21:9": -32716},  # 480.0  -> 530.0, picture_viewport (wants 528.8)
     -30556: {"16:10": -32212, "21:9": -32576},  # 1.3333 -> 1.2, 1.75 (wants 1.2, 1.75)
 }
-# Where a variant writes the picture viewport's x and width: r2 offsets of
-# alignment padding in .sdata2, a word between a single (lfs) and the double
-# (lfd) after it, which no load in main.dol or any REL reads.
-PAD_SLOTS = {
-    "21:9": (-32748, -32716),  # 0x803F7D14, 0x803F7D34
-}
+# The Picto Box gallery draws a photo in its own 2D projection, -9 to 650
+# across (the C_MTXOrtho at 0x80227BB8), squeezed into a viewport whose x and
+# width the 16:9 code loads (0x80227A18, 0x80227A20), while the photo's frame
+# is drawn on the screen's 2D layout, which the widescreen code widens
+# (0x803F7D68, 0x803F7D6C). The two match when the viewport spans -9 to 650 of
+# the screen's layout (picture_viewport): x 82.0 and width 473.9 at 16:9, 139.3
+# and 357.8 at 21:9. Nearby values (Dolphin's 79 and 480, the pool's 367 at
+# 21:9) let the photos either side of the middle one drift out of their frames,
+# so the 16:9 code loads the two from alignment padding in .sdata2 (a word
+# between a single and the double after it, which no load in main.dol or any
+# REL reads), and each variant writes its own values there.
+PICTURE_SLOTS = (0x803F7D14, 0x803F7D34)  # x, width
 PICTURE_ORTHO = (-9.0, 650.0)     # the gallery's projection for a picture, left and right
 SCREEN_2D = ((-9.0, 650.0), (-123.0, 767.0))  # the 2D screen's left and right at 4:3 and 16:9
 
@@ -112,6 +104,8 @@ def picture_viewport(lerp):
     right = lerp(SCREEN_2D[0][1], SCREEN_2D[1][1])
     scale = 640.0 / (right - left)
     return (PICTURE_ORTHO[0] - left) * scale, (PICTURE_ORTHO[1] - PICTURE_ORTHO[0]) * scale
+
+
 ASPECTS = {"16:9": ASPECT_169, "16:10": 16.0 / 10.0, "21:9": 21.0 / 9.0}
 
 
@@ -159,12 +153,12 @@ def main():
             b = (b & 0xFFFF0000) | (v & 0xFFFF)
         out.append(f"{a:08X} {b:08X}")
         i += 1
-    for offset, value in zip(PAD_SLOTS.get(name, ()), picture_viewport(lerp)):
-        out.append(f"{0x04000000 | ((R2 + offset) & 0x01FFFFFF):08X} {f32_bits(value):08X}")
     print("\n".join(out))
 
 
 def patch_word(addr, w, lerp, name):
+    if addr in PICTURE_SLOTS:
+        return f32_bits(picture_viewport(lerp)[PICTURE_SLOTS.index(addr)])
     if addr in FLOAT_WRITES:
         if addr == 0x803FA998:
             return f32_bits(ASPECTS[name])
