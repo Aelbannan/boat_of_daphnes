@@ -16,7 +16,7 @@ Contributor checks below identify candidate builds separately from releases.
 
 ## 1. In `main`, for the next Windows build
 
-The Picto recognition integration adds #334 and RecompCore#36. The candidate passed all three Lenzo
+The merged Picto recognition integration (#341) includes #334 and RecompCore#36. The candidate passed all three Lenzo
 photos on pdale-boop's Windows PC. Mac evidence and the separate first-use shader-cache follow-up
 (RecompCore#39, not pinned) are in [the validation record](status/PICTO_RECOGNITION_2026-10-15.md).
 Widescreen crop/gallery work (#338) is separate.
@@ -63,10 +63,10 @@ hand ([details](status/WINDOWS_BUILD_0.5.0.md)).
 
 ## 3. Checked on Windows
 
-- **Unmerged Picto recognition candidate (#334 + RecompCore#36):** pdale-boop completed all three Lenzo photos,
+- **Picto recognition in main (#341, with #334 + RecompCore#36):** pdale-boop completed all three Lenzo photos,
   with bad shots rejected and good ones accepted ([confirmation](https://github.com/chrissotraidis/bluewake/pull/334#issuecomment-6159163583)).
   Mac positive/negative recognition passes; RecompCore#36 is merged and #39 fixes the cold-cache identification
-  pass. BlueWake #341 integrates #334/#36; #39 stays separate and is not in that pin. Recheck a first photo on a fresh Windows
+  pass. BlueWake #341 merged #334/#36 after green Windows/Linux CI; #39 stays separate and is not in that pin. Recheck a first photo on a fresh Windows
   shader cache with #39. Widescreen gallery/crop #338
   has separate Windows/Linux checks and a separate RecompCore#37 dependency.
 - 0.6.0, by pdale-boop: the history intro's music (#97, deferred DVD completion, on by default on Windows), the

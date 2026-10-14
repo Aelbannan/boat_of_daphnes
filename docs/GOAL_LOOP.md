@@ -38,26 +38,36 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   merged with Chris's explicit approval). `--no-behaviour-timing` turns it off; `--conservative` keeps the plain
   translation. Mac/iOS remain opt-in. Deck and Windows play checks are recorded in [PERFORMANCE.md](PERFORMANCE.md).
   Existing downloads have not changed; 0.8.0 is still held for the HD work and release checks.
-- **Picto recognition is being checked on the Mac.** jslay88 confirms the fix on Linux (Lenzo accepts the letter)
-  and an M4 Pro Mac; pdale-boop completed all three Lenzo photos on Windows, with bad photos rejected. Those are
-  contributor checks. Our Metal test recognizes Lenzo and rejects an empty wall. A cold-cache check also exposed skipped alpha-only
-  identification draws; the local follow-up waits for those pipelines and passes the first-photo check.
-  [RecompCore#36](https://github.com/chrissotraidis/RecompCore/pull/36) and [#334](https://github.com/chrissotraidis/bluewake/pull/334)
-  supply the readback fix; RecompCore#36 is merged. [RecompCore#39](https://github.com/chrissotraidis/RecompCore/pull/39)
-  carries the first-use follow-up for Windows/Linux gameplay checks. Chris approved the original pin move;
-  [#341](https://github.com/chrissotraidis/bluewake/pull/341) integrates #334 and #36 and awaits CI before
-  BlueWake moves from `ee99bbc`. #267 still needs its original reporter's confirmation.
+- **Picto recognition is fixed in `main`** ([#341](https://github.com/chrissotraidis/bluewake/pull/341),
+  `6c0ee74`), including jslay88's #334 and the RecompCore#36 pin (`57123c6`). Windows and Linux CI passed.
+  jslay88 confirmed Lenzo accepting the letter on Linux and checked an M4 Pro; pdale-boop completed all three
+  Lenzo photos on Windows with bad photos rejected. Our M3 Max/Metal check recognizes Lenzo and rejects an
+  empty wall. #333 is closed after its reporter's confirmation; #267 stays open for its original reporter.
+  A separate first-photo shader-compilation problem is covered by draft [#342](https://github.com/chrissotraidis/bluewake/pull/342)
+  and [RecompCore#39](https://github.com/chrissotraidis/RecompCore/pull/39): a generated GPU test fails on the old
+  code and passes on Metal with the follow-up. That runtime change is not pinned in `main`; Windows/Linux
+  gameplay checks and approval remain. Widescreen photo shape is separate (#338 / RecompCore#37).
 - **The native HD importer uses 46% less memory** ([#315](https://github.com/chrissotraidis/bluewake/pull/315), draft,
-  `5b2bc11`): 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
+  `a640108`): 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
   All 3,546 texture keys still match; all 33,859 PNGs are byte-identical before/after and match the Python import's
-  decoded pixels. Remaining: WUX/WUD/key-file input, Android integration, Windows/Linux interactive import,
-  iPhone/iPad import and memory while the game runs, and optional fallback packs. This is not mobile acceptance.
+  decoded pixels. A fresh Mac menu import completed while gameplay continued; the pack loaded on restart,
+  the HD HUD was visible and movement worked. Full-app peak RSS was 1,400,389,632 bytes (about 1.30 GiB),
+  sampled every 250 ms. The copied card was unchanged. Output now follows the app data folder, including Linux
+  portable mode. Shutdown cancels and joins the import worker; the generated lifetime regression fails on the
+  earlier detached worker and passes under sanitizers and Mac CTest. Remaining: WUX/WUD/key-file input,
+  Android integration, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
+  This is not mobile acceptance.
 - **Contributor work:** [#319](https://github.com/chrissotraidis/bluewake/pull/319) (build documentation) is merged.
+  [#339](https://github.com/chrissotraidis/bluewake/pull/339) is also merged: Mac Alt+Enter/fullscreen and normal
+  Return behaviour passed; the no-settings-file safe-mode fallback worked, with the copied card unchanged.
   [#337](https://github.com/chrissotraidis/bluewake/pull/337) stays draft: feedback asks for the correct Mac/mobile
-  entry paths and less duplication. [#339](https://github.com/chrissotraidis/bluewake/pull/339) is source-reviewed,
-  with green CI and the author's Linux play checks; Mac Alt+Enter/safe-mode testing and final review remain.
+  entry paths and less duplication.
   [#338](https://github.com/chrissotraidis/bluewake/pull/338) has Windows/Linux photo-shape checks but needs its
   separate RecompCore#37 dependency and Mac validation; it is not part of the approved recognition pin change.
+- **Safe startup disables HD effects** in [#343](https://github.com/chrissotraidis/bluewake/pull/343), awaiting CI.
+  The earlier reset omitted the HD master/overrides. Generated fixtures and a fresh Mac/Metal gameplay run
+  pass: effects start off, then F2 turns them on and off. The backup and copied card remain unchanged; native
+  Windows/Linux checks remain in the hardware checklist.
 - **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Review found a possible stale
   cached size while F1 holds the guest. Cache synchronization and an F1-open resize/fullscreen check were requested;
   this is a source concern, not a locally reproduced crash. No runtime integration yet.
@@ -201,7 +211,7 @@ iPad alike. Chris decided:
 
 | # | Step | Notes |
 | --- | --- | --- |
-| H1 | HD textures and HUD from your own Wii U dump, made in the app on every build | **October 15:** #315 remains draft, with exact 3,546-texture parity and lower standalone Mac memory use (above). **Mods › Wind Waker HD textures › Import from Wind Waker HD…** is wired on desktop and iOS; the earlier Mac menu import loaded the pack. Finish WUX/WUD/key-file input and Android, then interactive imports and memory checks on each platform. Renderer load status is #336; redesigned HD menus (#57) remain separate from replacing HUD textures. |
+| H1 | HD textures and HUD from your own Wii U dump, made in the app on every build | **October 15:** #315 remains draft, with exact 3,546-texture parity and lower standalone Mac memory use (above). **Mods › Wind Waker HD textures › Import from Wind Waker HD…** is wired on desktop and iOS; the fresh Mac menu import and restart loaded the pack, with full-app peak memory recorded above. Finish WUX/WUD/key-file input and Android, then interactive imports and memory checks on each platform. Renderer load status is #336; redesigned HD menus (#57) remain separate from replacing HUD textures. |
 | H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. **In `main` (October 12), off by default:** the host adds 100,000 units to both distances on each island model; [WWHD_LOOK.md](WWHD_LOOK.md) | Game-side, no renderer change; the cheapest |
 | H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #26, #27), off by default, on the switch from BlueWake #287 (RecompCore a10b7e4) |
 | H4 | Ambient occlusion from the depth buffer | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #28), on the switch in #287 with H3 |
