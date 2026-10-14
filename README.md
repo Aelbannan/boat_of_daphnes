@@ -267,10 +267,12 @@ following [the Linux guide](docs/LINUX.md). A ready-made Linux download has not 
 <details>
 <summary><strong>Is there an Android version?</strong></summary>
 
-Not yet. LiquidAzir's Android port ([#93](https://github.com/chrissotraidis/bluewake/pull/93)) builds the game
-from your own disc and plays, with the iPhone app's menu, touch controls, controllers and saves. It will be
-merged as an experimental build-it-yourself option once it holds full speed on a phone; on a Galaxy Z Fold 7 it
-runs Outset at about 70 to 80% today. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
+The Android port is still in review ([#93](https://github.com/chrissotraidis/bluewake/pull/93)). It builds
+from your own disc and plays on a Galaxy Z Fold 7. The latest cool-start check at Outset's pier reached
+90.4% of full speed (October 13). Saving/loading and controller handoff have been checked there;
+the next timing comparison, reordered Mods menu and controller D-pad checks remain open.
+Native HD texture import is being added in [draft #347](https://github.com/chrissotraidis/bluewake/pull/347).
+There is no supported Android release yet. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
 
 </details>
 
