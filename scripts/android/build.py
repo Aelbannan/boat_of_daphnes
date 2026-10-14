@@ -745,6 +745,9 @@ def main():
                              "deadlines (as in scripts/windows/build.py)")
     parser.add_argument("--no-lean-deadlines", action="store_true",
                         help="keep the deadline test after every lean load and store (as in scripts/windows/build.py)")
+    parser.add_argument("--no-behaviour-timing", action="store_true",
+                        help="check the turn's budget after every block, as before behaviour timing (as in "
+                             "scripts/windows/build.py)")
     parser.add_argument("--profile", type=Path, help="an optimization profile (.profdata) for the game module")
     parser.add_argument("--device", metavar="SERIAL",
                         help="train the optimization profile on this adb device (the phone the game is for)")
@@ -780,6 +783,8 @@ def main():
         args.lean_memory = False
     if args.no_lean_memory or args.no_lean_deadlines:
         args.lean_deadlines = False
+    if args.no_behaviour_timing:
+        args.behaviour_timing = False
     if args.lean_blocks:
         args.prepared_blocks = True
     if args.lean_memory and not args.prepared_blocks:
