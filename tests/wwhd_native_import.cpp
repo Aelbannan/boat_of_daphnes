@@ -5,7 +5,19 @@
 #include <cstdio>
 #include <cstdlib>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    const UINT code_page = GetACP();
+    if (code_page != CP_UTF8) {
+        std::fprintf(stderr, "Native importer requires a UTF-8 process code page (GetACP=%u). "
+                             "Build with BlueWake.manifest and run on Windows 10 1903 or newer.\n", code_page);
+        return 2;
+    }
+#endif
     if (argc < 4 || argc > 7) {
         std::fprintf(stderr, "usage: %s HD-content-folder-or-image GZLE01.iso NEW-OUTPUT-FOLDER [DISC-KEY [COMMON-KEY [TITLE-KEY]]]\n", argv[0]);
         return 2;

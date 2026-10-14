@@ -195,9 +195,9 @@ def run(cli, root):
         check_reference(images / name, bfres)
 
     environment = dict(os.environ, WWHD_EXACT_REPORT="1")
-    def invoke(source, output, arguments=(), failure=None):
+    def invoke(source, output, arguments=(), failure=None, *, gc_input=gc):
         before = snapshot(outputs)
-        command = [str(cli), str(source), str(gc), str(output)] + [str(a) for a in arguments]
+        command = [str(cli), str(source), str(gc_input), str(output)] + [str(a) for a in arguments]
         result = subprocess.run(command, cwd=root, env=environment, capture_output=True,
                                 text=True, timeout=30, check=False)
         detail = f"{output.name}: exit {result.returncode}\n{result.stdout}\n{result.stderr}"
@@ -209,8 +209,9 @@ def run(cli, root):
         check(result.returncode == 0, detail)
         check(output.is_dir(), "successful import produced no output: " + detail)
         after = snapshot(outputs)
-        prefix = output.name + "/"
-        outside = {p: data for p, data in after.items() if p != output.name and not p.startswith(prefix)}
+        relative = output.relative_to(outputs).as_posix()
+        prefix = relative + "/"
+        outside = {p: data for p, data in after.items() if p != relative and not p.startswith(prefix)}
         check(outside == before, "successful import modified another output or left staging: " + detail)
         return check_pack(output)
 
@@ -244,6 +245,36 @@ def run(cli, root):
             invoke(image, baseline, arguments, failure="output already exists")
             failures += 1
 
+    # Exercise every host-path boundary beneath a non-ASCII parent, as with a
+    # Windows profile name: folder/image, GC disc, each key and the destination.
+    # CJK and a supplementary character cannot round-trip through legacy ACPs.
+    unicode_name = "\u00e9_\u65e5\u672c\u8a9e_\U0001f600"
+    unicode_root = root / unicode_name
+    unicode_folder = unicode_root / "folder"
+    (unicode_folder / "content").mkdir(parents=True)
+    (unicode_folder / "content/A.bfres").write_bytes(bfres)
+    unicode_gc = unicode_root / (unicode_name + ".iso")
+    unicode_gc.write_bytes(make_gamecube())
+    unicode_keys = {}
+    for name in ("disc", "common", "title"):
+        unicode_keys[name] = unicode_root / (name + "-" + unicode_name + ".key")
+        unicode_keys[name].write_bytes(key_paths[name].read_bytes())
+    unicode_outputs = outputs / unicode_name
+    unicode_outputs.mkdir()
+    pngs = invoke(unicode_folder, unicode_outputs / "folder-pack", gc_input=unicode_gc)
+    check(pngs == expected_pngs, "Unicode folder paths: PNG bytes differ from ASCII baseline")
+    unicode_imports = 1
+    for name in ("toy.wud", "toy.wux"):
+        image = unicode_root / (unicode_name + "-" + name)
+        image.write_bytes((images / name).read_bytes())
+        for mode, arguments in {
+            "common": (unicode_keys["disc"], unicode_keys["common"]),
+            "title": (unicode_keys["disc"], "", unicode_keys["title"]),
+        }.items():
+            pngs = invoke(image, unicode_outputs / (name + "-" + mode), arguments, gc_input=unicode_gc)
+            check(pngs == expected_pngs, f"Unicode {name}/{mode}: PNG bytes differ from ASCII baseline")
+            unicode_imports += 1
+
     # Unlike wrong keys (rejected while opening), a corrupt payload fails after
     # import_pack has created staging. Require its cleanup for WUD and WUX.
     wud[fixture.HASHED + fixture.BLOCK + 0x400 + 19] ^= 1
@@ -254,7 +285,8 @@ def run(cli, root):
         failures += 1
     check(check_pack(baseline) == expected_pngs, "original folder pack was changed")
     print(f"PASS: folder + 2 disc formats x {len(modes)} key modes; six PNG mips each, "
-          f"independent pixels/CRC; {failures} failure/preservation checks")
+          f"independent pixels/CRC; {unicode_imports} Unicode-path imports match ASCII PNGs; "
+          f"{failures} failure/preservation checks")
 
 
 def main():

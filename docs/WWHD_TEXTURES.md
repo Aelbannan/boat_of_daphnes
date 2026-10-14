@@ -17,26 +17,41 @@ many textures the chosen pack has, and a way to add a pack:
 - **iPhone and iPad:** ⋯ › Mods › **Install Texture Pack…**, which copies the
   pack into the app.
 
-## Import in the app (Mac, Linux and Windows)
+## Import in the app (draft #315)
 
-F1 › Mods › **Import from Wind Waker HD…** makes the pack inside BlueWake, with
-nothing to install:
+The native importer is in [draft #315](https://github.com/chrissotraidis/bluewake/pull/315),
+not the 0.7.0 download. Its entry is **Mods › Wind Waker HD textures › Import
+from Wind Waker HD…**: F1 on Mac, Linux and Windows, or ⋯ on iPhone and iPad.
+Android integration remains part of the port work. The app needs no Python.
 
-1. Pick the folder of your own decrypted Wind Waker HD dump: the one that holds
-   `code`, `content` and `meta` (as Cemu uses it), or its `content` folder.
+1. Choose **Folder…** for your decrypted Wind Waker HD dump: the folder that
+   holds `code`, `content` and `meta` (as Cemu uses it), or its `content` folder.
+   Alternatively, choose **WUD/WUX Image…**, then your disc key and either a
+   common key or a decrypted title key. Key files are 16-byte binary files or
+   text containing 32 hexadecimal digits. The menus show filenames, never key
+   values; key selections are used only for this import and are not saved in
+   settings. Cancelling a key picker returns to key selection. On iPhone/iPad,
+   cancelling the initial folder/image picker ends the flow; reopen **Import
+   from Wind Waker HD…** to start again.
 2. BlueWake reads it with the GameCube disc it already plays and makes the pack
-   in a new folder, `Load/Textures/WWHD` in its data folder (`WWHD-2` and so
-   on if that exists). A bar shows the progress; you can close the menu and play
-   while it works, or cancel it.
-3. When it finishes, reopen Mods to see the result. The new pack is selected
-   and **HD textures** is on. Resume the game to save the choice, then restart
-   BlueWake to load it.
+   in a new folder, preserving existing packs: `Load/Textures/WWHD` in the
+   app's data folder (`WWHD-2` and so on if it exists).
+3. On desktop, the menu shows progress; you can close it and play while the
+   import works, or cancel the job. When it finishes, reopen Mods to see the
+   result. The new pack is selected and **HD textures** is on. Resume the game
+   to save the choice, then restart BlueWake to load it.
+4. On iPhone/iPad, the game pauses behind an import progress alert. When the
+   import completes, the app offers to turn on HD textures for the next
+   launch. Restart to load the pack. This path still needs a full-dump test on
+   hardware; the progress alert does not yet offer cancellation.
 
-It is the script below, built into the app: from the same discs it makes the
-same 3,546 textures. The native importer takes about 30 seconds on an M3 Max. WUX and WUD
-images still need the script. The same native entry is built for iPhone and
-iPad in this draft, but an on-device import is still unverified. Android
-integration remains part of the port work.
+The native importer implements the script's matching and conversion: from
+the supplied decrypted HD folder and GameCube disc it makes the same 3,546
+textures, in about 30 seconds on an M3 Max. The image reader passes generated
+encrypted-disc checks, including a Mac menu import. An authentic WUD/WUX
+comparison, Windows/Linux interactive import and iPhone/iPad Files-provider,
+memory and lifecycle checks remain open. These are distinct from build and
+simulator fixture results below.
 
 The output follows the app's data folder, including Linux portable mode and
 an explicitly selected desktop settings location.
@@ -307,7 +322,7 @@ RGBA-chain SHA-256s:
 build/wwhd-tools/bin/python tests/wwhd_compare_packs.py OLD-PACK NEW-PACK
 ```
 
-Keep both packs and their reports private. Windows/Linux compilation and
+Keep both packs and their reports private. Windows/Linux interaction and
 imports on phone/tablet hardware still need their own checks.
 
 ### Mac in-app check (October 15, 2026)
@@ -375,13 +390,28 @@ The temporary cache folder was missing in this smoke run, so SQLite caching
 was disabled. This was not a performance measurement or first-photo test.
 The exact combined iOS revision was compiled, not played or imported on hardware.
 
+The expanded importer was also executed in a fresh iPhone 17e / iOS 27.0
+Simulator fixture app after the WUD/WUX core was added (`46846e2`, with source
+hashes checked again at `b23787d`). All fourteen production importer/crypto
+units linked. The same seven generated folder cases and twelve PNG checks
+passed; the test app was removed and the simulator returned to Shutdown.
+This fixture did not execute an encrypted import or the production picker.
+
+The new iOS folder/image/key flow compiles for arm64 device and simulator,
+and the complete production simulator app links with RecompCore `57123c6`.
+It holds security-scoped access while selecting and importing, and coordinates
+all external input reads together on a worker queue using the returned URLs.
+A Foundation-only check covers three coordinated reads, a coordination error
+that prevents reads, and completion order. It does not test UIKit, iCloud or
+another Files provider; those interaction checks remain open.
+
 ### Native WUX/WUD progress (October 15, 2026)
 
 The native reader now handles WUD/WUX sector mapping, partitions, the Wii U
 file table and title metadata, locally supplied keys, AES-CBC decryption,
 and file-table / hashed-content checksums. It reads resources directly into
-the existing texture matcher without expanding an entire WUD. The CLI can
-use this path; app menus still select a decrypted folder.
+the existing texture matcher without expanding an entire WUD. The CLI and
+desktop/iOS menus can select either a decrypted folder or an image with key files.
 
 The reader's generated fixtures cover reordered/duplicated sectors, reads
 above 4 GiB, a 64 GiB logical image backed by less than 9 MiB of test data,
@@ -389,19 +419,33 @@ raw/CBC/hashed content across block boundaries, title/common/override keys,
 wrong keys, malformed tables and damaged content. The encrypted fixtures are
 checked independently by the existing Python reader. Mac CTest and the
 parser's AddressSanitizer / UndefinedBehaviorSanitizer run pass. The updated
-production Mac and iOS Simulator apps compile and link; Windows/Linux CI
-results for this addition remain pending.
+production Mac and iOS Simulator apps compile and link. Windows CI passed for
+the core at `b23787d`; Linux and the later menu integration need their own results.
 
 An end-to-end generated fixture also checks folder import against WUD and
 mapped WUX in four key modes: nine successful imports have identical PNGs,
 with every mip's dimensions, pixels and CRC independently checked. Twelve
 failure cases verify wrong-key rejection, existing-pack preservation, and
-staging cleanup after corrupt content. A fresh full import of the supplied
+staging cleanup after corrupt content. Five more imports put the folder/image,
+GameCube disc, keys and output beneath accented, Japanese and emoji paths;
+their PNGs match the ASCII-path baseline on the Mac. The Windows development
+CLI and fixtures now use the app's existing UTF-8 manifest; Windows execution
+of these cases remains a CI check. A fresh full import of the supplied
 decrypted HD tree still matches all 3,546 keys and all 33,859 PNG bytes from
 the earlier pack; this run peaked at 561,643,520 bytes RSS on the Mac.
 
+The Mac menu also completed a WUX import using generated disc metadata and
+synthetic keys around one private HD resource. Image/disc/common-key selection,
+cancelling and reopening a key picker, completion, pack selection and resumed
+gameplay worked. Its nine PNGs matched the CLI output byte for byte; settings
+contained no key paths, the report contained no key values, and the copied
+card's SHA-256 was unchanged. This used keyboard navigation and native file
+pickers. The title-key menu route and a renderer restart with this small pack
+were not part of that check.
+
 Still required before advertising image support: an authentic image-to-pack
-comparison, file/key pickers in each app, and
+comparison, Windows/Linux and iOS picker interaction, Android integration, and
 phone/tablet memory and lifecycle validation. The supplied reference is a
 decrypted folder; generated encrypted fixtures do not establish acceptance
-of an authentic disc dump. No game data or console keys are in these tests.
+of an authentic disc dump. The committed automated fixtures contain no game
+assets or private keys; the Mac menu check's HD resource and output stay private.

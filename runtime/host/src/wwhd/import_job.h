@@ -12,6 +12,11 @@
 
 namespace wwhd {
 
+// File paths only, kept for this import; key values are never menu state.
+struct ImportKeyFiles {
+    std::string disc, title, common;
+};
+
 class ImportJob {
   public:
     // Finish cancellation before the job's state goes away at app shutdown.
@@ -26,9 +31,10 @@ class ImportJob {
     };
 
     // Starts an import of the Wind Waker HD dump at hd_picked (its folder or its
-    // content folder) with the GameCube disc gc_disc, into a new folder under
+    // content folder, or image) with the GameCube disc gc_disc, into a new folder under
     // textures_dir. False (and a message in status) when it cannot start.
-    bool start(const std::string& hd_picked, const std::string& gc_disc, const std::string& textures_dir);
+    bool start(const std::string& hd_picked, const std::string& gc_disc, const std::string& textures_dir,
+               const ImportKeyFiles& keys = {});
     Status status() const;
     void cancel() { cancel_ = true; }
     // Takes a finished result once (so the menu applies it once).

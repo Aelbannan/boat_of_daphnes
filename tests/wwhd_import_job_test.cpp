@@ -13,6 +13,7 @@ namespace {
 enum Mode { succeed, fail, wait_for_cancel };
 std::atomic<Mode> mode{succeed};
 std::atomic<bool> entered{false}, exited{false};
+wwhd::ImportKeyFiles expected_keys;
 
 void require(bool value, const char* message) {
     if (!value)
@@ -30,6 +31,8 @@ template <typename Predicate> void until(Predicate ready) {
 
 namespace wwhd {
 ImportResult import_pack(const ImportOptions& options) {
+    require(options.disc_key_file == expected_keys.disc && options.title_key_file == expected_keys.title &&
+                options.common_key_file == expected_keys.common, "selected key paths were lost or changed");
     entered = true;
     options.progress({1, 2, 0, "fixture"});
     if (mode == wait_for_cancel)
@@ -69,6 +72,16 @@ int main() {
                 require(next != succeed || result.replacements == 3, "lost replacement count");
                 require(!job.take_result(result), "delivered result twice");
             }
+            // The background job owns its selection even if the menu resets
+            // immediately after Import is pressed.
+            mode = succeed;
+            expected_keys = {"synthetic-disc.key", "synthetic-title.key", ""};
+            auto selected = expected_keys;
+            require(job.start(disc, disc, dir.string(), selected), "could not start image import");
+            selected = {};
+            until([&] { return job.status().finished; });
+            require(!job.status().failed, "image import did not preserve its key selection");
+            expected_keys = {};
             require(!job.start(dir.string(), "", dir.string()), "accepted missing disc");
             require(job.status().failed && !job.status().running, "missing-disc state incorrect");
         }

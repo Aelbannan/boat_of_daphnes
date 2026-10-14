@@ -58,3 +58,14 @@ target_link_libraries(bluewake_wwhd_native_import PRIVATE
 add_test(NAME bluewake_wwhd_disc_import_test COMMAND "${BLUEWAKE_WWHD_TEST_PYTHON}"
     -B "${BLUEWAKE_REPO_ROOT}/tests/wwhd_disc_import_test.py" "$<TARGET_FILE:bluewake_wwhd_native_import>")
 set_tests_properties(bluewake_wwhd_disc_import_test PROPERTIES TIMEOUT 60)
+
+# Match the app's UTF-8 path/argv encoding on Windows. CMake embeds manifest
+# sources with both clang-cl and the clang GNU driver used by the app builder.
+if(WIN32)
+    foreach(_wwhd_target IN ITEMS bluewake_wwhd_disc_image_test bluewake_wwhd_disc_crypto_test
+            bluewake_wwhd_wiiu_disc_test bluewake_wwhd_native_import bluewake_wwhd_import_job_test)
+        if(TARGET ${_wwhd_target})
+            target_sources(${_wwhd_target} PRIVATE "${BLUEWAKE_REPO_ROOT}/windows/resources/BlueWake.manifest")
+        endif()
+    endforeach()
+endif()

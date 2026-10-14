@@ -54,7 +54,12 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   the HD HUD was visible and movement worked. Full-app peak RSS was 1,400,389,632 bytes (about 1.30 GiB),
   sampled every 250 ms. The copied card was unchanged. Output now follows the app data folder, including Linux
   portable mode. Shutdown cancels and joins the import worker; the generated lifetime regression fails on the
-  earlier detached worker and passes under sanitizers and Mac CTest. Remaining: WUX/WUD/key-file input,
+  earlier detached worker and passes under sanitizers and Mac CTest. Native WUD/WUX partition/decryption
+  and image-to-pack conversion are now implemented (`46846e2`): generated encrypted discs match the folder
+  pack in nine imports, with twelve failure/preservation checks. A fresh full folder import preserves all
+  33,859 PNG bytes. Desktop/iOS image and key pickers are implemented in the draft. A Mac menu import
+  from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
+  card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
   Android integration, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
   This is not mobile acceptance.
 - **Contributor work:** [#319](https://github.com/chrissotraidis/bluewake/pull/319) (build documentation) is merged.
@@ -64,7 +69,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   entry paths and less duplication.
   [#338](https://github.com/chrissotraidis/bluewake/pull/338) has Windows/Linux photo-shape checks but needs its
   separate RecompCore#37 dependency and Mac validation; it is not part of the approved recognition pin change.
-- **Safe startup disables HD effects** in [#343](https://github.com/chrissotraidis/bluewake/pull/343), awaiting CI.
+- **Safe startup disables HD effects** in merged [#343](https://github.com/chrissotraidis/bluewake/pull/343), after green Windows/Linux CI.
   The earlier reset omitted the HD master/overrides. Generated fixtures and a fresh Mac/Metal gameplay run
   pass: effects start off, then F2 turns them on and off. The backup and copied card remain unchanged; native
   Windows/Linux checks remain in the hardware checklist.
@@ -76,7 +81,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   experiment gave no gain. HD look and D-pad sources are included; the reordered Mods menu builds but still needs a
   phone check. The native importer and controller checks remain separate parity work.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed
-  direction. The API is not started; #315 comes first, and pdale-boop can continue other menu work. HD shading
+  direction. #345's clearer folder status and #344's Linux portal build dependency are merged after green CI.
+  The Mac status checks pass; the Linux picker needs a real desktop check. The registered-count API is not
+  started; #315 comes first, and pdale-boop can continue other menu work. HD shading
   acceptance (#321) and the physical iPad menu-switch check (#316) also remain open.
 
 ## Where things stand on October 14

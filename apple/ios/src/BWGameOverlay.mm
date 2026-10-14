@@ -206,6 +206,77 @@ static CGRect BWFrameAtNormalizedCenter(CGRect safe, CGFloat x, CGFloat y, CGFlo
 
 // ---------------------------------------------------------------- overlay
 
+// The HD import holds these grants while choosing keys and during the worker.
+// Replacing a selection or cancelling releases its grant; no URLs or keys are
+// persisted. A non-scoped URL may still be readable inside the app container.
+@interface BWHDScopedURL : NSObject
+@property(nonatomic, strong, readonly) NSURL* url;
+- (instancetype)initWithURL:(NSURL*)url;
+- (void)finishAccess;
+@end
+@implementation BWHDScopedURL {
+    BOOL _accessing;
+}
+- (instancetype)initWithURL:(NSURL*)url {
+    if ((self = [super init])) {
+        _url = url;
+        _accessing = [url startAccessingSecurityScopedResource];
+    }
+    return self;
+}
+- (void)finishAccess {
+    if (_accessing) {
+        [_url stopAccessingSecurityScopedResource];
+        _accessing = NO;
+    }
+}
+- (void)dealloc { [self finishAccess]; }
+@end
+
+@interface BWHDImportSelection : NSObject
+@property(nonatomic, strong) BWHDScopedURL* image;
+@property(nonatomic, strong) BWHDScopedURL* discKey;
+@property(nonatomic, strong) BWHDScopedURL* contentKey;
+@property(nonatomic) BOOL usesTitleKey;
+@end
+@implementation BWHDImportSelection
+@end
+
+// UIKit may already be dismissing an alert or document picker when its
+// callback arrives. Wait for that transition, or dismiss it explicitly,
+// before presenting the next picker, key choices, or progress alert.
+static void BWHDWhenDismissed(UIViewController* controller, void (^done)(void)) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id<UIViewControllerTransitionCoordinator> transition = controller.transitionCoordinator;
+        if (controller.isBeingDismissed && transition != nil) {
+            // Its return value describes animation scheduling, not whether
+            // the completion will run. Do not start a second dismissal path.
+            [transition animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                (void)context;
+                done();
+            }];
+            return;
+        }
+        if (controller.presentingViewController != nil)
+            [controller dismissViewControllerAnimated:YES completion:done];
+        else
+            done();
+    });
+}
+
+static UIAlertAction* BWHDAction(UIAlertController* alert, NSString* title, UIAlertActionStyle style,
+                                void (^handler)(void)) {
+    __weak UIAlertController* weakAlert = alert;
+    return [UIAlertAction actionWithTitle:title style:style handler:^(UIAlertAction* action) {
+        (void)action;
+        BWHDWhenDismissed(weakAlert, ^{
+            bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
+            if (handler)
+                handler();
+        });
+    }];
+}
+
 @interface BWGameOverlay : BWPassThroughView <UIGestureRecognizerDelegate, UIDocumentPickerDelegate>
 - (void)showSettingsPanel;
 - (void)hideSettingsPanel;
@@ -259,6 +330,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     NSTimer* _fpsTimer;
     NSDictionary<NSString*, NSNumber*>* _launchMods;  // mod switches as this launch read them
     void (^_pickHandler)(NSArray<NSURL*>* urls);      // the open file picker's handler
+    void (^_hdPickHandler)(BWHDScopedURL* picked);    // nil on cancel; called after dismissal
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -826,6 +898,8 @@ static NSUInteger g_packFiles = NSNotFound;
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
+    if ([self finishHDPicker:controller URL:urls.firstObject])
+        return;
     (void)controller;
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
     void (^handler)(NSArray<NSURL*>*) = _pickHandler;
@@ -835,6 +909,8 @@ static NSUInteger g_packFiles = NSNotFound;
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller {
+    if ([self finishHDPicker:controller URL:nil])
+        return;
     (void)controller;
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
     _pickHandler = nil;
@@ -844,20 +920,40 @@ static NSUInteger g_packFiles = NSNotFound;
 // the main thread once the alert is gone. work may update the alert's message.
 - (void)waitTitled:(NSString*)title message:(NSString*)message
               work:(void (^)(UIAlertController* wait))work done:(void (^)(void))done {
+    [self waitTitled:title message:message readingIntents:nil
+               work:^(UIAlertController* wait, NSError* error) {
+                   (void)error;
+                   work(wait);
+               } done:done];
+}
+
+- (void)waitTitled:(NSString*)title message:(NSString*)message
+    readingIntents:(NSArray<NSFileAccessIntent*>*)intents
+              work:(void (^)(UIAlertController* wait, NSError* error))work done:(void (^)(void))done {
     UIAlertController* wait = [UIAlertController alertControllerWithTitle:title message:message
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:wait animated:YES completion:^{
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            work(wait);
+        void (^run)(NSError*) = ^(NSError* error) {
+            work(wait, error);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [wait dismissViewControllerAnimated:YES completion:^{
                     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
                     done();
                 }];
             });
-        });
+        };
+        if (intents.count > 0) {
+            NSOperationQueue* queue = [NSOperationQueue new];
+            queue.qualityOfService = NSQualityOfServiceUserInitiated;
+            NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+            // Acquire all inputs together; work must finish reading before
+            // this accessor returns and releases the coordinated access.
+            [coordinator coordinateAccessWithIntents:intents queue:queue byAccessor:run];
+        } else {
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ run(nil); });
+        }
     }];
 }
 
@@ -960,39 +1056,175 @@ static NSUInteger g_packFiles = NSNotFound;
 
 // Import from Wind Waker HD: the built-in importer (runtime/host/src/wwhd), as
 // in the desktop menus, with the disc the app plays. The pack goes in a new
-// folder inside Load/Textures/GZLE01, where the renderer finds it.
+// folder at Load/Textures/WWHD (or a numbered sibling), saved as the selected
+// texture pack folder for the next launch.
 - (void)chooseWindWakerHD {
     __weak BWGameOverlay* weakSelf = self;
-    UIDocumentPickerViewController* picker =
-        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
-    [self presentPicker:picker handler:^(NSArray<NSURL*>* urls) { [weakSelf importWindWakerHDFrom:urls.firstObject]; }];
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Import from Wind Waker HD"
+        message:@"Choose your decrypted dump folder, or a USA WUD/WUX image and its key files."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:BWHDAction(alert, @"Choose Folder…", UIAlertActionStyleDefault, ^{
+        [weakSelf pickHDFileOfType:UTTypeFolder title:@"Wind Waker HD Folder" completion:^(BWHDScopedURL* source) {
+            if (source != nil)
+                [weakSelf importWindWakerHDFrom:source discKey:nil contentKey:nil titleKey:NO];
+        }];
+    })];
+    [alert addAction:BWHDAction(alert, @"Choose WUD/WUX Image…", UIAlertActionStyleDefault, ^{
+        // These extensions do not have a system UTI on every iOS version.
+        // Let Files show data files, then check the extension before asking for keys.
+        [weakSelf pickHDFileOfType:UTTypeData title:@"Wind Waker HD WUD/WUX Image" completion:^(BWHDScopedURL* source) {
+            if (source == nil)
+                return;
+            NSString* ext = source.url.pathExtension.lowercaseString;
+            if (![ext isEqualToString:@"wud"] && ![ext isEqualToString:@"wux"]) {
+                [source finishAccess];
+                [weakSelf showMessage:@"Choose a WUD or WUX Image"
+                                text:@"Choose a USA Wind Waker HD image with a .wud or .wux extension."];
+                return;
+            }
+            BWHDImportSelection* selection = [BWHDImportSelection new];
+            selection.image = source;
+            [weakSelf showHDKeys:selection];
+        }];
+    })];
+    [alert addAction:BWHDAction(alert, @"Cancel", UIAlertActionStyleCancel, nil)];
+    [self presentAlert:alert];
 }
 
-- (void)importWindWakerHDFrom:(NSURL*)source {
+- (void)pickHDFileOfType:(UTType*)type title:(NSString*)title completion:(void (^)(BWHDScopedURL*))completion {
+    UIDocumentPickerViewController* picker =
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ type ] asCopy:NO];
+    picker.title = title;
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    picker.modalInPresentation = YES; // Cancel goes through the delegate too.
+    _hdPickHandler = [completion copy];
+    [self clearTouchInput];
+    bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
+    [[self presenter] presentViewController:picker animated:YES completion:nil];
+}
+
+- (BOOL)finishHDPicker:(UIDocumentPickerViewController*)picker URL:(NSURL*)url {
+    if (_hdPickHandler == nil)
+        return NO;
+    void (^handler)(BWHDScopedURL*) = _hdPickHandler;
+    _hdPickHandler = nil;
+    // Acquire access while the picker still owns the selected URL, before it
+    // is dismissed. The handler keeps this object alive for the next step.
+    BWHDScopedURL* picked = url != nil ? [[BWHDScopedURL alloc] initWithURL:url] : nil;
+    BWHDWhenDismissed(picker, ^{
+        bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
+        handler(picked);
+    });
+    return YES;
+}
+
+- (void)showHDKeys:(BWHDImportSelection*)selection {
+    __weak BWGameOverlay* weakSelf = self;
+    NSString* kind = selection.usesTitleKey ? @"Title key" : @"Common key";
+    NSString* message = [NSString stringWithFormat:@"Image: %@\nDisc key: %@\n%@: %@\n\nChoose the disc key and either "
+                                                  @"a common key or a decrypted title key. Key files are used only for this import.",
+        selection.image.url.lastPathComponent, selection.discKey.url.lastPathComponent ?: @"Not selected",
+        kind, selection.contentKey.url.lastPathComponent ?: @"Not selected"];
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Wind Waker HD Keys" message:message
+                                                           preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:BWHDAction(alert, selection.discKey ? @"Replace Disc Key…" : @"Choose Disc Key…",
+        UIAlertActionStyleDefault, ^{
+            [weakSelf pickHDFileOfType:UTTypeData title:@"Disc Key" completion:^(BWHDScopedURL* picked) {
+                if (picked != nil)
+                    selection.discKey = picked;
+                [weakSelf showHDKeys:selection];
+            }];
+        })];
+    NSString* chooseKey = selection.usesTitleKey
+        ? (selection.contentKey ? @"Replace Title Key…" : @"Choose Title Key…")
+        : (selection.contentKey ? @"Replace Common Key…" : @"Choose Common Key…");
+    [alert addAction:BWHDAction(alert, chooseKey, UIAlertActionStyleDefault, ^{
+        [weakSelf pickHDFileOfType:UTTypeData title:kind completion:^(BWHDScopedURL* picked) {
+            if (picked != nil)
+                selection.contentKey = picked;
+            [weakSelf showHDKeys:selection];
+        }];
+    })];
+    [alert addAction:BWHDAction(alert, selection.usesTitleKey ? @"Use Common Key Instead…" : @"Use Title Key Instead…",
+        UIAlertActionStyleDefault, ^{
+            const BOOL useTitle = !selection.usesTitleKey;
+            [weakSelf pickHDFileOfType:UTTypeData title:useTitle ? @"Title Key" : @"Common Key"
+                completion:^(BWHDScopedURL* picked) {
+                    // Cancelling a replacement preserves both the old key and its type.
+                    if (picked != nil) {
+                        selection.contentKey = picked;
+                        selection.usesTitleKey = useTitle;
+                    }
+                    [weakSelf showHDKeys:selection];
+                }];
+        })];
+    UIAlertAction* start = BWHDAction(alert, @"Import", UIAlertActionStyleDefault, ^{
+        if (selection.discKey != nil && selection.contentKey != nil)
+            [weakSelf importWindWakerHDFrom:selection.image discKey:selection.discKey
+                               contentKey:selection.contentKey titleKey:selection.usesTitleKey];
+    });
+    start.enabled = selection.discKey != nil && selection.contentKey != nil;
+    [alert addAction:start];
+    if (start.enabled)
+        alert.preferredAction = start;
+    [alert addAction:BWHDAction(alert, @"Cancel", UIAlertActionStyleCancel, ^{
+        [selection.image finishAccess];
+        [selection.discKey finishAccess];
+        [selection.contentKey finishAccess];
+    })];
+    [self presentAlert:alert];
+}
+
+- (void)importWindWakerHDFrom:(BWHDScopedURL*)source discKey:(BWHDScopedURL*)discKey
+                 contentKey:(BWHDScopedURL*)contentKey titleKey:(BOOL)usesTitleKey {
+    if (source == nil || (discKey != nil) != (contentKey != nil))
+        return;
     __weak BWGameOverlay* weakSelf = self;
     const char* disc = getenv("BLUEWAKE_DISC");
+    const std::string gcDisc = disc != NULL ? disc : "";
     NSString* textures = [[self dataDirectory] stringByAppendingPathComponent:@"Load/Textures"];
     [[NSFileManager defaultManager] createDirectoryAtPath:textures withIntermediateDirectories:YES attributes:nil
                                                     error:nil];
     __block std::string output;
-    const BOOL scoped = [source startAccessingSecurityScopedResource];
     __block std::string failure;
     __block size_t imported = 0;
-    [self waitTitled:@"Importing from Wind Waker HD" message:@"Reading the GameCube disc…"
-                work:^(UIAlertController* wait) {
-        wwhd::ImportOptions options;
-        options.hd_folder = wwhd::hd_content_folder(source.path.fileSystemRepresentation);
-        options.gc_disc = disc != NULL ? disc : "";
-        options.output = output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
-        options.threads = 2;
-        options.progress = [wait](const wwhd::ImportProgress& p) {
-            NSString* text = p.files_total
-                ? [NSString stringWithFormat:@"%zu of %zu files, %zu textures so far", p.files_read, p.files_total,
-                                             p.replacements]
-                : @(p.stage.c_str());
-            dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
-        };
+    NSFileAccessIntent* sourceRead = [NSFileAccessIntent readingIntentWithURL:source.url options:0];
+    NSFileAccessIntent* discKeyRead = discKey != nil
+        ? [NSFileAccessIntent readingIntentWithURL:discKey.url options:0] : nil;
+    NSFileAccessIntent* contentKeyRead = contentKey != nil
+        ? [NSFileAccessIntent readingIntentWithURL:contentKey.url options:0] : nil;
+    NSArray<NSFileAccessIntent*>* inputs = discKey != nil
+        ? @[ sourceRead, discKeyRead, contentKeyRead ] : @[ sourceRead ];
+    [self waitTitled:@"Importing from Wind Waker HD" message:@"Opening Wind Waker HD…"
+       readingIntents:inputs work:^(UIAlertController* wait, NSError* error) {
+        if (error != nil) {
+            failure = "BlueWake could not access the selected Wind Waker HD files. "
+                      "Make sure they are available in Files and try again.";
+            return;
+        }
         try {
+            wwhd::ImportOptions options;
+            // Coordination may update the URLs while waiting for a provider.
+            options.hd_folder = discKey != nil ? sourceRead.URL.path.fileSystemRepresentation
+                                               : wwhd::hd_content_folder(sourceRead.URL.path.fileSystemRepresentation);
+            options.gc_disc = gcDisc;
+            if (discKey != nil) {
+                options.disc_key_file = discKeyRead.URL.path.fileSystemRepresentation;
+                if (usesTitleKey)
+                    options.title_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
+                else
+                    options.common_key_file = contentKeyRead.URL.path.fileSystemRepresentation;
+            }
+            options.output = output = wwhd::new_pack_folder(textures.fileSystemRepresentation);
+            options.threads = 2;
+            options.progress = [wait](const wwhd::ImportProgress& p) {
+                NSString* text = p.files_total
+                    ? [NSString stringWithFormat:@"%zu of %zu files, %zu textures so far", p.files_read, p.files_total,
+                                                 p.replacements]
+                    : @(p.stage.c_str());
+                dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
+            };
             if (options.gc_disc.empty())
                 throw wwhd::FormatError("BlueWake could not find the GameCube disc it plays.");
             imported = wwhd::import_pack(options).replacements;
@@ -1000,16 +1232,18 @@ static NSUInteger g_packFiles = NSNotFound;
             failure = ex.what();
         }
     } done:^{
-        if (scoped)
-            [source stopAccessingSecurityScopedResource];
+        [source finishAccess];
+        [discKey finishAccess];
+        [contentKey finishAccess];
         g_packFiles = NSNotFound;
         [weakSelf refreshMenu];
         if (!failure.empty()) {
+            NSString* help = discKey != nil
+                ? @"Choose your USA WUD/WUX image and its disc key, with a matching common key or title key."
+                : @"Pick the folder of your own Wind Waker HD dump (with code, content and meta) or its content folder.";
             UIAlertController* alert = [UIAlertController
                 alertControllerWithTitle:@"Import Failed"
-                                 message:[NSString stringWithFormat:@"%s\n\nPick the folder of your own Wind Waker HD "
-                                                                    @"dump (with code, content and meta) or its "
-                                                                    @"content folder.", failure.c_str()]
+                                 message:[NSString stringWithFormat:@"%s\n\n%@", failure.c_str(), help]
                           preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[weakSelf actionTitled:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [weakSelf presentAlert:alert];

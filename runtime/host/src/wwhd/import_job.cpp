@@ -37,7 +37,8 @@ std::string new_pack_folder(const std::string& textures_dir) {
     return (base / "WWHD-new").string();
 }
 
-bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, const std::string& textures_dir) {
+bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, const std::string& textures_dir,
+                      const ImportKeyFiles& keys) {
     std::lock_guard<std::mutex> hold(lock_);
     if (status_.running)
         return false;
@@ -56,6 +57,9 @@ bool ImportJob::start(const std::string& hd_picked, const std::string& gc_disc, 
     cancel_ = false;
     ImportOptions options;
     options.hd_folder = hd_content_folder(hd_picked);
+    options.disc_key_file = keys.disc;
+    options.title_key_file = keys.title;
+    options.common_key_file = keys.common;
     options.gc_disc = gc_disc;
     options.output = new_pack_folder(textures_dir);
     options.cancel = &cancel_;

@@ -62,8 +62,9 @@ Review within two days ([DIRECTION.md](DIRECTION.md)). Merged October 11: #242, 
 Current review queue:
 
 - **#334 / RecompCore#36:** merged through #341, with positive/negative Mac recognition and contributor Linux/Mac/Windows checks. Draft #342 / RecompCore#39 is the separate first-photo follow-up, awaiting Windows/Linux gameplay and approval.
-- **#339:** merged after green CI, the author's Linux check and Mac Alt+Enter/safe-mode checks. #343 fixes the separate HD-effects safe-startup omission; fixtures and Mac gameplay pass, CI and native Windows/Linux checks pending.
+- **#339:** merged after green CI, the author's Linux check and Mac Alt+Enter/safe-mode checks. #343 is also merged after green CI; it fixes the HD-effects safe-startup omission. Fixtures and Mac gameplay pass; native Windows/Linux checks remain.
 - **#338 / RecompCore#37:** Windows/Linux gallery and crop checks supplied; runtime pin dependency and Mac test pending. Crop stays off by default; separate from #334.
 - **#337:** draft runtime docs; entry-path and duplication feedback sent.
 - **#93:** Android's deciding cool-start runs; new menu/controller checks remain.
-- **#315:** native importer draft; the memory update is at `a640108`, with Windows and Linux/AppImage CI passed. #316 (iOS menu) and #321 (softer HD look) retain their device/visual acceptance gates.
+- **#344 / #345:** merged after green CI; Linux portal build dependency and clearer folder status. Mac status checks pass. Actual Linux picker interaction and renderer registration count (#336) remain open.
+- **#315:** native importer draft; WUD/WUX decoding and generated image-to-pack checks pass (`46846e2`). Desktop/iOS image and key pickers are implemented; a generated WUX imports through the Mac menu with nine PNGs matching the CLI and the copied card unchanged. Authentic-disc validation, Windows/Linux and iOS picker interaction, mobile memory/lifecycle and Android integration remain. The memory update is at `a640108`, with Windows and Linux/AppImage CI passed; the expanded core at `b23787d` also passed Windows CI. #316 (iOS menu) and #321 (softer HD look) retain their device/visual acceptance gates.
