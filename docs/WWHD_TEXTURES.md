@@ -354,3 +354,32 @@ bundle used a copied card, whose hash stayed unchanged. Device Hub returned
 `noWindowsAvailable` for automation input, so this run did not verify the Mods
 menu or file picker. The test app was uninstalled and the simulator shut down;
 the physical iPad was not touched.
+
+### Combined runtime check (October 15, 2026)
+
+The native-import branch at `6bc56e5` also builds on macOS and iOS Simulator
+with the newly approved Picto recognition pin, RecompCore `57123c6`. Five Mac
+host checks passed (import-worker lifecycle, save state, cache flush, frame
+interpolation and FIFO worker), as did the alpha, destination-alpha and early-depth
+Metal pixel fixtures. A Mac Outset run registered all 3,546 replacements with
+the HD look enabled and exited normally; the copied card stayed unchanged.
+The temporary cache folder was missing in this smoke run, so SQLite caching
+was disabled. This was not a performance measurement or first-photo test.
+The exact combined iOS revision was compiled, not played or imported on hardware.
+
+### Native WUX/WUD work remaining
+
+The native random-access reader (`wwhd/disc_image.cpp`) reads raw WUD bytes
+and mapped WUX sectors without expanding the disc. Generated fixtures exercise
+reordered and duplicated sectors, partial final sectors, reads above 4 GiB,
+a 64 GiB logical image backed by less than 9 MiB of test data, malformed maps,
+truncated inputs and bounded reads. Mac CTest and AddressSanitizer /
+UndefinedBehaviorSanitizer pass; the reader also compiles for arm64 iOS Simulator.
+Windows/Linux CI is configured to build and run the same source-only fixture;
+results for this addition are pending.
+
+This reader is a foundation, not an import option yet. Next are the Wii U
+partition/file table, local key input, AES decryption and content checksums,
+then connection to the existing matching pipeline and each platform's picker.
+The complete WUX import must match the decrypted-folder pack before the app
+advertises image support. No keys or game data are included in these tests.
