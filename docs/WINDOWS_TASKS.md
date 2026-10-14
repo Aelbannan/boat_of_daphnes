@@ -6,11 +6,13 @@ Work that needs a Windows PC. Elliott owns Windows; anyone with the hardware can
 **You need:** Windows 10 or 11 (x64), a CPU with AVX2, a Direct3D 12 GPU, your own USA `GZLE01` revision 0
 disc, and the build tools in [BlueWake on Windows](WINDOWS.md#what-you-need).
 
-**Where things stand (October 11, 2026):** 0.7.0 is the Windows download, built on Chris's PC (Ryzen 7 5700U)
+**Where things stand (October 15, 2026):** 0.7.0 is the Windows download, built on Chris's PC (Ryzen 7 5700U)
 from the release commit: a 27-minute title session with draw fusion on, D3D12 and no fatal lines, but nothing
 played by hand ([Windows build for 0.7.0](status/WINDOWS_BUILD_0.7.0.md)). pdale-boop checked 0.6.0 on a second
 PC (i5-12600KF, RTX 5070 Ti) by ear and with controllers ([his checks](status/WINDOWS_CHECKS_0.6.0_2026-10-07.md)).
 The 0.5.0 checks are in [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md).
+New builds from `main` now use behaviour timing (#335, approved by Chris); the 0.7.0 download is unchanged.
+Contributor checks below identify candidate builds separately from releases.
 
 ## 1. In `main`, for the next Windows build
 
@@ -32,7 +34,7 @@ The 0.5.0 checks are in [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md)
 | Builder option `--portable`: puts `portable.txt` in the app folder (portable mode, #64) | #64 | Build with `--portable`: `BlueWake\portable.txt` exists, the builder's last lines say the saves are in `BlueWake\user`, and the game keeps its card, settings and logs there. Rebuild without the option: `portable.txt` and `user\` are still there, untouched | Linux: the same option checked on Arch; Windows package test passes |
 | The Wind Waker HD look: islands on the horizon from further away, ambient occlusion, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom (off by default) | #57 | Settings › Display › "Wind Waker HD look" on. Clouds and white highlights glow, the horizon is softer, creases and the ground under Link are a little darker, soft cloud shadows drift over the sea and Link casts a soft sun shadow, with the HUD sharp. Stand at Outset's pier facing open sea, or sail: more islands on the horizon, low at first and rising as you get closer. The log says `[hd-look] distant islands on`. Turn it off and on again in the menu without a restart; restart and it's kept (`hd_look=1` in `settings.ini`). Play a few minutes on the sea: no missing islands close up and no crash. | Mac: 15 island models loaded instead of 7 from an Outset save state, an extra island in a captured frame; not built on Windows |
 | F2 switches the Wind Waker HD look on and off in the game | #108 | Press F2 while playing: the HD look comes on (soft shading, bloom, distant islands) and goes off again at the next press; the menu's checkbox follows, and after a restart the last choice is kept. | Compiled (the Mac menu's side); not pressed on Windows |
-| `--behaviour-timing` (a prototype, off by default): every block prepaid | #59, #215 | Build with `--behaviour-timing`, play Outset, the bird scene and a cutscene with music; nothing should look or sound different. Retraces a second against a build without it at the same spot, headless | Mac: 7.0% / 9.1% faster, the same 468-place sweep, the same audio sample for sample |
+| Behaviour timing on by default (#335, Chris approved): every block prepaid, the budget checked at loops and calls | #59, #215 | A fresh build with no options includes behaviour timing; `--no-behaviour-timing` disables it and `--conservative` keeps plain translation. Keep comparing the same scenes when validating the next release candidate | pdale-boop, Windows 11, i5-12600KF / RTX 5070 Ti: trained timing builds checked through menus, the stage/spawn sweeps (test card unchanged), all three Lenzo photos with the separate Picto fix, Windfall and Wind Temple; nothing behaved differently ([evidence](https://github.com/chrissotraidis/bluewake/pull/335#issuecomment-6159363773)). Mac benchmarks and Deck play are in PERFORMANCE.md |
 | The host's per-block checks do less (#242) | #59, #246 | Nothing new to press: the game plays as before. If you benchmark, compare retraces a second with 0.7.0 at the same save state. | Measured on Linux (5 to 8% on slow CPUs, identical game state); not measured on Windows |
 | The cache-flush fallback on by default (`BLUEWAKE_CACHE_FLUSH_FALLBACK=0` turns it off): images the game rewrites in place are read again | #263, #13 | Start BlueWake normally; the log says `[texture-cache] fallback writeback=on`. Open the sea chart and pick three different islands: each shows its own map, in the chart and in Charts. With a copied save, take a Pictobox photo, cancel, turn and take another without changing rooms: the preview shows the new view. | The #263 reporter on Windows (opt-in): every island right, the frame rate and the Pictobox unchanged; Windows 0.6.0 check of the Pictobox passed; Mac: no measurable cost on the game thread |
 | Stage select turns saving off until a restart; F7 asks first; marked cutscenes get their half of the story; `--stage-select-saves` keeps saving on | #251, #250 | With a copy of a saved card and the stage select on: F7 in play shows "Go to the stage select?". Cancel (Esc or B) keeps playing; Go (or F7) opens it. Warp, then pause › Save: "Saving is off because the stage select was used." Quit and confirm the card is unchanged. F7 during a conversation, before warping, does nothing; after warping, F7 leaves a cutscene stuck at its end (Storm Ganon part 2). Pick a (after) cutscene from a before-the-fight file: it plays. A save state (F5) taken after warping, loaded after a restart, still can't save. With `--stage-select-saves`, F7 doesn't ask and saving works. | Played on Windows (RTX 5070 Ti), test card: the question cancels and goes, saving stays off and the card unchanged, the event check holds before warping and F7 leaves Storm Ganon part 2 after, marked cutscenes get their half, the game saves with the flag, the reworded Save message shows, and an F5 state taken after warping, loaded with F8 after a restart, still can't save (card unchanged). Headless: no speed change. |
@@ -55,6 +57,10 @@ hand ([details](status/WINDOWS_BUILD_0.5.0.md)).
 
 ## 3. Checked on Windows
 
+- **Unmerged Picto recognition candidate (#334 + RecompCore#36):** pdale-boop completed all three Lenzo photos,
+  with bad shots rejected and good ones accepted ([confirmation](https://github.com/chrissotraidis/bluewake/pull/334#issuecomment-6159163583)).
+  Our Mac recognition test is ongoing; this is not yet in `main` or the runtime pin. Widescreen gallery/crop #338
+  has separate Windows/Linux checks and a separate RecompCore#37 dependency.
 - 0.6.0, by pdale-boop: the history intro's music (#97, deferred DVD completion, on by default on Windows), the
   dungeon map in Dragon Roost Cavern (#74, also confirmed by its reporter), the baton (#156), the aiming option
   (#154), a late-recognized controller as player 1 (#61) and the left stick's dead zone (#138). The last two
@@ -65,11 +71,13 @@ hand ([details](status/WINDOWS_BUILD_0.5.0.md)).
 
 ## 4. Flickering clouds, waves and fog with Smooth Motion (#136)
 
-Reported on NVIDIA (RTX 5070 Ti, RTX 4070 laptop), new in 0.5.0, still in 0.7.0. Clean at 30 FPS, so it is in
-the in-between frames. Ruled out by the reporters: `DOL_AURORA_INTERP_ALL_VERTICES=1` (patch 0155),
-`DOL_GX_TRANSFORM_VERIFY=1` (0152), `DOL_AURORA_UBERSHADER=0`, the HD texture pack and G-Sync. It hasn't
-been seen on the Mac. Next: see whether it shows on Chris's PC (AMD graphics) at 120, then capture it on an
-NVIDIA PC:
+Reported on NVIDIA and Intel Arc on Windows, and AMD/RADV on Linux; new in 0.5.0, still in 0.7.0. Clean at
+30 FPS. The Linux 120 FPS recording shows frames in order, with sky/cloud positions wrong on individual Smooth
+Motion frames. Draw fusion is also ruled out by the reporter. Earlier exclusions remain:
+`DOL_AURORA_INTERP_ALL_VERTICES=1` (patch 0155), `DOL_GX_TRANSFORM_VERIFY=1` (0152),
+`DOL_AURORA_UBERSHADER=0`, HD textures and G-Sync. The Mac comparison stayed clean; that does not clear Windows
+or Linux. Next: capture a repeatable affected view and trace the sky draws. Smooth Motion at 60 reduces the
+in-between frames; Off avoids this path. For an affected Windows PC:
 
 1. Record roughly ten seconds at original 30 FPS, then the same view at Smooth Motion 60 and 120. Note exactly
    which cloud or wave disappears and whether the camera is moving. Keep the session log.
