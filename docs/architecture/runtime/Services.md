@@ -103,4 +103,4 @@ completion and interrupt behavior.
 
 Graphics-related GX services continue in the [graphics stack](Graphics.md).
 
-Return to the [runtime entity map](../Runtime.md#runtime-entities).
+Return to the runtime [high-level view](../Runtime.md#high-level-view).

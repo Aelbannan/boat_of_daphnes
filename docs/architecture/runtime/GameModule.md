@@ -80,4 +80,4 @@ flowchart LR
 The module's relationship with CPU storage, memory, and guest addresses is
 covered in [Guest machine state](GuestState.md).
 
-Return to the [runtime entity map](../Runtime.md#runtime-entities).
+Return to the runtime [high-level view](../Runtime.md#high-level-view).

@@ -121,4 +121,4 @@ For the complete pipeline, component references, output paths, and per-platform
 branches, continue to [Build](Build.md).
 
 For the runtime entities, their interaction boundaries, and their internals,
-continue to [Runtime](Runtime.md).
+continue to the runtime [high-level view](Runtime.md#high-level-view).

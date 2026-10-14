@@ -78,4 +78,4 @@ only where architectural and scheduler state can be preserved.
 | Advance to the next deadline | Video, audio, DSP, disc, and controller state remain ordered | [Device synchronization](../../../runtime/host/src/main.c#L5455-L5474) |
 | Publish and deliver interrupts | Guest exception state and handler PC are established at a safe boundary | [Interrupt routing](../../../runtime/host/src/main.c#L3441-L3544), [delivery](../../../runtime/host/src/main.c#L3078-L3234) |
 
-Return to the [runtime entity map](../Runtime.md#runtime-entities).
+Return to the runtime [high-level view](../Runtime.md#high-level-view).

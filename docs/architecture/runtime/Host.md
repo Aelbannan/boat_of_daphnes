@@ -86,4 +86,4 @@ CPU storage.
 | Flush memory-card, SRAM, settings, and diagnostic state | Player data remains available to the next launch | [Card runtime](../../../runtime/host/src/card_runtime.c), [SRAM runtime](../../../runtime/host/src/ipl_sram.c) |
 | Tear down services and shared storage | Native resources are released before returning to the platform layer | [Host shutdown](../../../runtime/host/src/main.c#L16364-L16373) |
 
-Return to the [runtime entity map](../Runtime.md#runtime-entities).
+Return to the runtime [high-level view](../Runtime.md#high-level-view).

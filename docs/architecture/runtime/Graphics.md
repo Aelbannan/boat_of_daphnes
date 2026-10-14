@@ -66,4 +66,4 @@ sample against the same guest-time boundary.
 | Record and submit | Parsed GX state becomes GPU resources, passes, and commands | [Aurora backend](https://github.com/chrissotraidis/RecompCore/tree/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/graphics/aurora) |
 | Present | A completed frame reaches the display with guest-timed cadence | [Retrace and presentation](../../../runtime/host/src/main.c#L5381-L5453) |
 
-Return to the [runtime entity map](../Runtime.md#runtime-entities).
+Return to the runtime [high-level view](../Runtime.md#high-level-view).

@@ -3,7 +3,8 @@
 ## Contents
 
 - [Purpose](#purpose)
-- [Runtime entities](#runtime-entities)
+- [High-level view](#high-level-view)
+  - [Runtime entities](#runtime-entities)
 - [Interaction boundaries](#interaction-boundaries)
 - [Runtime lifecycle](#runtime-lifecycle)
 - [Entity internals](#entity-internals)
@@ -21,7 +22,12 @@ game module. They cooperate through shared guest state and the module ABI. The
 host connects that guest-facing environment to native files, input, audio,
 graphics, timing, and presentation.
 
-## Runtime entities
+## High-level view
+
+The diagram below is the runtime half of the
+[architecture overview](Overview.md#high-level-view), expanded around the
+entities that exist while BlueWake is running and the connections between
+them.
 
 ```mermaid
 flowchart TD
@@ -50,6 +56,8 @@ flowchart TD
     Services <-->|"I/O"| Native
     Graphics -->|"render and present"| Native
 ```
+
+### Runtime entities
 
 | Entity | Runtime responsibility | Owns or exposes | Internals |
 | --- | --- | --- | --- |
