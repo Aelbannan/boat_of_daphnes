@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <imgui.h>
+
 #include <cctype>
 #include <cstddef>
 // The Windows host's POSIX shim (windows/compat/bw_posix_compat.h) defines
@@ -37,7 +39,18 @@ inline size_t count(const std::string& folder) {
         std::string ext = it->path().extension().string();
         for (char& c : ext)
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if ((ext == ".png" || ext == ".dds") && it->path().stem().string().find("_mip") == std::string::npos)
+        // A sidecar mip level (name_mip1.png, ..._mip10.dds) belongs to the
+        // texture before it: skip a stem that ends in "_mip" + trailing digits,
+        // the same rule the renderer's texture_replacement.cpp applies.
+        std::string stem = it->path().stem().string();
+        bool sidecar = false;
+        if (stem.size() >= 5) {
+            size_t i = stem.size();
+            while (i > 0 && stem[i - 1] >= '0' && stem[i - 1] <= '9')
+                --i;
+            sidecar = i < stem.size() && i >= 4 && stem.compare(i - 4, 4, "_mip") == 0;
+        }
+        if ((ext == ".png" || ext == ".dds") && !sidecar)
             textures++;
     }
     return textures;
@@ -62,6 +75,26 @@ class Counter {
     size_t textures_ = 0;
     bool known_ = false;
 };
+
+// What the menu can see of the pack without the renderer: the host counts the
+// folder's textures itself, so this is the on-disk view, not the renderer's
+// registration count (which needs a RecompCore query, #336). Green when the
+// chosen folder holds textures, red when it does not, grey when no pack is on.
+enum class PackState { Off, Empty, Ready };
+
+inline PackState state_of(size_t textures, bool on) {
+    if (!on)
+        return PackState::Off;
+    return textures > 0 ? PackState::Ready : PackState::Empty;
+}
+
+inline ImVec4 state_color(PackState s) {
+    switch (s) {
+    case PackState::Ready: return ImVec4(0.35f, 0.9f, 0.45f, 1.f); // green
+    case PackState::Empty: return ImVec4(1.f, 0.4f, 0.35f, 1.f);   // red
+    default:               return ImVec4(0.6f, 0.6f, 0.62f, 1.f);  // grey
+    }
+}
 
 // The system's folder picker (SDL_ShowOpenFolderDialog). SDL may answer on
 // another thread, so the answer waits here for the menu's next frame.
