@@ -33,6 +33,9 @@ static int guard_mkdir(const char* path, unsigned mode) {
 
 // Only I/O endpoints are replaced. No real directory, state file or game data
 // is touched; a call to either endpoint makes a visible, testable change.
+#ifdef mkdir
+#undef mkdir
+#endif
 #define mkdir guard_mkdir
 #include "host_state_guard_under_test.inc"
 #undef mkdir
