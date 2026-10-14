@@ -93,6 +93,9 @@ Some names end in a note:
   select doesn't fake that progress.
 - **(crash)**: the place's default spawn point crashes when started cold (Wind Temple R04 and R08: the
   room's doors ask about Link before he is fully created). Pick another spawn point with R/L.
+  `BLUEWAKE_LOOSE_REL_RETRACES=1` fixes both (#318): a REL the game reads from the disc's `/rels/` folder then
+  takes a retrace to load, as on the console, so the doors are created after Link. It's off by default, and
+  the two keep their mark until it's on.
 - **(hangs)**: a developer test room that loads but never lets Link in.
 
 ## For tests and benchmarks

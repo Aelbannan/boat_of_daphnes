@@ -146,10 +146,10 @@ time BlueWake starts and never change your saves.
 
 | Mod | What it does |
 | --- | --- |
-| **Widescreen 16:9 / 16:10 / 21:9** | A wider view with the HUD placed to fit. Built in |
+| **Widescreen 16:9 / 16:10 / 21:9** | A wider view with the HUD placed to fit. Built in; on Mac, Windows and Linux it's **F1 › Mods › Widescreen** |
 | **Wind Waker HD textures** | First in Mods on every build: turn **HD textures** on, see how many textures it found, and choose or install a pack, such as Hypatia's HD pack (see the FAQ) or [the textures from your own Wind Waker HD disc](docs/WWHD_TEXTURES.md) |
 | **Better Wind Waker** | Swift Sail, instant text, faster animations and more, each set separately |
-| **Gameplay extras** | Jump & Sprint, Fast Transitions and Quick Doors, under **⋯ › Gameplay** |
+| **Gameplay extras** | Jump & Sprint, Fast Transitions and Quick Doors, under **⋯ › Gameplay** (iPhone and iPad) or **F1 › Gameplay** (Mac, Windows and Linux) |
 
 Code mods are built into your app, so a module built before an update does not gain newer Better Wind
 Waker settings or 16:10 until you rebuild it. More in [docs/MODS.md](docs/MODS.md).
@@ -278,9 +278,11 @@ runs Outset at about 70 to 80% today. Follow [#75](https://github.com/chrissotra
 <summary><strong>Do controllers work?</strong></summary>
 
 Yes. On iPhone and iPad, any controller iOS supports works, with rumble, camera inversion and button
-remapping under **⋯ › Controller**. On Mac, Windows and Linux, Xbox, PlayStation, Switch Pro and other
-SDL controllers work; remap buttons under **Settings › Controls › Controller buttons** (F1 or Esc
+remapping under **⋯ › Controller**. Mac, Windows and Linux work with Xbox, PlayStation, Switch Pro and
+other SDL controllers; remap buttons under **Settings › Controls › Controller buttons** (F1 or Esc
 opens settings). The same tab changes what the mouse buttons and keyboard keys press.
+The settings menu works with a controller too: the D-pad or left stick moves, the game's A chooses, its B
+closes, LB and RB change tabs and the right stick scrolls.
 
 If BlueWake doesn't see your controller at all (a generic Bluetooth pad, for example), download
 `gamecontrollerdb.txt` from [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB), put it

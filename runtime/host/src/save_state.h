@@ -87,8 +87,8 @@ bool bw_state_fields_valid(const uint8_t* blob, uint64_t blob_size);
 // FNV-1a 64 over bytes, for identities and quick equality checks in logs.
 uint64_t bw_state_hash(const void* data, size_t size, uint64_t seed);
 
-// The window's F5 (save) and F9 (load the last state) keys (main.c acts on
-// them at the next retrace).
+// The window's F5 (save) and F8 (load the last state) keys, and the menus'
+// buttons (main.c acts on them at the next retrace).
 void bluewake_save_state_hotkey(bool load);
 
 #ifdef __cplusplus

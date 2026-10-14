@@ -142,10 +142,15 @@ Run `build\windows\BlueWake\BlueWake.exe`.
 | START | Return |
 | Camera | Click the game, then move the mouse (Esc releases it) |
 | Settings | F1 or Esc after releasing the mouse |
-| Jump / Run | Space / Shift; enable them in settings |
-| Fullscreen | F11 |
-| Smooth Motion | F10 |
+| Jump / Sprint | Space / Shift; turn on Jump & Sprint in settings (Gameplay) |
+| HD look | F2 |
+| Save state / load the latest | F5 / F8 |
+| Stage select | F7, once it's on in settings |
 | Frame rate | F9 |
+| Smooth Motion | F10 |
+| Fullscreen | F11 or Alt+Enter |
+
+A few words at the bottom left say what each key did.
 
 Game controllers work through SDL (Xbox, PlayStation, Switch Pro and others). The title screen wants A to reach
 the file menu. To choose which controller button presses each GameCube button, open settings and use

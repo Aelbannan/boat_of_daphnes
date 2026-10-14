@@ -541,7 +541,8 @@ static void usage(void) {
             "Keyboard: arrows D-pad, J A, K B, U X, I Y, W/A/S/D stick,\n"
             "H/F/T/G C-stick, E/R L/R, Q Z, Return START. Game controllers work too.\n"
             "Mouse: click the game, then move it to turn the camera; Esc releases it.\n"
-            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate.\n"
+            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate,\n"
+            "F5 save state, F8 load it, F2 HD look, F7 stage select.\n"
             "The settings menu saves to %%APPDATA%%\\BlueWake\\settings.ini (with portable.txt beside\n"
             "BlueWake.exe, to its user folder); options given here win for the session.\n");
 }

@@ -54,7 +54,7 @@ not included (an HD texture pack can supply them); its name stays "Sail". On the
 
 ## Forest Water Challenge assistance
 
-On Mac, **Settings › Gameplay › Forest Water Challenge** has two independent
+On Mac, Windows and Linux, **F1 › Gameplay › Forest Water Challenge** has two independent
 options, both off by default and separate from Better Wind Waker:
 
 - **Keep watered trees when time runs out:** Forest Water still expires and
