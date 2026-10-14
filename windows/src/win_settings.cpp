@@ -610,7 +610,7 @@ void tab_display(SDL_Window* w) {
         apply_hd_look();
         changed();
     }
-    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
+    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
     // An action for this session, not a setting: a button.
     const bool full = w != nullptr && is_fullscreen(w);
     if (ImGui::Button(full ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
