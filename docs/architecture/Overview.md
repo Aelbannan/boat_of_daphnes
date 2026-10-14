@@ -52,8 +52,8 @@ flowchart TD
         Training["Optional local<br/>PGO training"]
         HostSource["BlueWake host and<br/>platform source"]
         RuntimeSource["RecompCore / GXRuntime<br/>and Aurora"]
-        GameCompiler["Target compiler"]
-        AppCompiler["Target compiler"]
+        GameCompiler["Target compiler<br/>(translated module)"]
+        AppCompiler["Target compiler<br/>(platform application)"]
         GameModule["Native translated<br/>game module"]
         Executable["Platform application"]
         Package["Runnable platform package"]
@@ -118,4 +118,4 @@ source, then branch for each platform's compiler, SDK, entry layer, graphics
 backend, signing, and packaging requirements.
 
 For the complete pipeline, component references, output paths, and per-platform
-branches, continue to [Build toolchain](Build.md).
+branches, continue to [Build](Build.md).

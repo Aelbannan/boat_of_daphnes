@@ -719,9 +719,12 @@ static NSUInteger g_packFiles = NSNotFound;
     if (g_packFiles == NSNotFound) {
         g_packFiles = 0;
         NSDirectoryEnumerator* walk = [[NSFileManager defaultManager] enumeratorAtPath:[self texturePackDirectory]];
+        // Each texture once: its extra mip levels (name_mip1.png...) belong to it,
+        // as the desktop menus count (runtime/host/src/texture_pack_menu.h).
         for (NSString* path in walk) {
-            if ([path.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame ||
-                [path.pathExtension caseInsensitiveCompare:@"dds"] == NSOrderedSame)
+            if (([path.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame ||
+                 [path.pathExtension caseInsensitiveCompare:@"dds"] == NSOrderedSame) &&
+                ![path.lastPathComponent.stringByDeletingPathExtension containsString:@"_mip"])
                 g_packFiles++;
         }
     }
@@ -735,7 +738,6 @@ static NSUInteger g_packFiles = NSNotFound;
                   @BW_MOD_WIDESCREEN_KEY),
         modToggle(@"Widescreen 16:10", @"For 16:10 screens, such as a Mac or an iPad", @"rectangle.expand.vertical",
                   @BW_MOD_WIDESCREEN_1610_KEY),
-        modToggle(@"HD Texture Pack", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         modToggle(@"Better Wind Waker", bwwDetail, @"sailboat", @BW_MOD_BETTERWW_KEY),
         modToggle(@"Wind Waker HD Look", @"Far islands, shading, cloud shadows, bloom", @"sparkles", @BW_HD_LOOK_KEY),
     ]];
@@ -746,12 +748,17 @@ static NSUInteger g_packFiles = NSNotFound;
         [weakSelf chooseTexturePack];
     }];
     installPack.subtitle = @"Pick a folder of PNG or DDS textures";
-    UIMenu* add = [UIMenu menuWithTitle:@"Add Mods" image:nil identifier:nil options:UIMenuOptionsDisplayInline
-                               children:@[ installPack ]];
-    NSMutableArray<UIMenuElement*>* children = [NSMutableArray arrayWithObjects:toggles, add, nil];
+    // Wind Waker HD textures: first, as in the Mods tab of the Mac, Linux and
+    // Windows menus, with the same items in the same order.
+    UIMenu* hdTextures = [UIMenu menuWithTitle:@"Wind Waker HD Textures" image:nil identifier:nil
+                                       options:UIMenuOptionsDisplayInline children:@[
+        modToggle(@"HD Textures", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
+        installPack,
+    ]];
+    NSMutableArray<UIMenuElement*>* children = [NSMutableArray arrayWithObjects:hdTextures, toggles, nil];
     UIMenu* bww = [self betterWWSettingsMenu];
     if (bww != nil)
-        [children insertObject:bww atIndex:1];
+        [children insertObject:bww atIndex:2];
     return [UIMenu menuWithTitle:@"Mods" image:[UIImage systemImageNamed:@"wand.and.stars"] identifier:nil options:0
                         children:children];
 }
@@ -906,12 +913,12 @@ static NSUInteger g_packFiles = NSNotFound;
         g_packFiles = NSNotFound;
         [self refreshMenu];
         [self offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Already Installed"
-                    message:@"That folder is already in BlueWake's texture folder. HD Texture Pack uses it after "
+                    message:@"That folder is already in BlueWake's texture folder. HD Textures uses it after "
                             @"BlueWake restarts."];
         return;
     }
     const BOOL scoped = [source startAccessingSecurityScopedResource];
-    __block NSUInteger installed = 0, failed = 0;
+    __block NSUInteger installed = 0, textures = 0, failed = 0; // files, textures without their mip levels
     [self waitTitled:@"Installing Texture Pack" message:@"Copying textures…" work:^(UIAlertController* wait) {
         NSFileManager* fm = [NSFileManager new];
         [fm createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
@@ -925,12 +932,15 @@ static NSUInteger g_packFiles = NSNotFound;
             [fm createDirectoryAtPath:[to stringByDeletingLastPathComponent] withIntermediateDirectories:YES
                            attributes:nil error:nil];
             [fm removeItemAtPath:to error:nil];
-            if ([fm copyItemAtPath:from toPath:to error:nil])
+            if ([fm copyItemAtPath:from toPath:to error:nil]) {
                 installed++;
-            else
+                if (![rel.lastPathComponent.stringByDeletingPathExtension containsString:@"_mip"])
+                    textures++;
+            } else {
                 failed++;
+            }
             if (installed % 250 == 0) {
-                NSString* text = [NSString stringWithFormat:@"%lu textures copied…", (unsigned long)installed];
+                NSString* text = [NSString stringWithFormat:@"%lu files copied…", (unsigned long)installed];
                 dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
             }
         }
@@ -952,9 +962,9 @@ static NSUInteger g_packFiles = NSNotFound;
             [weakSelf presentAlert:alert];
             return;
         }
-        NSString* message = [NSString stringWithFormat:@"%lu textures were installed.%@ HD Texture Pack uses them "
+        NSString* message = [NSString stringWithFormat:@"%lu textures were installed.%@ HD Textures uses them "
                                                        @"after BlueWake restarts.",
-                                                       (unsigned long)installed,
+                                                       (unsigned long)textures,
                                                        failed ? [NSString stringWithFormat:@" %lu could not be copied.",
                                                                                            (unsigned long)failed]
                                                               : @""];
