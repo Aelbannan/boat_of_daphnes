@@ -44,7 +44,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   identification draws; the local follow-up waits for those pipelines and passes the first-photo check.
   [RecompCore#36](https://github.com/chrissotraidis/RecompCore/pull/36) and [#334](https://github.com/chrissotraidis/bluewake/pull/334)
   supply the readback fix; RecompCore#36 is merged. [RecompCore#39](https://github.com/chrissotraidis/RecompCore/pull/39)
-  carries the first-use follow-up. Chris approved the pin move; the combined integration still needs CI before
+  carries the first-use follow-up for Windows/Linux gameplay checks. Chris approved the original pin move;
+  [#341](https://github.com/chrissotraidis/bluewake/pull/341) integrates #334 and #36 and awaits CI before
   BlueWake moves from `ee99bbc`. #267 still needs its original reporter's confirmation.
 - **The native HD importer uses 46% less memory** ([#315](https://github.com/chrissotraidis/bluewake/pull/315), draft,
   `5b2bc11`): 1,041,235,968 → 563,806,208 bytes peak RSS on the M3 Max, standalone with four PNG workers.
