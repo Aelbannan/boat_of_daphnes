@@ -32,7 +32,7 @@ nothing to install:
    BlueWake to load it.
 
 It is the script below, built into the app: from the same discs it makes the
-same 3,546 textures. It takes about three minutes on an M3 Max. WUX and WUD
+same 3,546 textures. The native importer takes about 30 seconds on an M3 Max. WUX and WUD
 images still need the script for now, as does iPhone and iPad, which will get
 the same button.
 
@@ -235,3 +235,64 @@ Checked by hand on October 12, 2026, on a Mac (M3 Max): a decrypted USA dump's
 `content` folder with a revision 0 GameCube ISO gave 3,546 replacements (124
 conflicting keys skipped). BlueWake loaded all of them at Outset, with the
 Wind Waker HD look on and off; an unpaced run took 9.3 s against 9.2 s without the pack.
+
+### Native importer memory check (October 15, 2026)
+
+The importer now feeds PNG scanlines to zlib one row at a time, caps queued
+and active PNG image data at 32 MiB (one larger image may run alone), and
+shares unchanged mip chains across GameCube formats. Archive traversal borrows
+uncompressed containers. The English layout pack retains only the heart
+outline and HD badge needed by other members, then processes members in their
+original order instead of keeping every member alive.
+
+On the same M3 Max, using the same decrypted USA HD tree and revision 0
+GameCube disc, a standalone native import with four PNG workers measured:
+
+| Version | Peak resident RAM | Wall time |
+| --- | ---: | ---: |
+| PR #315 at `6232826`, before this change | 993 MiB (1,041,235,968 bytes) | 26.49 s |
+| With streaming and shorter buffer lifetimes | 538 MiB (563,806,208 bytes) | 28.94 s |
+
+Measured with `/usr/bin/time -l`, compiled with Apple Clang at `-O2`.
+Peak RAM fell 46%. Other work was running on the Mac, so these times are not
+an isolated speed benchmark. These are importer process measurements, not
+the combined memory of an app importing while a game runs or an iPhone/iPad test.
+
+Both native runs produced the same 3,546 texture keys, 33,861 filenames,
+124 skipped conflicts and 17 unsupported entries. All 33,859 PNGs, including
+every mip level, were byte-identical; matching metadata and all 91 generated
+HUD/title textures were unchanged.
+
+A fresh Python import from those inputs also matched every PNG's decoded
+pixels and every texture chain's SHA-256, with the same matching metadata,
+conflicts and unsupported entries. The native exact-report run produced the
+same PNG bytes as its four-worker run, using 394 MiB peak resident RAM
+(413,024,256 bytes) in 143.87 seconds with serial writing and SHA-256 enabled.
+
+`tests/wwhd_native_test.cpp` checks generated nested SARC/RARC/Yaz0 archives,
+empty members, malformed inputs and callback errors, plus streamed PNGs
+against whole-image zlib compression and decoded pixels. It passes with
+AddressSanitizer and UndefinedBehaviorSanitizer on this Mac. Build the native
+test and development importer without the renderer, using the xxHash headers
+already present in a configured build (or another local xxHash checkout):
+
+```sh
+c++ -std=c++17 -O2 -pthread -I runtime/host/src -I /path/to/xxhash \
+  tests/wwhd_native_test.cpp \
+  runtime/host/src/wwhd/{formats,addrlib,hd,imaging,sha256,ui,pack}.cpp \
+  -lz -o /tmp/wwhd-native-test
+/tmp/wwhd-native-test
+```
+
+For the importer, replace the test source with `tests/wwhd_native_import.cpp`
+and give it the HD content folder, GameCube ISO and a new output folder, in
+that order. `WWHD_EXACT_REPORT=1` selects the slower, serial SHA-256 report.
+To compare native or Python packs, including every PNG and all available
+RGBA-chain SHA-256s:
+
+```sh
+build/wwhd-tools/bin/python tests/wwhd_compare_packs.py OLD-PACK NEW-PACK
+```
+
+Keep both packs and their reports private. Windows/Linux compilation and
+imports on phone/tablet hardware still need their own checks.

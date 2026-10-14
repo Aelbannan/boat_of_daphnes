@@ -19,6 +19,7 @@
 #include <mutex>
 #include <thread>
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -72,7 +73,7 @@ Image first_image(const HDTexture& t) {
 }
 
 using Yield = std::function<void(HDTexture&&, std::vector<const GCTexture*>)>;
-using Layout = std::map<std::string, const Bytes*>;
+using Layout = std::map<std::string, Bytes>;
 
 // source_textures(): the HD textures in one archive member, with the GameCube
 // textures each may replace.
@@ -186,7 +187,7 @@ void source_textures(const Bytes& data, const std::string& path, const Targets& 
             const auto base_data = layout->find("HeartBase_00^t.bflim");
             if (base_data == layout->end())
                 throw FormatError("missing heart outline");
-            const Image base = first_image(bflim(*base_data->second, path + "#outline"));
+            const Image base = first_image(bflim(base_data->second, path + "#outline"));
             const Image fill = first_image(bflim(data, path));
             yield(rgba_texture(path + "#GameCube-layout", heart, heart_image(base, fill)),
                   lookup(targets, "object|menures", heart));
@@ -205,7 +206,7 @@ void source_textures(const Bytes& data, const std::string& path, const Targets& 
             const auto b = layout->find("TitleLogoHD_00^l.bflim");
             if (b == layout->end())
                 throw FormatError("missing HD badge");
-            badge = first_image(bflim(*b->second, path + "#HD-badge"));
+            badge = first_image(bflim(b->second, path + "#HD-badge"));
         }
         std::vector<const GCTexture*> candidates;
         for (const char* res : {"object|tlogo", "object|tlogoe"})
@@ -271,7 +272,12 @@ class PngWriter {
             return;
         }
         std::unique_lock<std::mutex> hold(lock_);
-        room_.wait(hold, [&] { return queued_bytes_ < kMaxQueuedBytes || stop_; });
+        // Include the next image in the budget. One oversized image may run
+        // alone so a large texture cannot deadlock the producer.
+        room_.wait(hold, [&] {
+            return stop_ || queued_bytes_ == 0 ||
+                   (image.rgba.size() <= kMaxQueuedBytes && queued_bytes_ <= kMaxQueuedBytes - image.rgba.size());
+        });
         check();
         queued_bytes_ += image.rgba.size();
         queue_.push_back({path, image});
@@ -284,7 +290,7 @@ class PngWriter {
     }
 
   private:
-    static constexpr size_t kMaxQueuedBytes = 96u << 20;
+    static constexpr size_t kMaxQueuedBytes = 32u << 20;
     void check() {
         if (!error_.empty())
             throw FormatError(error_);
@@ -387,17 +393,39 @@ Bytes encode_png(const Image& image) {
         out.insert(out.end(), body.begin(), body.end());
         put32(out, uint32_t(crc32(0, out.data() + start, uInt(out.size() - start))));
     };
-    Bytes raw;
-    raw.reserve((size_t(image.width) * 4 + 1) * image.height);
+    // Feed the same unfiltered scanlines to zlib a row at a time. Each PNG
+    // worker used to hold a second full image plus a compressBound-sized
+    // buffer, even when the compressed result was small.
+    struct Deflater {
+        z_stream stream{};
+        Deflater() {
+            if (deflateInit(&stream, 6) != Z_OK)
+                throw FormatError("PNG compression failed");
+        }
+        ~Deflater() { deflateEnd(&stream); }
+    } compressor;
+    Bytes packed;
+    std::array<uint8_t, 64 * 1024> buffer;
+    const auto deflate_bytes = [&](const uint8_t* data, size_t size, int flush) {
+        z_stream& z = compressor.stream;
+        z.next_in = const_cast<Bytef*>(data);
+        z.avail_in = uInt(size);
+        int status;
+        do {
+            z.next_out = buffer.data();
+            z.avail_out = uInt(buffer.size());
+            status = deflate(&z, flush);
+            if (status != Z_OK && status != Z_STREAM_END)
+                throw FormatError("PNG compression failed");
+            packed.insert(packed.end(), buffer.data(), buffer.data() + buffer.size() - z.avail_out);
+        } while (z.avail_in || (flush == Z_FINISH && status != Z_STREAM_END));
+    };
+    const uint8_t filter = 0;
     for (int y = 0; y < image.height; y++) {
-        raw.push_back(0); // no filter
-        raw.insert(raw.end(), image.at(0, y), image.at(0, y) + size_t(image.width) * 4);
+        deflate_bytes(&filter, 1, Z_NO_FLUSH);
+        deflate_bytes(image.at(0, y), size_t(image.width) * 4, Z_NO_FLUSH);
     }
-    uLongf packed_size = compressBound(uLong(raw.size()));
-    Bytes packed(packed_size);
-    if (compress2(packed.data(), &packed_size, raw.data(), uLong(raw.size()), 6) != Z_OK)
-        throw FormatError("PNG compression failed");
-    packed.resize(packed_size);
+    deflate_bytes(nullptr, 0, Z_FINISH);
     Bytes out = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     Bytes ihdr;
     put32(ihdr, uint32_t(image.width));
@@ -461,16 +489,22 @@ ImportResult import_pack(const ImportOptions& o) {
             }
             const Bytes archive = read_file(o.hd_folder + "/" + source);
             try {
-                // Title_00.szs and the English 2D pack keep their members to
-                // pair layout parts (the heart outline, the HD badge).
+                // Keep only the two inputs used by another layout member.
+                // Visit the members again in archive order, releasing each
+                // before the next instead of retaining the whole English pack.
                 const bool keep = ends_with(source, "/Title_00.szs") || ends_with(source, "_2d_UsEnglish.pack");
-                std::vector<std::pair<std::string, Bytes>> members;
                 std::map<std::string, Layout> layouts;
                 if (keep) {
-                    leaves(archive, source, [&](const std::string& path, const Bytes& data) { members.emplace_back(path, data); });
-                    for (const auto& [path, data] : members)
-                        if (ends_with(path, ".bflim"))
-                            layouts[parent_of(path)][base_name(path)] = &data;
+                    leaves(archive, source, [&](const std::string& path, const Bytes& data) {
+                        if (ends_with(path, ".bflim")) {
+                            // An empty layout still marks the same folders as
+                            // before, including a malformed one missing a part.
+                            Layout& layout = layouts[parent_of(path)];
+                            const std::string name = base_name(path);
+                            if (name == "HeartBase_00^t.bflim" || name == "TitleLogoHD_00^l.bflim")
+                                layout[name] = data;
+                        }
+                    });
                 }
                 const auto handle = [&](const std::string& path, const Bytes& data) {
                     const auto l = layouts.find(parent_of(path));
@@ -488,17 +522,23 @@ ImportResult import_pack(const ImportOptions& o) {
                             // when the source archive stops above 1x1.
                             complete_mips(images);
                             const bool mask = contains(hd.source, ".bflim") || contains(hd.source, ".bffnt");
-                            std::map<int, std::vector<Image>> variants;
-                            std::map<int, std::string> digests;
+                            // Only I4/I8 need different pixels, and both use
+                            // the same intensity image. Other formats borrow
+                            // the decoded chain instead of copying it per format.
+                            std::vector<Image> intensity;
+                            std::map<bool, std::string> digests;
                             for (const GCTexture* t : gc)
-                                if (!variants.count(t->format)) {
-                                    variants[t->format] = for_gc_format(images, t->format, mask);
-                                    digests[t->format] = digest_of(variants[t->format], o.exact_report);
+                                if (const bool is_intensity = t->format == 0 || t->format == 1;
+                                    !digests.count(is_intensity)) {
+                                    if (is_intensity)
+                                        intensity = for_gc_format(images, t->format, mask);
+                                    digests[is_intensity] = digest_of(is_intensity ? intensity : images, o.exact_report);
                                 }
                             const int priority = candidate_priority(hd.name, resource(hd.source));
                             for (const GCTexture* original : gc) {
-                                const auto& variant = variants[original->format];
-                                const std::string& digest = digests[original->format];
+                                const bool is_intensity = original->format == 0 || original->format == 1;
+                                const auto& variant = is_intensity ? intensity : images;
+                                const std::string& digest = digests[is_intensity];
                                 const std::string key = original->filename();
                                 std::vector<std::string> originals_for_key = {original->source}, alternatives;
                                 const auto previous = matches.find(key);
@@ -561,12 +601,7 @@ ImportResult import_pack(const ImportOptions& o) {
                         }
                     });
                 };
-                if (keep) {
-                    for (const auto& [path, data] : members)
-                        handle(path, data);
-                } else {
-                    leaves(archive, source, handle);
-                }
+                leaves(archive, source, handle);
             } catch (const FormatError& ex) {
                 result.errors.push_back({source, ex.what()});
             }

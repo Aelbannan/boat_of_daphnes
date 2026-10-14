@@ -210,10 +210,19 @@ static void rarc(const uint8_t* data, size_t size, const MemberVisitor& member) 
 void leaves(const uint8_t* data, size_t size, const std::string& path, const LeafVisitor& visit, int depth) {
     if (depth > 8 || size > kMaxFile)
         throw FormatError("archive nesting or size limit exceeded");
-    const Bytes plain = yaz0(data, size);
-    const bool is_sarc = plain.size() >= 4 && std::memcmp(plain.data(), "SARC", 4) == 0;
-    const bool is_rarc = plain.size() >= 4 && std::memcmp(plain.data(), "RARC", 4) == 0;
+    // Borrow uncompressed containers from their parent while descending.
+    // Copying each level keeps several whole archives alive at once.
+    Bytes plain;
+    if (size >= 4 && std::memcmp(data, "Yaz0", 4) == 0) {
+        plain = yaz0(data, size);
+        data = plain.data();
+        size = plain.size();
+    }
+    const bool is_sarc = size >= 4 && std::memcmp(data, "SARC", 4) == 0;
+    const bool is_rarc = size >= 4 && std::memcmp(data, "RARC", 4) == 0;
     if (!is_sarc && !is_rarc) {
+        if (plain.empty() && size)
+            plain.assign(data, data + size);
         visit(path, plain);
         return;
     }
@@ -221,9 +230,9 @@ void leaves(const uint8_t* data, size_t size, const std::string& path, const Lea
         leaves(bytes, length, path + "/" + name, visit, depth + 1);
     };
     if (is_sarc)
-        sarc(plain.data(), plain.size(), member);
+        sarc(data, size, member);
     else
-        rarc(plain.data(), plain.size(), member);
+        rarc(data, size, member);
 }
 
 namespace {
