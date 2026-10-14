@@ -188,7 +188,7 @@ def check_pack(output, exact=True, expected_conflicts=0):
 def snapshot(directory):
     # Include directories so even empty staging folders cannot escape a check.
     return {p.relative_to(directory).as_posix(): p.read_bytes() if p.is_file() else None
-            for p in directory.rglob("*")}
+            for p in directory.rglob("*") if p.name != ".bluewake-wwhd-import.lock"}
 
 
 def run(cli, root):

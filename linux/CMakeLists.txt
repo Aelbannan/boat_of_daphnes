@@ -68,6 +68,7 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/output_staging.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/disc_image.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/wiiu_disc.cpp

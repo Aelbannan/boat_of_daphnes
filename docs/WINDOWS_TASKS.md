@@ -64,6 +64,11 @@ your own decrypted folder, then a USA WUD/WUX image and its keys:
   using [the documented check](WWHD_TEXTURES.md#native-importer-memory-check-october-15-2026).
 - Repeat with portable mode, a path containing spaces/non-ASCII characters,
   and both mouse and controller navigation.
+- In a separate test data folder, force-close an import and retry: its marked temporary
+  output should be recovered, while completed packs and older unmarked temporary
+  folders stay intact. A second live import using the same output parent must
+  refuse promptly; another parent should still work. The generated killed-child
+  tests are wired into CI; the Windows app check remains outstanding.
 
 The M3 Max Mac completed the full folder import (3,546 textures) and a generated
 encrypted WUX menu import; the latter's nine PNGs matched the CLI and its copied

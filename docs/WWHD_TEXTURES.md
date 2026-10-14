@@ -377,8 +377,8 @@ suppression of late progress and one completion; they also run in the Mac CI
 audit under sanitizers. They do not establish UIKit or Files-provider acceptance.
 
 Cancellation cannot interrupt an OS read that is already stalled. Abrupt process
-termination also bypasses exception cleanup and can leave hidden staging folders;
-ownership/restart recovery and reporting failed cleanup remain open work.
+termination bypasses exception cleanup; the output recovery below handles the
+new marked staging folders on the next import into the same parent folder.
 
 A further output check rejects the import if removing a conflicting texture or
 replacing its old mipmaps fails. Previously those filesystem errors were ignored,
@@ -386,8 +386,28 @@ so rejected artwork could survive in a completed pack. A generated three-texture
 fixture reproduces the old success-after-failure result. The fixed importer
 passes conflict pruning and both synchronous/threaded removal-failure cases on
 the Mac under ASan/UBSan, preserving existing packs and removing staging. The
-same generated checks run in Windows/Linux CI. This does not cover forced-process
-recovery or a failure to remove the staging directory itself.
+same generated checks run in Windows/Linux CI. Those checks exercise handled
+failures; forced-process recovery has separate coverage below.
+
+### Recovering interrupted output (October 15, 2026)
+
+The importer holds a nonblocking OS lock for its output parent until all work
+and cleanup finish. Another import using that parent refuses promptly. New
+temporary output has a versioned ownership marker written before any texture
+files. A later import recovers only that recognized, flat output; it leaves
+completed packs, older unmarked folders, unexpected contents and links alone.
+Cleanup keeps the marker until the payload has gone, so interrupted recovery
+can be retried. A completed pack remains successful if only wrapper cleanup
+fails; a cleanup problem before completion is reported with the original error.
+
+Nine Mac CTests pass under ASan/UBSan, including real killed-child tests for
+partial output, interrupted recovery, a completed rename, live contention,
+Unicode paths and preserving unrelated files and link targets. The helper
+also compiles for iOS device/simulator and Android arm64 API 28. Windows/Linux
+CI includes these tests but has not yet run this revision. Android external
+storage, mobile input-copy recovery and app-level force-close/retry still need
+their own checks. This does not promise recovery after power loss or remove
+older unmarked temporary folders automatically.
 
 ### Native iOS Simulator check (October 15, 2026)
 

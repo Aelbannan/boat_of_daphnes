@@ -27,6 +27,8 @@ bool release_worker = false;
 unsigned started = 0, queued = 0;
 std::filesystem::path output_path;
 std::string remove_name;
+std::filesystem::path removal_fixture;
+std::string pause_at;
 
 void trigger_cancel() {
     cancelled.store(true, std::memory_order_relaxed);
@@ -37,6 +39,18 @@ bool async_cancel() { return cancel_at == "async-drain" || cancel_at == "async-r
 
 void wwhd::import_test_checkpoint(const char* name) {
     const std::string point(name);
+    if (point == pause_at) {
+        std::fprintf(stderr, "Test paused: %s\n", name);
+        std::fflush(stderr);
+        if (std::getchar() != 'x') throw std::runtime_error("test pause ended unexpectedly");
+    }
+    if (point == "staging-cleanup" && !removal_fixture.empty()) {
+        // Undo only the test's injected non-flat obstacle before production
+        // cleanup. Unknown nested directories must otherwise be preserved.
+        std::filesystem::remove(removal_fixture / "generated-fixture.txt");
+        std::filesystem::remove(removal_fixture);
+        removal_fixture.clear();
+    }
     if (cancel_at == "remove-conflict" && point == cancel_at) {
         // Make one generated texture impossible to unlink on every platform,
         // without relying on Unix permissions or running as an unprivileged user.
@@ -44,9 +58,10 @@ void wwhd::import_test_checkpoint(const char* name) {
         if (remove_name.empty() || fs::path(remove_name).filename() != remove_name)
             throw std::runtime_error("invalid removal fixture name");
         for (const auto& entry : fs::directory_iterator(output_path.parent_path())) {
-            if (entry.path().filename().string().rfind("." + output_path.filename().string() + "-", 0) != 0)
+            if (entry.path().filename().string().rfind(".bluewake-wwhd-stage-v1-", 0) != 0)
                 continue;
-            const fs::path file = entry.path() / remove_name;
+            const fs::path file = entry.path() / "pack" / remove_name;
+            removal_fixture = file;
             if (!fs::is_regular_file(file) || !fs::remove(file) || !fs::create_directory(file))
                 throw std::runtime_error("could not block generated-file removal");
             std::ofstream marker(file / "generated-fixture.txt");
@@ -126,6 +141,7 @@ int main(int argc, char** argv) {
     if (const char* mode = std::getenv("WWHD_TEST_CANCEL")) cancel_at = mode;
     if (const char* after = std::getenv("WWHD_TEST_AFTER")) cancel_after = unsigned(std::stoul(after));
     output_path = std::filesystem::absolute(options.output);
+    if (const char* point = std::getenv("WWHD_TEST_PAUSE")) pause_at = point;
     if (const char* file = std::getenv("WWHD_TEST_REMOVE_NAME")) remove_name = file;
     options.cancel = &cancelled;
     if (!cancel_at.empty()) options.threads = 1;
@@ -136,6 +152,7 @@ int main(int argc, char** argv) {
                      p.replacements);
 #ifdef WWHD_IMPORT_TESTING
         if (cancel_at == "stage:" + p.stage) trigger_cancel();
+        if (pause_at == "stage:" + p.stage) wwhd::import_test_checkpoint(pause_at.c_str());
 #endif
     };
     try {

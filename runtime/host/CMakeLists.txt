@@ -56,6 +56,7 @@ add_executable(bluewake_host
     src/wwhd/sha256.cpp
     src/wwhd/ui.cpp
     src/wwhd/pack.cpp
+    src/wwhd/output_staging.cpp
     src/wwhd/import_job.cpp
     src/wwhd/disc_image.cpp
     src/wwhd/wiiu_disc.cpp

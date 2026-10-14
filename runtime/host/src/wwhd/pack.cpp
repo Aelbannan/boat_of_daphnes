@@ -4,6 +4,7 @@
 #include "pack.h"
 #include "file_io.h"
 #include "filesystem.h"
+#include "output_staging.h"
 
 #include "hd.h"
 #include "imaging.h"
@@ -28,9 +29,9 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <fstream>
 #include <map>
-#include <random>
 #include <set>
 
 namespace wwhd {
@@ -527,8 +528,7 @@ ImportResult import_pack(const ImportOptions& o) {
     };
     const fs::path output = fs::absolute(fs::path(o.output));
     std::error_code ec;
-    if (fs::exists(output, ec))
-        throw FormatError("output already exists; choose a new folder to preserve existing packs");
+    OutputStaging temporary(output); // Lock/recovery stays on the import worker.
 
     report("Opening Wind Waker HD");
     check_cancel();
@@ -576,11 +576,7 @@ ImportResult import_pack(const ImportOptions& o) {
     }
 
     check_cancel();
-    fs::create_directories(output.parent_path(), ec);
-    std::mt19937_64 rng(uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
-    const fs::path staging = output.parent_path() / ("." + output.filename().string() + "-" + std::to_string(rng() % 1000000000));
-    if (!fs::create_directory(staging, ec))
-        throw FormatError("cannot create " + staging.string());
+    const fs::path staging = temporary.create();
 
     std::map<std::string, Match> matches;
     std::set<std::string> conflicts;
@@ -790,10 +786,20 @@ ImportResult import_pack(const ImportOptions& o) {
         write_file(staging / "README.txt", Bytes(readme.begin(), readme.end()));
         // Publication is the commit point; cancellation after it is success.
         WWHD_CHECKPOINT("publish");
-        (fs::rename)(staging, output);
+        temporary.publish();
     } catch (...) {
-        fs::remove_all(staging, ec);
-        throw;
+        const auto failure = std::current_exception();
+#ifdef WWHD_IMPORT_TESTING
+        import_test_checkpoint("staging-cleanup");
+#endif
+        try { temporary.discard(); }
+        catch (const std::exception& cleanup) {
+            try { std::rethrow_exception(failure); }
+            catch (const std::exception& original) {
+                throw WriteError(std::string(original.what()) + "; temporary output retained: " + cleanup.what());
+            }
+        }
+        std::rethrow_exception(failure);
     }
     progress.replacements = result.replacements;
     report("Done");
