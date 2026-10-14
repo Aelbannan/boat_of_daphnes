@@ -366,7 +366,6 @@ flowchart TD
     Dol["Main DOL"]
     Rels["415 RELs"]
     Frontend["GameCube input<br/>Gekko CPU"]
-    IR["DolIR"]
     Backend["Portable C<br/>backend"]
     DolC["DOL C chunks"]
     RelC["REL-grouped<br/>C chunks"]
@@ -376,7 +375,7 @@ flowchart TD
     Tool -. "contains" .-> Backend
     Dol --> Frontend
     Rels --> Frontend
-    Frontend --> IR --> Backend
+    Frontend --> Backend
     Backend --> DolC
     Backend --> RelC
 ```
