@@ -331,3 +331,18 @@ covered by `bluewake_wwhd_import_job_test` on the desktop build paths. This
 regression fails against the earlier detached worker and passes with AddressSanitizer
 and UndefinedBehaviorSanitizer on the Mac. It uses generated inputs and a
 controlled worker; it is not a mobile lifecycle or full-disc cancellation test.
+
+### Native iOS Simulator check (October 15, 2026)
+
+An isolated test app linked all eight production importer source files from
+`a640108` for arm64 iOS Simulator 27.0 (iPhone 17e), using the iOS path's two
+PNG workers. Seven generated-input cases passed: empty/missing HD folders,
+missing GameCube disc, malformed-resource cleanup, successful import, refusing
+to overwrite an installed pack, and repeat import to a new folder. Both packs'
+12 PNGs passed independent CRC, dimension, pixel and mip-chain checks. The
+production `BWGameOverlay.mm` also compiled without diagnostics.
+
+This checks the importer in an actual Simulator process. The production menu,
+Files picker, security-scoped external folder access, alerts, saved preferences
+and next-launch renderer loading were not part of that harness. No game data
+or physical device was used; full-dump iPhone/iPad memory acceptance remains open.
