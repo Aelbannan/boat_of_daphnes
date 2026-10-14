@@ -1,19 +1,22 @@
 // Runs the built-in Wind Waker HD importer from the command line (development):
-//   wwhd_native_import HD-content-folder GZLE01.iso NEW-OUTPUT-FOLDER
+//   wwhd_native_import HD-content-folder-or-image GZLE01.iso NEW-OUTPUT-FOLDER
 #include "wwhd/pack.h"
 
 #include <cstdio>
 #include <cstdlib>
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        std::fprintf(stderr, "usage: %s HD-content-folder GZLE01.iso NEW-OUTPUT-FOLDER\n", argv[0]);
+    if (argc < 4 || argc > 7) {
+        std::fprintf(stderr, "usage: %s HD-content-folder-or-image GZLE01.iso NEW-OUTPUT-FOLDER [DISC-KEY [COMMON-KEY [TITLE-KEY]]]\n", argv[0]);
         return 2;
     }
     wwhd::ImportOptions options;
     options.hd_folder = argv[1];
     options.gc_disc = argv[2];
     options.output = argv[3];
+    if (argc > 4) options.disc_key_file = argv[4];
+    if (argc > 5) options.common_key_file = argv[5];
+    if (argc > 6) options.title_key_file = argv[6];
     // WWHD_EXACT_REPORT=1: SHA-256s in the report, to compare with the script's.
     options.exact_report = std::getenv("WWHD_EXACT_REPORT") != nullptr;
     options.progress = [](const wwhd::ImportProgress& p) {

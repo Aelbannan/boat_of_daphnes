@@ -8,6 +8,9 @@
 #include "imaging.h"
 #include "sha256.h"
 #include "ui.h"
+#include "wiiu_disc.h"
+
+#include <memory>
 
 #include <zlib.h>
 
@@ -454,17 +457,45 @@ ImportResult import_pack(const ImportOptions& o) {
     if (fs::exists(output, ec))
         throw FormatError("output already exists; choose a new folder to preserve existing packs");
 
+    report("Opening Wind Waker HD");
+    std::unique_ptr<WiiUDisc> disc;
+    std::map<std::string, const WiiUDiscEntry*> disc_entries;
+    std::vector<std::string> files;
+    const fs::path input(o.hd_folder);
+    if (fs::is_regular_file(input, ec)) {
+        const std::string ext = lower(input.extension().string());
+        if (ext != ".wux" && ext != ".wud" && ext != ".iso")
+            throw FormatError("HD input must be a WUD/WUX disc or a decrypted content folder");
+        WiiUDiscKeys keys;
+        keys.disc = read_disc_key(o.disc_key_file.empty() ? (input.parent_path() / "game.key").string() : o.disc_key_file);
+        if (!o.title_key_file.empty()) {
+            keys.title = read_disc_key(o.title_key_file);
+        } else {
+            const fs::path common = o.common_key_file.empty() ? input.parent_path() / "common.key" : fs::path(o.common_key_file);
+            if (!o.common_key_file.empty() || fs::is_regular_file(common, ec))
+                keys.common = read_disc_key(common.string());
+        }
+        disc = std::make_unique<WiiUDisc>(o.hd_folder, keys);
+        for (const WiiUDiscEntry& entry : disc->entries()) {
+            const std::string name = lower(entry.path);
+            if (entry.path.rfind("content/Cafe/", 0) != 0 &&
+                (ends_with(name, ".szs") || ends_with(name, ".sarc") || ends_with(name, ".pack") || ends_with(name, ".bfres"))) {
+                files.push_back(entry.path);
+                disc_entries.emplace(entry.path, &entry);
+            }
+        }
+    } else {
+        files = hd_files(o.hd_folder);
+    }
+    progress.files_total = files.size();
+    if (files.empty())
+        throw FormatError("no Wind Waker HD resources in the selected input");
+    check_cancel();
     report("Reading the GameCube disc");
     const std::vector<GCTexture> originals = index_gc(o.gc_disc, result.errors);
     Targets targets;
     for (const GCTexture& t : originals)
         targets[{resource(t.source), lower(t.name)}].push_back(&t);
-
-    report("Listing the Wind Waker HD files");
-    const std::vector<std::string> files = hd_files(o.hd_folder);
-    progress.files_total = files.size();
-    if (files.empty())
-        throw FormatError("no Wind Waker HD files in that folder; choose its content folder");
 
     fs::create_directories(output.parent_path(), ec);
     std::mt19937_64 rng(uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -487,7 +518,7 @@ ImportResult import_pack(const ImportOptions& o) {
                 progress.replacements = matches.size() - conflicts.size();
                 report("Reading Wind Waker HD");
             }
-            const Bytes archive = read_file(o.hd_folder + "/" + source);
+            const Bytes archive = disc ? disc->read(*disc_entries.at(source)) : read_file(o.hd_folder + "/" + source);
             try {
                 // Keep only the two inputs used by another layout member.
                 // Visit the members again in archive order, releasing each

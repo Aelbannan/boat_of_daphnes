@@ -88,7 +88,9 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
     ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp)
+    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/disc_image.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/wiiu_disc.cpp)
 
 # The manifest (DPI awareness, long paths, UTF-8 code page) is merged into the
 # one the linker embeds.
@@ -106,6 +108,8 @@ add_executable(BlueWake
 set_source_files_properties(${BLUEWAKE_HOST_SRC}/main.c PROPERTIES
     COMPILE_DEFINITIONS "main=bluewake_host_main")
 target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash ZLIB::ZLIB bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
+include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_disc_crypto.cmake")
+target_link_libraries(BlueWake PRIVATE bluewake_wwhd_disc_crypto)
 if(TARGET imgui)
     target_link_libraries(BlueWake PRIVATE imgui)
 endif()

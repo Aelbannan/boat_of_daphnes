@@ -57,6 +57,8 @@ add_executable(bluewake_host
     src/wwhd/ui.cpp
     src/wwhd/pack.cpp
     src/wwhd/import_job.cpp
+    src/wwhd/disc_image.cpp
+    src/wwhd/wiiu_disc.cpp
     src/sprint.c
     src/quick_doors.c
     src/haptics.c
@@ -74,6 +76,8 @@ add_executable(bluewake_host
     src/scheduler_contract.c
     src/save_state.c)
 target_link_libraries(bluewake_host PRIVATE gxruntime GXRuntime::aurora z xxhash)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/wwhd_disc_crypto.cmake")
+target_link_libraries(bluewake_host PRIVATE bluewake_wwhd_disc_crypto)
 # The options menu (settings_menu.cpp) draws with Aurora's Dear ImGui.
 if(TARGET imgui)
     target_link_libraries(bluewake_host PRIVATE imgui)

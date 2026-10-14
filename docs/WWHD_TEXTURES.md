@@ -277,21 +277,29 @@ same PNG bytes as its four-worker run, using 394 MiB peak resident RAM
 `tests/wwhd_native_test.cpp` checks generated nested SARC/RARC/Yaz0 archives,
 empty members, malformed inputs and callback errors, plus streamed PNGs
 against whole-image zlib compression and decoded pixels. It passes with
-AddressSanitizer and UndefinedBehaviorSanitizer on this Mac. Build the native
-test and development importer without the renderer, using the xxHash headers
-already present in a configured build (or another local xxHash checkout):
+AddressSanitizer and UndefinedBehaviorSanitizer on this Mac. Build the development
+importer and disc checks through the configured host build, so they use
+the same pinned disc-crypto dependencies as the app. For an existing Mac
+builder tree (replace `BUILD` with its CMake build directory):
 
 ```sh
-c++ -std=c++17 -O2 -pthread -I runtime/host/src -I /path/to/xxhash \
-  tests/wwhd_native_test.cpp \
-  runtime/host/src/wwhd/{formats,addrlib,hd,imaging,sha256,ui,pack}.cpp \
-  -lz -o /tmp/wwhd-native-test
-/tmp/wwhd-native-test
+cmake -S scripts/builder/training -B BUILD \
+  -DBLUEWAKE_WWHD_TEST_PYTHON="$PWD/build/wwhd-tools/bin/python"
+cmake --build BUILD --target bluewake_wwhd_native_import \
+  bluewake_wwhd_disc_image_test bluewake_wwhd_disc_crypto_test \
+  bluewake_wwhd_wiiu_disc_test bluewake_wwhd_import_job_test
+ctest --test-dir BUILD/host --output-on-failure -R '^bluewake_wwhd_'
 ```
 
-For the importer, replace the test source with `tests/wwhd_native_import.cpp`
-and give it the HD content folder, GameCube ISO and a new output folder, in
-that order. `WWHD_EXACT_REPORT=1` selects the slower, serial SHA-256 report.
+The test Python needs only `pycryptodome==3.23.0`; the app needs no Python.
+Windows and Linux CI compile and run these generated-input checks too.
+For a development import, run `BUILD/host/bluewake_wwhd_native_import`
+with the HD content folder (or disc image), GameCube ISO and a new output
+folder, in that order. An image can take three additional paths: disc key,
+common key, title-key override (use an empty argument to skip the common
+key). `game.key` and `common.key` beside the image are the defaults. Key
+values never go in the command line. `WWHD_EXACT_REPORT=1` selects the slower,
+serial SHA-256 report.
 To compare native or Python packs, including every PNG and all available
 RGBA-chain SHA-256s:
 
@@ -367,19 +375,33 @@ The temporary cache folder was missing in this smoke run, so SQLite caching
 was disabled. This was not a performance measurement or first-photo test.
 The exact combined iOS revision was compiled, not played or imported on hardware.
 
-### Native WUX/WUD work remaining
+### Native WUX/WUD progress (October 15, 2026)
 
-The native random-access reader (`wwhd/disc_image.cpp`) reads raw WUD bytes
-and mapped WUX sectors without expanding the disc. Generated fixtures exercise
-reordered and duplicated sectors, partial final sectors, reads above 4 GiB,
-a 64 GiB logical image backed by less than 9 MiB of test data, malformed maps,
-truncated inputs and bounded reads. Mac CTest and AddressSanitizer /
-UndefinedBehaviorSanitizer pass; the reader also compiles for arm64 iOS Simulator.
-Windows/Linux CI is configured to build and run the same source-only fixture;
-results for this addition are pending.
+The native reader now handles WUD/WUX sector mapping, partitions, the Wii U
+file table and title metadata, locally supplied keys, AES-CBC decryption,
+and file-table / hashed-content checksums. It reads resources directly into
+the existing texture matcher without expanding an entire WUD. The CLI can
+use this path; app menus still select a decrypted folder.
 
-This reader is a foundation, not an import option yet. Next are the Wii U
-partition/file table, local key input, AES decryption and content checksums,
-then connection to the existing matching pipeline and each platform's picker.
-The complete WUX import must match the decrypted-folder pack before the app
-advertises image support. No keys or game data are included in these tests.
+The reader's generated fixtures cover reordered/duplicated sectors, reads
+above 4 GiB, a 64 GiB logical image backed by less than 9 MiB of test data,
+raw/CBC/hashed content across block boundaries, title/common/override keys,
+wrong keys, malformed tables and damaged content. The encrypted fixtures are
+checked independently by the existing Python reader. Mac CTest and the
+parser's AddressSanitizer / UndefinedBehaviorSanitizer run pass. The updated
+production Mac and iOS Simulator apps compile and link; Windows/Linux CI
+results for this addition remain pending.
+
+An end-to-end generated fixture also checks folder import against WUD and
+mapped WUX in four key modes: nine successful imports have identical PNGs,
+with every mip's dimensions, pixels and CRC independently checked. Twelve
+failure cases verify wrong-key rejection, existing-pack preservation, and
+staging cleanup after corrupt content. A fresh full import of the supplied
+decrypted HD tree still matches all 3,546 keys and all 33,859 PNG bytes from
+the earlier pack; this run peaked at 561,643,520 bytes RSS on the Mac.
+
+Still required before advertising image support: an authentic image-to-pack
+comparison, file/key pickers in each app, and
+phone/tablet memory and lifecycle validation. The supplied reference is a
+decrypted folder; generated encrypted fixtures do not establish acceptance
+of an authentic disc dump. No game data or console keys are in these tests.

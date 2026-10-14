@@ -1,5 +1,5 @@
 // The built-in Wind Waker HD importer: makes a Dolphin-format texture pack from
-// a decrypted Wind Waker HD content folder and the GameCube disc, as
+// a Wind Waker HD content folder or disc image and the GameCube disc, as
 // scripts/import_wwhd_textures.py does (its build()), for every BlueWake build.
 #pragma once
 
@@ -18,7 +18,10 @@ struct ImportProgress {
 };
 
 struct ImportOptions {
-    std::string hd_folder; // decrypted Wind Waker HD content folder
+    std::string hd_folder; // decrypted content folder, or a USA WUD/WUX image
+    std::string disc_key_file; // image input: defaults to game.key beside it
+    std::string title_key_file; // optional decrypted disc title key
+    std::string common_key_file; // otherwise common.key decrypts the image ticket
     std::string gc_disc;   // the GameCube GZLE01 rev 0 .iso/.gcm
     std::string output;    // a new folder for the pack
     std::function<void(const ImportProgress&)> progress;
