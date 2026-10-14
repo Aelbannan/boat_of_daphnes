@@ -37,6 +37,7 @@ RUN apt-get update \
         libwayland-dev libxkbcommon-dev libx11-xcb-dev libx11-dev \
         libxrandr-dev libxext-dev libxi-dev libxcursor-dev libgl1-mesa-dev \
         libvulkan-dev libasound2-dev libpulse-dev libxss-dev libxtst-dev \
+        libdbus-1-dev \
         zlib1g-dev libpng-dev libfreetype6-dev libsqlite3-dev libzstd-dev \
         libfmt-dev libbz2-dev libbrotli-dev libicu-dev \
     && python3 -m venv /opt/cmake \
