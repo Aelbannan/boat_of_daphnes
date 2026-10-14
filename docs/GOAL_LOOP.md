@@ -1,7 +1,7 @@
 # What we're doing
 
 The dated plan. Ask "what are we doing on October 11?" and the answer is that day's section below. Owner: Chris.
-Updated October 12, 2026 (night).
+Updated October 14, 2026.
 
 **The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, Linux
 becomes a download, and Android gets to the iPhone app's standard. Most of the speed is already written, by Elliott
@@ -30,6 +30,72 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 1. Lean what we have, and catch up with Elliott | 0.7.0 and the next two weeks | Lean block copies (default since today), draw fusion, his faster loads and natives rounds 4, 5 and 7, his upload changes, hidden symbols, Smooth Motion pacing | Faster on the benchmark, and the game plays the same |
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
+
+## Where things stand on October 14
+
+- **Menus and hotkeys are the same on every desktop build** (#320, pdale-boop; merged #324, #326 to #330, #332): F1
+  settings, F2 HD look, F5 save state, F7 stage select, F8 load state, F9 frame rate, F10 Smooth Motion, F11 / Alt+Enter
+  fullscreen, with a status line for each. Windows keeps F6 as a second save key. The Mac and Linux menu works with a
+  controller and has Windows' Display and Sound and files settings. Linux has Restart now and safe mode. The Windows
+  menu has the Mac and Linux layout. Checked on Linux and Windows by pdale-boop. On the Mac (M3 Max) I checked the
+  keyboard: F1, F8, F9, F10, F11, Esc and `settings.ini`. No controller or mouse check on the Mac yet.
+- **The Wind Temple's R04 and R08** (#318): pdale-boop matched the stage load against Dolphin. `d_a_shutter2.rel` is a
+  loose file on the disc, so on the console it arrives after Link is built. #331 gives loose RELs a load time back
+  (`BLUEWAKE_LOOSE_REL_RETRACES=1`, off by default). Two full sweeps: only R04 and R08 change. Next: the Mac, then on
+  by default.
+- **Behaviour timing as the default** (#215, #335): the Steam Deck is 9% faster (jkoehler11), and it played without
+  differences there and on Linux. #335 turns it on in the Windows and Linux builders: a draft for Chris.
+- **The Picto Box** (#267, #333): jslay88 found why Lenzo refuses correct photos: `GXPeekARGB` was never answered. The
+  fix is RecompCore#36 plus #334. `bluewake-next` is level with BlueWake's pin, so moving the pin brings only this
+  fix. Waiting on a photo on the Mac and Chris's OK for the pin.
+- **Greatfish merchant** (#313): fixed in `main` (#323, jslay88), confirmed by the reporter.
+- **Flicker** (#136): draw fusion ruled out. The fix is in how Smooth Motion places the sky between frames.
+- **Linux window resize crash** (#325): pdale-boop will send an Aurora fix to RecompCore (reconfigure the surface on
+  `Lost`, as for `Outdated`).
+- **Closed:** #308 (no hang on `main`), #313. #322 (German) is counted in #60.
+- **My open drafts, brought up to date with `main`:** #321 (softer HD look, waiting on Chris), #316 (iOS menu
+  switches, waiting on a tap on the iPad), #315 (the HD importer in the app).
+
+## Where things stand on October 13
+
+- **HD textures in the app, the same place on every build** (#314): **Mods › Wind Waker HD textures**, first in the
+  Mods tab on the Mac, Linux and Windows and in the ⋯ Mods menu on iPhone and iPad: the switch, the texture count and
+  adding a pack (the desktop folder picker, Install Texture Pack on iOS). The Mac and Linux menu gained a Mods tab and
+  no longer forgets next-launch choices when it is opened again.
+- **The importer is built into the app** (#315, draft): a C++ port of `scripts/wwhd` that makes the script's pack
+  exactly: from the same discs, the same 3,546 textures with identical pixels (every image's SHA-256), the same
+  33,861 files, 124 conflicts and 17 unsupported entries. **Mods › Import from Wind Waker HD…** runs it on the Mac,
+  Linux and Windows with progress; on the Mac it made the pack from the menu in about 25 seconds and the next launch
+  loaded all 3,546. On iPhone and iPad the same entry is built and installed on Chris's iPad, not yet tried there.
+  Still to do: WUX/WUD images, a leaner run for phones (1.07 GB peak on the Mac), Android.
+- **iOS menu switches keep the menu open** (#316, #104). Chris's tap test on the iPad, recorded over QuickTime, showed
+  the first version sending the menu back to the top level after every tap. It's fixed: the open submenu keeps its
+  identity and only its items change. A test app driven by a UI test on the iPad simulator confirms it. The fix is
+  installed on the iPad and still needs a tap there. An automated tap test on the iPad itself needs UI Automation
+  turned on once, with the passcode, on the iPad.
+- **The HD look looked darker than the GameCube's** (Chris, on the iPad): long dark streaks across Outset's grass
+  from the screen-space sun shadows, a dark smudge under Link and a green tint. #321 (draft, needs Chris's OK)
+  leaves sun shadows out of the HD look switch and starts ambient occlusion, cloud shadows, bloom and the far blur
+  softer. Compared on the Mac (Outset pier, cavern) and installed on the iPad.
+- **#314 is merged.** pdale-boop asked in #320 for the same hotkeys and settings on every build. The answer: their
+  hotkey table everywhere, with Windows' F6 kept as a second save key, the Windows-only settings brought to Linux and
+  the Mac, and controller navigation for the Linux/Mac menu. #318 (Wind Temple R04/R08 crash at a stage load) got the
+  list of host timing switches to rule out.
+- **#313** (Greatfish merchant under his raft): the merchant and his raft load separate archives, and when the
+  merchant's finishes first his one ground check misses the raft. Waiting for the reporter's details before a fix.
+- **#313** (Greatfish merchant): jslay88's fix, tested on their Linux build, is #323 with them as co-author; to merge once
+  they confirm a build from the branch.
+- **#318** (Wind Temple R04/R08): pdale-boop found the cause. `d_a_shutter2.rel` is a loose file on the disc, so on the
+  console the shutter is created about 12 retraces after Link is built; BlueWake has every module in memory, so it's
+  created inside Link's two-frame gap. Agreed approach: give loose RELs a load time back, behind a switch that's off
+  by default, then the stage select sweep with and without it.
+- **Android (#93):** behaviour timing on the Fold 7 gives about 4% fewer instructions and 10% fewer cycles a retrace and a
+  10% smaller module. The run that decides the merge: Outset's pier from a cool start, `main` and behaviour timing
+  alternated. CI for #93 was waiting for a maintainer's approval; approved October 13.
+- **Behaviour timing as the default** (#215): plays fine on pdale-boop's rig (21:9, 60 FPS); waiting for jkoehler11 on
+  the Steam Deck.
+- **#322:** a request for the PAL version. Not planned for now: the translation and every host address are for GZLE01.
+- Merged: #312 (the release draft), #300 (cforain's build-process docs), #314. Waiting on Chris as on October 12, and on #321.
 
 ## Where things stand on October 12
 
@@ -97,7 +163,7 @@ iPad alike. Chris decided:
 
 | # | Step | Notes |
 | --- | --- | --- |
-| H1 | HD textures and HUD from your own Wii U dump, chosen in the app's setup, not only by `scripts/import_wwhd_textures.py` | **October 12:** the importer, run on a decrypted USA dump on this Mac, made 3,546 replacements, and BlueWake loaded all of them at Outset with the HD look (frames in #57; no measurable cost). The importer now installs into the folders the Mac and Linux apps read (#295). The sea chart with a pack is fixed in `main` (#283: the cache-flush fallback on by default, with RecompCore ee99bbc keeping the GPU's EFB copies). Still to do: choosing the dump in the app's setup, and the redesigned HD menus. #57 asks for the HD UI |
+| H1 | HD textures and HUD from your own Wii U dump, made in the app on every build | **October 13:** the importer is built into the app (#315): it makes the script's pack exactly (3,546 textures, identical pixels) in about 25 s on an M3 Max, from **Mods › Import from Wind Waker HD…** on the Mac, Linux and Windows; the section is the same on every build (#314). Before that, on October 12, the script's pack loaded at Outset with the HD look (frames in #57) and the sea chart with a pack was fixed (#283). Still to do: try it on Windows, Linux and the iPad, WUX/WUD, a leaner run for phones, Android, and the redesigned HD menus. #57 asks for the HD UI |
 | H2 | **Distant islands.** The island LOD actor (`d_a_lod_bg.cpp`) shows an island's far model within `scale.x` (its placed scale times 20,000 units), sinks it below the sea past 150,000 and draws with the far plane at 500,000. **In `main` (October 12), off by default:** the host adds 100,000 units to both distances on each island model; [WWHD_LOOK.md](WWHD_LOOK.md) | Game-side, no renderer change; the cheapest |
 | H3 | Bloom and the far-distance blur, as passes after the frame in Aurora | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #26, #27), off by default, on the switch from BlueWake #287 (RecompCore a10b7e4) |
 | H4 | Ambient occlusion from the depth buffer | **In `main`** (#287, October 12; RecompCore ee99bbc) (RecompCore #28), on the switch in #287 with H3 |
