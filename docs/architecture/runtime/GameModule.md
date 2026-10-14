@@ -35,8 +35,9 @@ loader`"]
 export`"]
     Descriptor["`Module
 descriptor`"]
-    State["`Shared CPUState
-and MEM1`"]
+    State["`Shared
+CPUState and
+MEM1`"]
 
     Host --> Loader --> Export --> Descriptor
     Descriptor -->|"validate ABI"| Host

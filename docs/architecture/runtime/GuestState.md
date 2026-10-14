@@ -32,10 +32,12 @@ when execution crosses the host/module ABI.
 ```mermaid
 flowchart TD
     DOL["main.dol"]
-    REL["`REL metadata and
-data images`"]
+    REL["`REL metadata
+and data
+images`"]
     Loader["Image loader"]
-    Memory["MEM1 + aliases"]
+    Memory["`MEM1 +
+aliases`"]
     OS["OS globals"]
     Devices["Device state"]
     PC["Entry PC"]

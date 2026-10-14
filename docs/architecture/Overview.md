@@ -51,12 +51,15 @@ DOL + RELs`"]
 translate PPC`"]
         Generated["Generated C"]
         Prepared["`Prepared C
-+ optional mods`"]
++ optional
+mods`"]
         Training["Optional PGO"]
-        HostSource["`Host + platform
+        HostSource["`Host +
+platform
 source`"]
         RuntimeSource["`Runtime +
-renderer source`"]
+renderer
+source`"]
         GameCompiler["`Game-module
 compiler`"]
         AppCompiler["`Application
@@ -64,7 +67,8 @@ compiler`"]
         GameModule["`Native game
 module`"]
         Executable["Platform app"]
-        Package["Runnable package"]
+        Package["`Runnable
+package`"]
 
         Disc --> Extract --> Translator --> Generated --> Prepared --> GameCompiler --> GameModule
         Prepared --> Training --> GameCompiler
@@ -82,7 +86,8 @@ module`"]
         Guest["Guest state"]
         Services["`GameCube
 services`"]
-        Graphics["Graphics stack"]
+        Graphics["`Graphics
+stack`"]
         Assets["Disc assets"]
 
         Startup --> Host

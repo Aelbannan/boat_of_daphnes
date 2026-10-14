@@ -20,18 +20,22 @@ Dawn connects that work to the platform graphics API.
 flowchart TD
     Game["`Translated
 game code`"]
-    FIFO["`GX gather pipe
-and display lists`"]
+    FIFO["`GX gather
+pipe and
+display lists`"]
     GX["`GXRuntime
-command model`"]
+command
+model`"]
     Aurora["`Aurora
 renderer`"]
     Dawn["`Dawn
 GPU layer`"]
     GPU["`Native GPU
 and display`"]
-    Host["`BlueWake host
-retrace + present`"]
+    Host["`BlueWake
+host
+retrace +
+present`"]
 
     Game --> FIFO --> GX --> Aurora --> Dawn --> GPU
     Host --> GX

@@ -19,12 +19,15 @@ services.
 ```mermaid
 flowchart TD
     Package["Packaged app"]
-    Entry["Platform entry"]
+    Entry["`Platform
+entry`"]
     Paths["`Resources +
 data paths`"]
-    Host["bluewake_host_main"]
+    Host["`bluewake_
+host_main`"]
     Module["Game module"]
-    Runtime["`State + services
+    Runtime["`State +
+services
 + graphics`"]
 
     Package --> Entry --> Paths --> Host
