@@ -20,10 +20,10 @@ services.
 flowchart TD
     Package["Packaged app"]
     Entry["Platform entry"]
-    Paths["Resources +<br/>data paths"]
+    Paths["Runtime paths"]
     Host["bluewake_host_main"]
     Module["Game module"]
-    Runtime["State + services<br/>+ graphics"]
+    Runtime["Runtime systems"]
 
     Package --> Entry --> Paths --> Host
     Host --> Module

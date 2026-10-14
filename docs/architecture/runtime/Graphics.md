@@ -18,13 +18,13 @@ Dawn connects that work to the platform graphics API.
 
 ```mermaid
 flowchart TD
-    Game["Translated<br/>game code"]
-    FIFO["GX gather pipe<br/>and display lists"]
-    GX["GXRuntime<br/>command model"]
-    Aurora["Aurora<br/>renderer"]
-    Dawn["Dawn<br/>GPU layer"]
-    GPU["Native GPU<br/>and display"]
-    Host["BlueWake host<br/>retrace + present"]
+    Game["Translated code"]
+    FIFO["GX input"]
+    GX["GXRuntime"]
+    Aurora["Aurora"]
+    Dawn["Dawn"]
+    GPU["Native GPU"]
+    Host["BlueWake host"]
 
     Game --> FIFO --> GX --> Aurora --> Dawn --> GPU
     Host --> GX
