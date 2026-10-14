@@ -417,28 +417,33 @@ flowchart LR
     DolC["DOL C chunks"]
     RelC["REL C chunks"]
     Binaries["DOL + REL<br/>metadata"]
+    Base["Verified composite<br/>source"]
     Ready["Compile-ready<br/>source"]
-    Stop["Stop or<br/>override"]
+    Stop["Stop the build"]
 
     subgraph BlueWake["BlueWake logic"]
         Generate["Compose source"]
         Verify{"Digest match?"}
-        Variants["Add mod<br/>variants"]
-        Prepare["Apply guarded<br/>optimizations"]
+        Variants["Optional: add<br/>mod variants"]
+        Prepare["Optional: apply guarded<br/>optimizations"]
     end
 
     DolC --> Generate
     RelC --> Generate
     Binaries --> Generate
     Generate --> Verify
-    Verify -->|yes| Variants --> Prepare --> Ready
+    Verify -->|yes| Base
     Verify -->|no| Stop
+    Base --> Variants --> Prepare --> Ready
+    Base -. "mods and optimizations disabled" .-> Ready
 ```
 
 Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
-output into BlueWake's compile-ready game-module source. It adds cross-DOL/REL
-dispatch, validates provenance, and applies BlueWake's mods and guarded
-optimizations. The BlueWake host application remains separate until stage 7.
+output into BlueWake's compile-ready game-module source. Compositing,
+cross-DOL/REL dispatch, metadata generation, and base-digest verification are
+required correctness steps. Mods, native replacements, and performance
+transformations are selectable additions. The BlueWake host remains a separate
+component, although Stage 6 may build it early to run PGO training playbacks.
 
 ### Generate the composite source
 
@@ -456,7 +461,11 @@ optimizations. The BlueWake host application remains separate until stage 7.
 | Build mod inputs | Applies the widescreen patches and Better Wind Waker option sites, then translates their changed DOL or REL inputs. | Translated source for each requested variant | `OUT/mods/*/translated/` | [`build_mod_variants.py`](../../scripts/mods/build_mod_variants.py), [Linux entry](../../scripts/linux/build.py#L633-L638), [Windows implementation](../../scripts/windows/build.py#L677-L761), [Apple hook](../../scripts/builder/profiles/bluewake.sh#L192-L202) |
 | Add variants | Merges the selected alternatives into the base composite so the runtime can select them without separate modules. | Base, widescreen, Better Wind Waker, and combined variants | Variant source inside `OUT/composite-src/` | [Linux mod stage](../../scripts/linux/build.py#L633-L638), [Windows mod stage](../../scripts/windows/build.py#L677-L752), [Apple mod hook](../../scripts/builder/profiles/bluewake.sh#L192-L202) |
 | Prepare optimizations | Applies the selected native replacements and source transformations through a shared recipe. | Compile-ready optimized source | Updated `OUT/composite-src/` | [`module_optimizations.py`](../../scripts/builder/module_optimizations.py), [Linux preparation](../../scripts/linux/build.py#L639-L770), [Windows preparation](../../scripts/windows/build.py#L764-L870), [Apple dispatch](../../scripts/builder/build.sh#L268-L271) |
-| Guard changes | Each preparation checks the source shape or digest it expects; a mismatch leaves the translated implementation intact or stops that requested transformation. | Optimizations cannot silently target unknown generated code | Preparation logs and `OUT/composite-final.digest` | [`audit_composite_provenance.py`](../../scripts/audit_composite_provenance.py), [Linux final digest](../../scripts/linux/build.py#L639-L770), [Windows final digest](../../scripts/windows/build.py#L764-L870), [Apple final digest](../../scripts/builder/profiles/bluewake.sh#L192-L202) |
+| Guard changes | Selected transformations check the source shape or digest they expect. Unselected transformations leave the verified base implementation in place; a failed selected transformation can stop the build. | Optional changes cannot silently target unknown generated code | Preparation logs and `OUT/composite-final.digest` | [`module_optimizations.py`](../../scripts/builder/module_optimizations.py), [Linux preparation](../../scripts/linux/build.py#L639-L770), [Windows preparation](../../scripts/windows/build.py#L764-L870), [Apple dispatch](../../scripts/builder/build.sh#L268-L271) |
+
+[`audit_composite_provenance.py`](../../scripts/audit_composite_provenance.py)
+is a separate diagnostic for comparing two prepared trees; it is not the
+build-time guard that applies these transformations.
 
 ## 6. Train
 
@@ -464,26 +473,37 @@ Stage 5 ends with prepared C source under `OUT/composite-src/`, not a compiled
 game module. When training is enabled and the fingerprint check finds no
 reusable profile, **Stage 6 compiles that Stage 5 source immediately after the
 fingerprint check and before any playback runs**. This first compilation
-produces a temporary native game module with execution counters. The builder
-runs deterministic headless playbacks with that module and merges the recorded
-counts. Stage 7 then compiles the prepared source again, using the profile to
-optimize frequently executed code in the final module without changing game
-behavior; no machine-learning model is trained.
+produces a temporary native game module with execution counters and also needs
+a native host to run it. Linux and Windows build or reuse their normal host;
+Apple builds a dedicated instrumented training host. A verified profile-cache
+hit skips both training builds. Stage 7 then compiles the prepared source
+again, optionally using the profile to optimize frequently executed code
+without changing game behavior; no machine-learning model is trained.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Prepared["Stage 5 prepared<br/>C source"]
     Fingerprint["Input<br/>fingerprint"]
+    Host["Build or reuse<br/>playback host"]
     Compile["Stage 6: compile Stage 5<br/>source for training"]
     Instrumented["Training module<br/>with counters"]
     Playback["Headless<br/>playbacks"]
     Raw["Raw profiles"]
     Merge["Merge profiles"]
-    Profile["PGO profile"]
+    Profile["Optional PGO<br/>profile data"]
+    Disabled["No PGO profile"]
+    Final["Stage 7 final<br/>module compile"]
+    Module["Final native<br/>game module"]
 
-    Prepared --> Fingerprint
-    Fingerprint -->|cache miss| Compile --> Instrumented --> Playback --> Raw --> Merge --> Profile
+    Prepared -->|training enabled| Fingerprint
+    Fingerprint -->|cache miss| Host --> Playback
+    Fingerprint -->|cache miss| Compile --> Instrumented --> Playback
+    Playback --> Raw --> Merge --> Profile
     Fingerprint -->|cache hit| Profile
+    Prepared -->|source input| Final
+    Prepared -->|training disabled| Disabled --> Final
+    Profile -. "optimization input" .-> Final
+    Final --> Module
 ```
 
 ### Training pipeline
@@ -495,6 +515,7 @@ shared [`train_local_pgo.py`](../../scripts/builder/train_local_pgo.py).
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
 | Fingerprint inputs | Hashes prepared source, compiler settings, and playback code; reuses a profile only when the receipt matches. | Safe cache decision | `OUT/pgo-local/training.json` | [Linux](../../scripts/linux/build.py#L955-L978), [Windows](../../scripts/windows/build.py#L1022-L1045), [shared Apple trainer](../../scripts/builder/train_local_pgo.py) |
+| Build the playback host | On a cache miss, provides a native executable that can load the instrumented module. Linux and Windows build or reuse the normal host target; Apple builds a dedicated instrumented host. | Runnable host for deterministic training | Platform app build or `OUT/pgo-local/host/` | [Linux](../../scripts/linux/build.py#L979), [Windows](../../scripts/windows/build.py#L1046), [Apple](../../scripts/builder/train_local_pgo.py) |
 | Compile Stage 5 source for training | On a cache miss, Stage 6 compiles the prepared composite with LLVM profile-generation flags before running any playback. | Temporary native module that records executed translated functions | Instrumented build under `OUT/pgo-local/` | [Linux](../../scripts/linux/build.py#L979-L1000), [Windows](../../scripts/windows/build.py#L1046-L1067), [Apple hook](../../scripts/builder/profiles/bluewake.sh#L204-L215) |
 | Run playbacks | Boots the instrumented module headlessly and exercises the opening plus configured tours and mod combinations. | Raw execution counters from representative game paths | `*.profraw` under `OUT/pgo-local/` | [Linux playbacks](../../scripts/linux/build.py#L1001-L1080), [Windows playbacks](../../scripts/windows/build.py#L1068-L1147), [training script](../../scripts/builder/train_local_pgo.py) |
 | Validate and merge | Rejects incomplete runs, merges counters with `llvm-profdata`, and confirms translated functions were recorded. | Compiler-readable local PGO profile | `OUT/pgo-local/composite.profdata` | [Linux merge](../../scripts/linux/build.py#L1081-L1105), [Windows merge](../../scripts/windows/build.py#L1148-L1173) |
@@ -567,9 +588,12 @@ toolchain environment, not these build stages or outputs.
 | Compile module | Cross-compiles the translated source with Apple Clang for arm64 and the iPhoneOS SDK. | Native translated game library | `OUT/composite-ios/gGZLE01_recomp.dylib` | [`profile_compile`](../../scripts/builder/profiles/bluewake.sh#L216-L258) |
 | Build app | Compiles the UIKit entry, touch/controller services, runtime, and mobile renderer. | iOS application bundle | `OUT/app/BlueWake.app` | [`profile_build_app`](../../scripts/builder/profiles/bluewake.sh#L259-L303), [`apple/ios/CMakeLists.txt`](../../apple/ios/CMakeLists.txt) |
 | Embed and sign | Places the module in `Frameworks`, records optimization features, and applies development or ad-hoc signatures. | Installable personal app | `OUT/app/BlueWake.app/Frameworks/gGZLE01_recomp.dylib` | [Embed and sign](../../scripts/builder/build.sh#L291-L340) |
-| Package IPA | With `--ipa`, strips signing material, audits out discs, extracted code, saves, and keys, then creates an unsigned archive. | Sideloadable package without private game inputs | Caller-selected path, commonly `OUT/BlueWake.ipa` | [IPA packaging and privacy audit](../../scripts/builder/build.sh#L341-L390) |
+| Package personal IPA | With `--ipa`, requires the translated module, strips signing material, and audits out the disc image, DOL/REL inputs, saves, and keys. | Unsigned, sideloadable personal package containing translated game code but no raw game inputs | Caller-selected path, commonly `OUT/BlueWake.ipa` | [IPA packaging and privacy audit](../../scripts/builder/build.sh#L341-L390) |
+| Package app-only IPA | With `--app-only --ipa`, builds the host package without a translated game module and verifies that the module is absent. | Unsigned host-only package to which a player can add their own module | Caller-selected path | [App-only validation](../../scripts/builder/build.sh#L341-L390) |
 
-PadMint can add the player's module to an app-only build.
+PadMint can add the player's translated module to an app-only build. Neither
+IPA mode contains the raw disc image, extracted DOL/REL files, saves, keys, or
+signing material.
 
 ### Apple TV (tvOS, arm64; experimental)
 
