@@ -6413,15 +6413,19 @@ static void host_apply_aspect(void) {
         return;
     const char* mod = NULL;
     const char* ratio = NULL;
+    float crop = 0.f;  // (4/3) / aspect
     if (strcmp(aspect, "16:10") == 0) {
         mod = "widescreen1610";
         ratio = "1.6";
+        crop = 5.f / 6.f;
     } else if (strcmp(aspect, "16:9") == 0) {
         mod = "widescreen";
         ratio = "1.7778";
+        crop = 3.f / 4.f;
     } else if (strcmp(aspect, "21:9") == 0) {
         mod = "widescreen219";
         ratio = "2.3333";
+        crop = 4.f / 7.f;
         // The picture is as tall as 4:3's (the camera widens, it does not
         // look further up or down): the follow camera starts a little
         // further back, as one notch of the wheel out would put it.
@@ -6435,7 +6439,18 @@ static void host_apply_aspect(void) {
     char list[256];
     snprintf(list, sizeof list, "%s%s%s", mods && mods[0] ? mods : "", mods && mods[0] ? "," : "", mod);
     setenv("BLUEWAKE_MODS", list, 1);
-    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s\n", aspect, mod, getenv("DOL_AURORA_ASPECT_RATIO"));
+    // BLUEWAKE_PICTO_CROP=1 (off by default): a Picto Box photo is copied from
+    // the viewfinder (304x208 of the frame) into a 152x104 picture, so the
+    // wider camera's view came out squeezed to 4:3 / aspect of its width. The
+    // copy takes the middle of the view instead, what a 4:3 camera would have
+    // taken (RecompCore's aurora_set_copy_crop). The Picto Box and the Deluxe
+    // Picto Box (colour) make the same copy.
+    const char* picto_crop = getenv("BLUEWAKE_PICTO_CROP");
+    const bool picto = picto_crop != NULL && strcmp(picto_crop, "1") == 0;
+    if (picto)
+        aurora_set_copy_crop(152, 104, crop);
+    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s, Picto Box photos %s\n", aspect, mod,
+            getenv("DOL_AURORA_ASPECT_RATIO"), picto ? "cropped to 4:3" : "as the wide camera sees them");
 }
 
 // ---------------------------------------------------------------------------
