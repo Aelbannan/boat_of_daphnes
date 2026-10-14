@@ -112,11 +112,11 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "ee99bbc13c948351f6974c745cad2593a25eacbf",
+      "sha": "57123c6c12ae0fa52dcba20742dc7e79866de978",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
-      "verified": "2026-10-09",
+      "verified": "2026-10-15",
       "upstream": {
         "url": "https://github.com/ExpansionPak/RecompCore",
         "base_sha": "5c3611e2bcb03d1578274c956bc3d7b913527ec2"
@@ -595,6 +595,13 @@
           "runtime": "6c853a1d908af3d6f700510377729f5d4c2c8c31",
           "donor": "elliotttate RecompCore 31401e5, 3be805f, 0e631be, bb63c90, 50763a2, 6d0ed15, db2c87f, 44e5c2c (Wind-Waker-Recomp patches 0121, 0123-0129), authorship retained",
           "evidence": "Device lock, multi-threaded pipelines, GX worker reductions, Smooth Motion cloth and colours, ubershader (on by default for D3D12 only). Mac host builds; frame_interp and fps_watch regressions pass; donor measurements not repeated."
+        },
+        "picto_actor_id": {
+          "runtime": "5423b269e01d629fd3668c822887a6d54b620c79",
+          "tracked_patches": [
+            "patches/recompcore/0177-answer-picto-actor-id-from-current-efb.patch"
+          ],
+          "evidence": "Mac M3 Max Metal: clear Lenzo subject 94/detail 0; empty-wall subject 0 with normal warm-cache rendering. Copied card unchanged. Contributors confirmed Linux/M4 Pro and all three Lenzo photos plus bad-photo rejection on Windows. Cold first-use alpha-only draws can still be skipped while pipelines compile; RecompCore#39 is a separate Mac-tested follow-up awaiting Windows/Linux gameplay checks."
         }
       }
     },

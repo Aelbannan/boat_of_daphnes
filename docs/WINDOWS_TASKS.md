@@ -14,6 +14,12 @@ The 0.5.0 checks are in [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md)
 
 ## 1. In `main`, for the next Windows build
 
+The Picto recognition integration adds #334 and RecompCore#36. The candidate passed all three Lenzo
+photos on pdale-boop's Windows PC. Mac evidence and the separate first-use shader-cache follow-up
+(RecompCore#39, not pinned) are in [the validation record](status/PICTO_RECOGNITION_2026-10-15.md).
+Widescreen crop/gallery work (#338) is separate.
+
+
 | Change | Issue | What to check | Result |
 | --- | --- | --- | --- |
 | The Windows menu like the Mac and Linux one: its buttons, Controls and labels | #320 | F1: no "Play your way" heading; the buttons along the bottom read **Resume**, **Save state (F5)**, **Load latest state (F8)** and **Quit the game** (two rows when the menu is narrow), and each does what it says (Resume and the save buttons close the menu); after a next-launch change the note reads "Some changes take effect at the next launch." with **Restart now** beside it, and the changed settings show "(next launch)". **Sound and files** has only Sound and Your files (no save buttons). **Controls** reads, in order: the swaps, D-pad in menus, Controller buttons, Keyboard keys, the mouse (greyed out while Mouse camera is off), the right stick and aiming, Haptics, then the key table, which now lists F2, F5 / F8 and F7. Labels: **Jump & Sprint**, **Wall climbing**, **Texture filtering**. Each setting still saves and works as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a host-only build of this branch with #331 (over a trained stack build, with `--behaviour-timing`): the checks above, as written |
