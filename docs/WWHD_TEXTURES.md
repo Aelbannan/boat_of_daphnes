@@ -346,3 +346,11 @@ This checks the importer in an actual Simulator process. The production menu,
 Files picker, security-scoped external folder access, alerts, saved preferences
 and next-launch renderer loading were not part of that harness. No game data
 or physical device was used; full-dump iPhone/iPad memory acceptance remains open.
+
+A separate full production simulator build from `a640108` with RecompCore
+`ee99bbc` also linked and reached Outset on the iPad Air 11-inch (M4) / iPadOS
+27.0 simulator. The game and touch overlay were visible. Its distinct test
+bundle used a copied card, whose hash stayed unchanged. Device Hub returned
+`noWindowsAvailable` for automation input, so this run did not verify the Mods
+menu or file picker. The test app was uninstalled and the simulator shut down;
+the physical iPad was not touched.
