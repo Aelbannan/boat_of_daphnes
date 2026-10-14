@@ -408,7 +408,7 @@ def build(args) -> dict:
                   "limits": "Compatible BFRES artwork, audited shared-artwork variants, inventory/collection/chart icons, HUD hearts and swimming meter, adapted English title/opening layouts, font-derived English action/menu text, counters and A/B/X/Y symbols, and adapted key/cursor sprites; HD shaders, models, lighting and other redesigned HUD are not imported."}
         (staging / "import-report.json").write_text(json.dumps(report, indent=2) + "\n")
         (staging / "README.txt").write_text("Private artwork extracted from your own Wind Waker HD disc.\n"
-                                          "Select this folder as the HD texture pack, then restart.\n"
+                                          "Choose this folder in Mods > Wind Waker HD textures, then restart.\n"
                                           "Do not distribute this folder with app builds or source releases.\n")
         staging.replace(output)
         if args.install:
@@ -441,8 +441,7 @@ def main():
           + (f"Added {report['fallback']['texture_count']} fallback replacements.\n" if report['fallback'] else "")
           + f"Pack: {args.output.expanduser().resolve()}\n"
           + ("Selected for the next app launch.\n" if args.install else
-             "Run again with --install to select it.\n" if WINDOWS else
-             "Choose this folder in Display > HD texture pack.\n"))
+             "Run again with --install, or choose this folder in Mods > Wind Waker HD textures.\n"))
     return 0
 
 

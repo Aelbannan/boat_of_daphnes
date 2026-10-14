@@ -4,6 +4,7 @@
 #include "card_runtime.h"
 #include "core/cpu.h"
 #include "stage_select_key.h"
+#include "status_line.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -446,8 +447,16 @@ void bluewake_stage_select_answer(bool go) {
 }
 
 void bluewake_stage_select_hotkey(void) {
-    if (!bluewake_stage_select_armed)
+    // When F7 can't do anything, the status line says why; when it can, the
+    // stage select (or its question) is what shows.
+    if (!bluewake_stage_select_armed) {
+        bluewake_status_post("Stage select is off (F1, Gameplay)");
         return;
+    }
+    if (!bluewake_stage_select_in_game && !atomic_load_explicit(&bluewake_stage_select_menu_open, memory_order_relaxed)) {
+        bluewake_status_post("Start a file first, or hold R as you start one");
+        return;
+    }
     if (bluewake_stage_select_asking_now()) {
         bluewake_stage_select_answer(true);
         return;

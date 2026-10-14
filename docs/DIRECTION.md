@@ -59,7 +59,8 @@ should find each setting where they expect it.
   - Display: render resolution, texture filtering, aspect ratio, FPS, Smooth Motion.
   - Controller: camera stick, invert, button mapping, reset.
   - Gameplay: jump and sprint, fast transitions, quick doors.
-  - Mods: widescreen, Better Wind Waker, HD texture pack, install a pack.
+  - Mods: Wind Waker HD textures first (the switch, the texture count, install a pack), then widescreen and Better
+    Wind Waker, the same section and order as the desktop Mods tab.
   - Game Data & Saves: back up, restore, import a Dolphin save, remove the disc image, where the files are.
   - Help & Feedback: report a problem, share the session log.
 - **Touch controls that look like the iPhone's:** the same button art and transparency, every GameCube button in

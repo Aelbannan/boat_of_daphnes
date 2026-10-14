@@ -39,7 +39,7 @@ def places():
     return out
 
 
-def run(app, card, out, home, place):
+def run(app, card, out, home, place, extra):
     key, name, stage, note = place
     folder = out / key
     folder.mkdir(parents=True, exist_ok=True)
@@ -50,7 +50,11 @@ def run(app, card, out, home, place):
                BLUEWAKE_SETTINGS=str(home / "settings.ini"), BLUEWAKE_RENDERER="headless",
                BLUEWAKE_WALL_PACE="0", DOL_AURORA_FRAME_INTERP="0", BLUEWAKE_WARP=key,
                BLUEWAKE_STAGE_SELECT_NAMES=str(NAMES), BLUEWAKE_WARP_FILE="1",
-               BLUEWAKE_WARP_STOP_AFTER="120", BLUEWAKE_MAX_RETRACES="6000")
+               BLUEWAKE_WARP_STOP_AFTER="120", BLUEWAKE_MAX_RETRACES="6000",
+               # Windows keeps settings, logs and its launch marker in the data folder (a portable
+               # build's user\ otherwise): one of its own a run, so runs neither share nor change it.
+               BLUEWAKE_DATA_DIR=str(folder))
+    env.update(extra)
     start = time.time()
     with open(folder / "log.txt", "w") as log:
         try:
@@ -74,7 +78,10 @@ def main():
     parser.add_argument("out", type=Path)
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     parser.add_argument("--only", default="", help="comma-separated places, for example 1.0,32.28")
+    parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
+                        help="set for every run, for example BLUEWAKE_LOOSE_REL_RETRACES=12 (repeatable)")
     args = parser.parse_args()
+    extra = dict(item.split("=", 1) for item in args.env)
     todo = places()
     if args.only:
         wanted = set(args.only.split(","))
@@ -83,7 +90,7 @@ def main():
     home = Path(tempfile.mkdtemp(prefix="sweep-home-", dir=args.out))
     results = []
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
-        for r in pool.map(lambda p: run(args.app, args.card, args.out, home, p), todo):
+        for r in pool.map(lambda p: run(args.app, args.card, args.out, home, p, extra), todo):
             results.append(r)
             print(f"{r['place']}\t{r['ended']}\t{r['pc']}\t{r['seconds']}s\t{r['name']}", flush=True)
     with open(args.out / "results.tsv", "w") as table:
