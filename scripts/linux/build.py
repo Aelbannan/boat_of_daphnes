@@ -114,6 +114,15 @@ def gx_native_sources():
     return ["native_gx.c", "native_gx.h", "native_gx_list.h"]
 
 
+def set4_native_sources():
+    """The fourth set. Joins a fingerprint only when --native-set4 is on."""
+    names = []
+    for group in ("kankyo", "anim", "cc"):
+        names.append(f"native_{group}.c")
+        names.append(f"native_{group}.h")
+    return names
+
+
 def sync_tree(new, current):
     """Make `current` the same tree as `new`, replacing only files that differ,
     so the unchanged ones keep their timestamps and Ninja does not recompile
@@ -719,6 +728,8 @@ int main(void) {{
                                                == bool(getattr(self.args, "cache_ops", False)))
             options_match = options_match and (receipt.get("native_gx", False)
                                                == bool(getattr(self.args, "native_gx", False)))
+            options_match = options_match and (receipt.get("native_set4", False)
+                                               == bool(getattr(self.args, "native_set4", False)))
             if options_match and receipt.get("final_digest") == tree_digest(o / "composite-src"):
                 print("the existing composite source is already prepared")
                 return
@@ -802,6 +813,7 @@ int main(void) {{
                    "native_entries": self.args.native_entries,
                    "cache_ops": getattr(self.args, "cache_ops", False),
                    "native_gx": getattr(self.args, "native_gx", False),
+                   "native_set4": getattr(self.args, "native_set4", False),
                    "gather_sha256": {name: sha256_file(ROOT / "cmake/composite" / name)
                                      for name in ("gather_pipe.h", "gather_pipe.c", "gather_pipe_batch.h")},
                    "inline_fp_script_sha256": sha256_file(ROOT / "scripts/windows/chunk_headers.py"),
@@ -922,6 +934,7 @@ int main(void) {{
             f"-DBLUEWAKE_NATIVE_MATH={'ON' if self.args.native_math else 'OFF'}",
             f"-DBLUEWAKE_NATIVE_ENTRIES={'ON' if self.args.native_entries else 'OFF'}",
             f"-DBLUEWAKE_NATIVE_GX={'ON' if getattr(self.args, 'native_gx', False) else 'OFF'}",
+            f"-DBLUEWAKE_NATIVE_SET4={'ON' if getattr(self.args, 'native_set4', False) else 'OFF'}",
             *([f"-DBLUEWAKE_NATIVE_GEN_DIR={gen_dir}"] if gen_dir else []),
             f"-DBLUEWAKE_DIRECT_CALLS={'ON' if self.args.direct_calls else 'OFF'}",
             f"-DBLUEWAKE_GATHER_PIPE={'ON' if self.args.gather_pipe else 'OFF'}",
@@ -1038,6 +1051,7 @@ int main(void) {{
                                **({"behaviour_timing": True} if getattr(self.args, "behaviour_timing", False) else {}),
                                **({"cache_ops": True} if getattr(self.args, "cache_ops", False) else {}),
                                **({"native_gx": True} if getattr(self.args, "native_gx", False) else {}),
+                               **({"native_set4": True} if getattr(self.args, "native_set4", False) else {}),
                                "runtime": self.git("-C", str(self.recompcore), "rev-parse", "HEAD"),
                                "source": tree_digest(self.out / "composite-src")},
                               sort_keys=True).encode())
@@ -1046,6 +1060,8 @@ int main(void) {{
             skip.update(f"cmake/composite/{name}" for name in seventh_native_sources())
         if not getattr(self.args, "native_gx", False):
             skip.update(f"cmake/composite/{name}" for name in gx_native_sources())
+        if not getattr(self.args, "native_set4", False):
+            skip.update(f"cmake/composite/{name}" for name in set4_native_sources())
         for folder in ("cmake/composite", "runtime/host/src", "linux/src"):
             for path in sorted((ROOT / folder).rglob("*")):
                 if path.is_file():
@@ -1499,6 +1515,11 @@ def main():
                         help="Wind Waker Recomp's GX FIFO writer natives, the fifth set "
                              "(off by default; needs --direct-calls, --gather-pipe and --native-vec; "
                              "hooks stay out until hashes are recorded for this tree)")
+    parser.add_argument("--native-set4", action="store_true",
+                        help="Wind Waker Recomp's fourth set: colour blends, key-frame animation "
+                             "and the two collision-setup leaves "
+                             "(off by default; needs --direct-calls, --gather-pipe and --native-vec; "
+                             "hooks stay out until hashes are recorded for this tree)")
     parser.add_argument("--conservative", action="store_true",
                         help="build the plain translation, without the optimizations prepared by default "
                              "(the individual --... options then add them one at a time)")
@@ -1563,6 +1584,8 @@ def main():
         parser.error("--native-entries requires --direct-calls, --gather-pipe and --native-vec")
     if getattr(args, "native_gx", False) and not (args.direct_calls and args.gather_pipe and args.native_vec):
         parser.error("--native-gx requires --direct-calls, --gather-pipe and --native-vec")
+    if getattr(args, "native_set4", False) and not (args.direct_calls and args.gather_pipe and args.native_vec):
+        parser.error("--native-set4 requires --direct-calls, --gather-pipe and --native-vec")
     if args.jobs is None:
         args.jobs = default_jobs()
     if args.jobs < 1:
