@@ -443,8 +443,8 @@ BlueWake provides one contiguous 32 MiB MEM1 allocation. The lower 24 MiB is
 the retail GameCube range; the upper 8 MiB extends the backing used by the
 linked runtime. Within the retail range, DOL sections occupy their linked
 addresses while stack, arena, and heap placement comes from the title and the
-boot state. The blocks below are therefore a map of responsibilities, not a
-to-scale set of fixed subranges.
+boot state. The internal boxes illustrate what occupies the range; except for
+the labeled MEM1 boundaries, their sizes and positions are not to scale.
 
 ```mermaid
 flowchart TB
@@ -456,12 +456,22 @@ flowchart TB
         Extension["`BlueWake extension — 8 MiB
 0x81800000–0x81FFFFFF
 linked or raw REL storage`"]
-        Retail["`Retail MEM1 — 24 MiB
-0x80000000–0x817FFFFF
 
-title-defined stack, arenas and heaps
-DOL initialized data and BSS
-OS low memory and boot state`"]
+        subgraph Retail["Retail MEM1 — 24 MiB · 0x80000000–0x817FFFFF"]
+            direction TB
+            Stack["`Guest stack
+title and boot selected`"]
+            Arena["`Arenas and heaps
+title managed`"]
+            BSS["`DOL uninitialized data
+BSS cleared at load`"]
+            Data["`DOL initialized data
+copied from the image`"]
+            OS["`OS low memory
+boot state and globals`"]
+
+            Stack --- Arena --- BSS --- Data --- OS
+        end
     end
 
     Low["`Low address
@@ -472,8 +482,11 @@ same backing bytes`"]
     Aliases["`Registered REL aliases
 can override contiguous resolution`"]
 
-    High --- Extension --- Retail --- Low
-    Mirror -.-> Backing
+    High --- Extension
+    Extension --- Stack
+    OS --- Low
+    Mirror -.-> Extension
+    Mirror -.-> Retail
     Aliases -.-> Extension
 ```
 
