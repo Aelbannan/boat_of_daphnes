@@ -100,10 +100,44 @@ section in each entity's linked chapter.
 
 ## Interaction boundaries
 
+```mermaid
+flowchart TD
+    Platform["Platform startup"]
+    Data["Persistent player data<br/>saves, settings, SRAM"]
+
+    subgraph Process["BlueWake process — native code and memory"]
+        Host["BlueWake host"]
+        Module["Native game module"]
+        Guest["Shared guest state<br/>CPUState and guest memory"]
+        Services["Compatibility services"]
+        Graphics["Graphics stack"]
+
+        Host <-->|"Module ABI<br/>dispatch, callbacks, storage exports"| Module
+        Host <-->|"Initialize, inspect and modify"| Guest
+        Module <-->|"Registers, PC and memory accesses"| Guest
+        Host <-->|"Deadlines and event delivery"| Services
+        Module <-->|"MMIO and HLE calls<br/>results, callbacks and interrupts"| Services
+        Module -->|"GX gather-pipe data<br/>and display lists"| Graphics
+    end
+
+    Platform <-->|"Paths, settings and lifecycle events"| Host
+    Host <-->|"Load and persist through file APIs"| Data
+```
+
+> This diagram maps contracts, not execution order or threads. Guest state is data stored within the native process. Service interactions may pass through host routing and shared guest state rather than direct module-to-service calls.
+
+The module descriptor carries ABI versions, game identity, entry and dispatch
+functions, callbacks, and metadata. Module-owned `CPUState` and MEM1 are
+obtained through the separate `bluewake_composite_guest_cpu` and
+`bluewake_composite_guest_mem1` getter exports when the declared ABI requires
+them; they are not fields of `StaticRecompModuleDesc`.
+[Storage contract](../../cmake/composite/module_cpu_contract.h#L9-L64) and
+[host symbol lookup](../../runtime/host/src/main.c#L7340-L7357)
+
 | Boundary | Runtime contract | Why it exists | Reference |
 | --- | --- | --- | --- |
 | Platform startup ↔ host | Native lifecycle events plus paths and settings resolved by a platform wrapper or within the shared macOS entry | Keeps each platform's startup contract explicit while allowing macOS to enter the shared host directly | [Platform entry layers](Host.md#platform-entry-layers) |
-| Host ↔ game module | `StaticRecompModuleDesc`, callbacks, dispatch, and shared-storage exports | Allows the host and translated code to be compiled separately | [Module loading and ABI](GameModule.md#module-loading-and-abi) |
+| Host ↔ game module | Descriptor fields for ABI, identity, entry, dispatch, callbacks, and metadata; separate getter exports for optional module-owned CPU and MEM1 storage | Allows the host and translated code to be compiled separately without treating storage getters as descriptor fields | [Module loading and ABI](GameModule.md#module-loading-and-abi) |
 | Host ↔ guest state | Access to shared CPU state and guest memory through runtime interfaces and guest-memory helpers | Supports execution control, event delivery, and game-specific integrations | [Host lifecycle](Host.md#host-lifecycle), [ownership and address model](GuestState.md#ownership-and-address-model) |
 | Module ↔ guest state | Shared `CPUState`, memory access, guest PC, and address aliases | Preserves the machine model expected by translated PowerPC code | [Ownership and address model](GuestState.md#ownership-and-address-model) |
 | Guest execution ↔ services | MMIO, HLE calls, deadlines, callbacks, and interrupts | Turns guest-visible hardware operations into host-managed work | [MMIO dispatch](Services.md#mmio-dispatch) |
