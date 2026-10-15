@@ -6447,7 +6447,7 @@ static void host_apply_aspect(void) {
 //       save at the first clean point at or after that retrace (see below);
 //   BLUEWAKE_LOAD_STATE=path
 //       restore right after boot, before the first guest instruction runs;
-//   F5 / F9 (the window; fn-F5 / fn-F9 on a Mac keyboard), or the options
+//   F5 / F8 (the window; fn-F5 / fn-F8 on a Mac keyboard), or the options
 //   menu's Save state / Load latest state
 //       save to BLUEWAKE_STATE_DIR (default: the working directory; the Mac
 //       app's is its data folder's states/) as quick-<retrace>.bwstate / load
@@ -6455,7 +6455,7 @@ static void host_apply_aspect(void) {
 //       in that directory (after a relaunch).
 //   BLUEWAKE_LOAD_STATE_FORCE=1 loads a state made by another translation of
 //       the game (a different composite), which is otherwise refused.
-//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F9 at that retrace.
+//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F8 at that retrace.
 //
 // Checked (headless, the Outset save walked by a pad script): a state saved
 // at retrace 1000 and loaded at boot, or mid-run at 900 or 1300, reaches
@@ -7042,7 +7042,7 @@ static const char* host_state_dir(void) {
     return ".";
 }
 
-// The newest .bwstate in the state directory: what F9 loads when this run has
+// The newest .bwstate in the state directory: what F8 loads when this run has
 // neither saved nor loaded one (after a relaunch).
 static bool host_state_latest(char* out, size_t size) {
     DIR* dir = opendir(host_state_dir());
@@ -7069,7 +7069,7 @@ static bool host_state_latest(char* out, size_t size) {
     return found;
 }
 
-// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F9 at that retrace, once.
+// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F8 at that retrace, once.
 static u64 g_state_test_load_retrace;
 static bool g_state_test_load_done;
 
