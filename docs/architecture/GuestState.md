@@ -98,18 +98,21 @@ or store`"}
 
     subgraph Space["Guest address space"]
         direction TB
-        Retail["`0x80000000–
+        subgraph MEM1["MEM1 guest address views"]
+            direction TB
+            Retail["`0x80000000–
 0x817FFFFF
 retail cached
 MEM1`"]
-        Extended["`0x81800000–
+            Extended["`0x81800000–
 0x81FFFFFF
 BlueWake MEM1
 extension`"]
-        Mirror["`0xC0000000–
+            Mirror["`0xC0000000–
 0xC1FFFFFF
 uncached MEM1
 mirror`"]
+        end
         REL["`Generated
 linked REL
 ranges`"]
@@ -122,8 +125,9 @@ including
 
     subgraph Native["Native process storage and services"]
         direction TB
-        RAM["`32 MiB MEM1
-backing array`"]
+        RAM["`MEM1 native
+backing array
+32 MiB`"]
         Alias["`Shared REL
 alias storage`"]
         Devices["`Compatibility
