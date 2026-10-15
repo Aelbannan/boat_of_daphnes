@@ -87,7 +87,7 @@ function call between every pair of entities.
 
 | Entity | Runtime responsibility | Owns or exposes | Internals |
 | --- | --- | --- | --- |
-| Platform application | Forms the OS boundary: resolves packaged resources and writable storage, creates the native application environment, forwards lifecycle and presentation events, and passes normalized paths and settings to the host. | Process entry, platform paths, windows, and application lifecycle | [Platform entry layers](Host.md#platform-entry-layers) |
+| Platform application | Forms the OS boundary: creates the native application environment and forwards lifecycle and presentation events. Platform wrappers or the shared macOS host entry resolve packaged resources, writable storage, paths, and settings. | Process entry, platform paths, windows, and application lifecycle | [Platform entry layers](Host.md#platform-entry-layers) |
 | BlueWake host | Validates launch configuration, loads the game module, initializes guest execution, coordinates services and graphics, applies game-specific host integrations, and owns persistence and orderly shutdown. | Runtime lifecycle, guest-state access, and host-side adapters | [Host lifecycle](Host.md#host-lifecycle) and [shutdown](Host.md#shutdown) |
 | Native game module | Executes native translations of DOL and REL instructions against shared guest state, using guest addresses rather than a rewritten high-level game API. | `StaticRecompModuleDesc`, translated functions, dispatch and metadata tables, callbacks, and optional shared storage | [Native game module](GameModule.md) |
 | Guest machine state | Preserves the GameCube-visible CPU, memory, address, timing, and exception model across host/module transitions; DOL and REL layouts still supply runtime data and addresses. | `CPUState`, MEM1, guest aliases, program counter, cycle counters, and exception state | [Guest machine state](GuestState.md) |
@@ -99,7 +99,7 @@ function call between every pair of entities.
 
 | Boundary | Runtime contract | Why it exists | Reference |
 | --- | --- | --- | --- |
-| Platform application → host | Resolved paths, launch settings, and native lifecycle events | Keeps OS-specific startup outside shared runtime logic | [Platform entry layers](Host.md#platform-entry-layers) |
+| Platform startup ↔ host | Native lifecycle events plus paths and settings resolved by a platform wrapper or within the shared macOS entry | Keeps each platform's startup contract explicit while allowing macOS to enter the shared host directly | [Platform entry layers](Host.md#platform-entry-layers) |
 | Host ↔ game module | `StaticRecompModuleDesc`, callbacks, dispatch, and shared-storage exports | Allows the host and translated code to be compiled separately | [Module loading and ABI](GameModule.md#module-loading-and-abi) |
 | Host ↔ guest state | Access to shared CPU state and guest memory through runtime interfaces and guest-memory helpers | Supports execution control, event delivery, and game-specific integrations | [Host lifecycle](Host.md#host-lifecycle), [ownership and address model](GuestState.md#ownership-and-address-model) |
 | Module ↔ guest state | Shared `CPUState`, memory access, guest PC, and address aliases | Preserves the machine model expected by translated PowerPC code | [Ownership and address model](GuestState.md#ownership-and-address-model) |

@@ -99,7 +99,7 @@ stack`"]
         Game <--> Services
         Host <--> Graphics
         Game -->|"GX work"| Graphics
-        Assets -->|"load"| Guest
+        Assets -->|"reads"| Services
     end
 
     Package --> Startup
@@ -133,6 +133,3 @@ backend, signing, and packaging requirements.
 
 For the complete pipeline, component references, output paths, and per-platform
 branches, continue to [Build](Build.md).
-
-For the runtime entities, their interaction boundaries, and their internals,
-continue to the runtime [high-level view](Runtime.md#high-level-view).
