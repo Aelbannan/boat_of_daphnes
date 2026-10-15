@@ -1,6 +1,6 @@
 # Next release: candidate record (draft)
 
-Prepared on October 11, 2026 for Chris to decide; brought up to date on October 12 (night). Nothing here is frozen: the version, the commit and when to build
+Prepared on October 11, 2026 for Chris to decide; brought up to date on October 15. Nothing here is frozen: the version, the commit and when to build
 are Chris's call ([GOAL_LOOP.md](../GOAL_LOOP.md), S4). Fill in each check with the device, the commit and what was
 seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](RELEASE_0.7.0.md), October 10.
 
@@ -29,8 +29,16 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | Linux: portable mode as on Windows, `--portable` in both builders (#303), and missing parents of the data folder made (#311) (both pdale-boop) | #64 | Linux, Windows builder | Arch: portable data in `user/`, remaps copied once, rebuilds keep `user/`; a fresh home and a new `BLUEWAKE_DATA_DIR` start; the stage select sweep runs on Linux again | The Windows builder's `--portable` |
 | CI actions brought up to date (Mrlinkwii, #273) | none | CI | Every check passes with them | none |
 | **Fixed:** the sea chart shows each island's own map, and the Pictobox preview the new photo: the cache-flush fallback is on by default (`BLUEWAKE_CACHE_FLUSH_FALLBACK=0` turns it off), and a flush no longer throws away an image the GPU drew into game memory, which the reporter saw as a red plane at sea (#283, RecompCore ee99bbc) | #263, #13 | Every platform | The #263 reporter on Windows (opt-in, before the red-plane fix): every map right, frame rate and Pictobox unchanged; Mac: no lost GPU images in 5,613 at sea, Outset's frames identical with it on and off, with or without the HD look | The reporter on the next Windows build; a physical iPad |
+| **Mods › Wind Waker HD textures**, first in the Mods tab or menu on every build: the switch, the texture count and adding a pack (#314); a red or green status and the chosen folder's texture count (jkoehler11, #345); the Linux folder picker opens (jkoehler11, #344) | #57, #336 | Windows, Mac, Linux, iPhone, iPad | Mac: the section, count and picker; jkoehler11 confirmed the Linux picker | Windows by hand |
+| **The same menus and hotkeys on every desktop build** (pdale-boop, #324, #326 to #330, #332): F1 settings, F2 HD look, F5 and F8 save and load state, F7 stage select, F9 frame rate, F10 Smooth Motion, F11 or Alt+Enter fullscreen, with a status line; the Mac and Linux menu with a controller; Restart now and safe mode on Linux; Alt+Enter without pausing (#339) | #320 | Windows, Mac, Linux | pdale-boop on Windows and Linux; the Mac with a keyboard | A controller on the Mac |
+| **Faster by default on Windows and Linux:** behaviour timing in both builders (#335; `--no-behaviour-timing` turns it off) | #59, #215 | Windows, Linux | 7 to 11% on Intel desktops, 9% on the Steam Deck; played on the Deck and on Windows; Outset at full speed on a Fold 7 (#93) | The release build |
+| **Fixed:** the Picto Box credits the right subject, so Lenzo accepts correct photos (jslay88, #334, through #341 with RecompCore `57123c6`) | #267, #333 | Every platform | jslay88 on Linux and an M4 Pro; pdale-boop's three photos on Windows; an M3 Max | The #267 reporter |
+| **Fixed:** the Greatfish merchant stays on his raft (jslay88's fix, #323) | #313 | Every platform | Confirmed by the reporter | none |
+| Picto Box gallery photos fill their frames at 16:9, 16:10 and 21:9 (pdale-boop, #346) | none | Every platform | Windows, Linux and the Mac | none |
+| The Wind Temple's R04 and R08: a switch, off by default, gives loose RELs a load time (pdale-boop, #331), and save states wait for it (#350) | #318 | Every platform | Sweeps on Windows, Linux and the Mac: only R04 and R08 change | F5 and F8 during a real wait; then the default |
+| Safe startup turns the HD look off (#343) | none | Windows, Mac, Linux | Mac fixtures and gameplay | Windows and Linux by hand |
 
-Not in it yet: Android (#93, waits on speed and Chris's bar).
+Not in it yet: Android (#93: one builder check left, then experimental), the importer built into the app (#315, draft) and its Android menu (#347, draft), and the Linux resize fix (RecompCore#38, waiting on Chris).
 
 ## Checks before publishing
 

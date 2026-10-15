@@ -2,7 +2,7 @@
 
 Elliott Tate's [Wind-Waker-Recomp](https://github.com/elliotttate/Wind-Waker-Recomp) and BlueWake are one
 project, and BlueWake is where development continues. Bug reports, requests and pull requests go to
-[BlueWake's issues](https://github.com/chrissotraidis/bluewake/issues). Updated October 11, 2026.
+[BlueWake's issues](https://github.com/chrissotraidis/bluewake/issues). Updated October 15, 2026.
 
 How the move happened, step by step, is in [the migration log](status/WIND_WAKER_RECOMP_MIGRATION_2026-10-04.md);
 the detailed evidence is in [the reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md).
@@ -28,5 +28,5 @@ the detailed evidence is in [the reconciliation ledger](status/FORK_RECONCILIATI
 | Item | Who | State |
 | --- | --- | --- |
 | Wind-Waker-Recomp's repository description and archiving | Elliott (admin), with Chris | Not archived; its description still says "Personal source fork of BlueWake for The Wind Waker on iPhone and iPad". |
-| Elliott's work since October 3: natives rounds 4, 5 and 7, the upload and vertex changes | BlueWake | Rows 3 to 5 of [GOAL_LOOP.md](GOAL_LOOP.md). |
-| Elliott's HD renderer work (lighting, shadows, the GameCube/HD switch) | Elliott | Where it lives isn't known yet; #108 waits on it. |
+| Elliott's work since October 3: natives rounds 4, 5 and 7, the upload and vertex changes | BlueWake | Each change's state is in [PERFORMANCE.md](PERFORMANCE.md#the-plan); the order is in [GOAL_LOOP.md](GOAL_LOOP.md). |
+| Elliott's HD renderer work (lighting, shadows, the GameCube/HD switch) | Elliott | Where it lives isn't known yet. BlueWake rebuilt the look itself, off by default ([WWHD_LOOK.md](WWHD_LOOK.md)), and #108's hotkey is in `main` as F2. |

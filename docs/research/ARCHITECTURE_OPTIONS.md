@@ -9,7 +9,7 @@ aurora, DolRecomp/ModernGekko, sp00nznet/ww).
 > SunPad and RecompCore evidence makes Approach B credible as a bounded,
 > Mac-first experiment, though not a demonstrated product path. Approach A/D
 > remains the cleaner long-term architecture. See
-> `../FEASIBILITY_REASSESSMENT_2026-08-13.md`.
+> `../archive/FEASIBILITY_REASSESSMENT_2026-08-13.md`.
 
 Terminology used precisely (per project rules):
 - **Matching decompilation** — reconstructed C/C++ that recompiles to

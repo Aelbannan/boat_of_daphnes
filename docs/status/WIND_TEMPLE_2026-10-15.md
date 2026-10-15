@@ -20,6 +20,8 @@ All 936 children exited. The original card, seed, every run card and tested arti
 
 Separate Metal sessions with the same host/runtime and older module, at one retrace, render both rooms without the reported unmapped-PC crash. R08 allows movement to the right wall. R04 responds to input while enemies crowd and damage Link; an earlier unattended run reached the death/save screen. All three sessions exited normally and left their copied cards unchanged. This establishes bounded arrival and input, not dungeon completion or normal door transitions.
 
+Fresh-module checks now repeat R04/R08 rendering on M3 Max/Metal with host `14bc288`, runtime `57123c6` and `BLUEWAKE_LOOSE_REL_RETRACES=1`. R08 shows movement; R04 shows bounded input/menu response amid enemies. All four sessions exit 0 with copied cards unchanged. The run named “traversal” does **not** establish traversal or dungeon success. Per-run provenance identifies the fresh module; the 936-run sweep and older rendered summary still describe the older module.
+
 ## Remaining
 
-The switch remains off by default. Repeat targeted checks with the freshly built module. Review the F5 save-state interaction noted on #331: pending waits retain caller state on the host, outside the saved guest state. A default change remains separate; these Mac checks do not establish phone/iPad acceptance, performance, or full dungeon completion.
+The switch remains off by default. [#350](https://github.com/chrissotraidis/bluewake/pull/350) merged with green Windows/Linux CI and eight ASan/UBSan cases guarding save/load while host-side waits are occupied. The rendered checks above use the earlier host and do not exercise that guard: native F5/F8 during a pending wait and normal traversal remain unchecked. A default change remains separate; these Mac checks do not establish phone/iPad acceptance, performance, or full dungeon completion.

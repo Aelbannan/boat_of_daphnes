@@ -9,8 +9,8 @@ own scene changes and writes English over the menu's Japanese text while the men
 
 ## Turning it on
 
-In the settings (F1): **Developers' stage select (F7)**, under **Gameplay** on Mac and Linux and under
-**Mods** on Windows. It's off by default and takes effect the next time BlueWake starts.
+In the settings (F1): **Developers' stage select (F7)**, under **Gameplay** on every desktop build. It's
+off by default and takes effect the next time BlueWake starts.
 
 The Linux and Windows builders put the English names in a `stage_select` folder beside the app, and
 BlueWake finds them there. On a Mac, set `BLUEWAKE_STAGE_SELECT_NAMES=<repository>/config/stage_select`
@@ -94,8 +94,9 @@ Some names end in a note:
 - **(crash)**: the place's default spawn point crashes when started cold (Wind Temple R04 and R08: the
   room's doors ask about Link before he is fully created). Pick another spawn point with R/L.
   `BLUEWAKE_LOOSE_REL_RETRACES=1` fixes both (#318): a REL the game reads from the disc's `/rels/` folder then
-  takes a retrace to load, as on the console, so the doors are created after Link. It's off by default, and
-  the two keep their mark until it's on.
+  takes a retrace to load, as on the console, so the doors are created after Link. With it on, a save state
+  (F5) waits while such a REL is still loading, and loading one (F8) is refused until it is done (#350).
+  It's off by default, and the two keep their mark until it's on.
 - **(hangs)**: a developer test room that loads but never lets Link in.
 
 ## For tests and benchmarks
