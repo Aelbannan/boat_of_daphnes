@@ -40,29 +40,30 @@ flowchart TD
     Platform["`Platform app
 native
 integration`"]
-    Host["`BlueWake host
-coordination`"]
-    Module["`Game module
-translated
-code`"]
-    Guest["`Guest state
-CPU, memory,
-time`"]
-    Services["`GameCube
-services
-devices and
-I/O`"]
-    Graphics["`Graphics
-GXRuntime,
-Aurora, Dawn`"]
     Disc["Disc data"]
     Player["`Player data
 saves and
 settings`"]
-    Native["`Native
-platform
-OS, devices,
-GPU`"]
+    Native["`OS APIs,
+devices and GPU`"]
+
+    subgraph Process["BlueWake process — native code and memory"]
+        Host["`BlueWake host
+coordination`"]
+        Module["`Game module
+translated
+code`"]
+        Guest["`Guest state
+CPU, memory,
+time`"]
+        Services["`GameCube
+services
+devices and
+I/O`"]
+        Graphics["`Graphics
+GXRuntime,
+Aurora, Dawn`"]
+    end
 
     Platform -->|"starts"| Host
     Host -->|"loads ABI"| Module
@@ -89,6 +90,11 @@ results`"| Guest
 
 These edges describe conceptual access and data flow, not necessarily a direct
 function call between every pair of entities.
+
+Guest state already resides in native process memory. Host and translated code
+update it directly through runtime interfaces. Graphics, audio and storage
+reach OS/device facilities through their respective adapters; guest state is
+not copied wholesale to the native platform.
 
 ## Runtime entities
 
