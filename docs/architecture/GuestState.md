@@ -439,33 +439,36 @@ crosses the host/module ABI.
 
 ### MEM1 layout
 
-BlueWake provides one contiguous 32 MiB MEM1 allocation. The lower 24 MiB is
-the retail GameCube range; the upper 8 MiB extends the backing used by the
-linked runtime. Within the retail range, DOL sections occupy their linked
-addresses while stack, arena, and heap placement comes from the title and the
-boot state. The internal boxes illustrate what occupies the range; except for
-the labeled MEM1 boundaries, their sizes and positions are not to scale.
+BlueWake provides one contiguous 32 MiB MEM1 allocation through three guest
+address views. The diagram orders those views from the numerically highest
+range to the lowest; box sizes are not to scale.
 
 ```mermaid
 flowchart TB
-    subgraph MEM1["MEM1 native backing — 32 MiB · high 0x82000000 · low 0x80000000"]
+    subgraph Views["MEM1 guest address views — high to low"]
         direction TB
-        Extension["`BlueWake extension — 8 MiB
-0x81800000–0x81FFFFFF`"]
-        Stack["Guest stack"]
-        Arena["Arenas and heaps"]
-        BSS["DOL uninitialized data — BSS"]
-        Data["DOL initialized data"]
-        OS["OS low memory, boot state and globals"]
+        Mirror["`0xC0000000–
+0xC1FFFFFF
+uncached
+MEM1 mirror`"]
+        Extension["`0x81800000–
+0x81FFFFFF
+BlueWake
+MEM1 extension`"]
+        Retail["`0x80000000–
+0x817FFFFF
+retail cached
+MEM1`"]
 
-        Extension ~~~ Stack ~~~ Arena ~~~ BSS ~~~ Data ~~~ OS
+        Mirror ~~~ Extension ~~~ Retail
     end
 ```
 
-The diagram labels the cached guest view. Clearing the mirror bit maps the
-uncached `0xC0000000–0xC1FFFFFF` view onto the same backing bytes; it does not
-allocate a second MEM1. Registered REL aliases are checked according to the
-resolver rules below and can direct a linked range to separate shared storage.
+The retail and extension ranges form the cached 32 MiB window. Clearing the
+mirror bit maps the uncached `0xC0000000–0xC1FFFFFF` view onto those same
+backing bytes; it does not allocate a second MEM1. Registered REL aliases are
+checked according to the resolver rules below and can direct a linked range to
+separate shared storage.
 [Storage contract](../../cmake/composite/module_cpu_contract.h#L16-L27),
 [host allocation](../../runtime/host/src/main.c#L7688-L7696), and
 [boot layout](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c).
