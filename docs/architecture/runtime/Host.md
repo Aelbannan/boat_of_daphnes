@@ -243,23 +243,34 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Check{"Execution limit or<br/>stop reason reached?"}
-    Turn["Apply per-turn host work<br/>and begin guest-time turn"]
-    Quit{"Platform quit<br/>requested?"}
-    Ready["Service ready host work<br/>and pending interrupts"]
-    Budget["Prepare cycle budget<br/>and device deadline"]
-    Dispatch["Dispatch translated code<br/>from the guest PC"]
-    Mapped{"Dispatch resolved<br/>or recovered?"}
-    End["End guest-time turn<br/>and advance devices"]
-    Events["Deliver ready callbacks,<br/>decrementer, and exceptions"]
-    Outcome{"Turn outcome?"}
-    Record["Record completed turn"]
-    Stop["Leave loop and<br/>report stop reason"]
+    subgraph Host["BlueWake host"]
+        Check{"Execution limit or<br/>stop reason reached?"}
+        Turn["Apply per-turn host work<br/>and begin guest-time turn"]
+        Quit{"Platform quit<br/>requested?"}
+        Ready["Service ready host work<br/>and pending interrupts"]
+        Budget["Prepare cycle budget<br/>and device deadline"]
+        Mapped{"Dispatch resolved<br/>or recovered?"}
+        End["End guest-time turn<br/>and advance devices"]
+        Events["Deliver ready callbacks,<br/>decrementer, and exceptions"]
+        Outcome{"Turn outcome?"}
+        Record["Record completed turn"]
+        Stop["Leave loop and<br/>report stop reason"]
+    end
+
+    subgraph Module["Native game module"]
+        Dispatch["Resolve guest PC and run<br/>translated DOL or REL code"]
+        Boundary{"Timing, exception, callback,<br/>or service boundary?"}
+        Dispatch --> Boundary
+        Boundary -->|"continue translated execution"| Dispatch
+    end
 
     Check -->|"no"| Turn --> Quit
     Check -->|"yes"| Stop
     Quit -->|"yes"| Stop
-    Quit -->|"no"| Ready --> Budget --> Dispatch --> Mapped
+    Quit -->|"no"| Ready --> Budget
+    Budget -->|"call module dispatcher<br/>for this guest-time turn"| Dispatch
+    Dispatch -->|"guest address not mapped"| Mapped
+    Boundary -->|"yield control to host"| Mapped
     Mapped -->|"no"| Stop
     Mapped -->|"yes"| End --> Events --> Outcome
     Outcome -->|"fatal"| Stop
@@ -267,8 +278,10 @@ flowchart TD
     Outcome -->|"completed"| Record --> Check
 ```
 
-Each outer turn applies pending host work, establishes the next guest-time
-budget, and dispatches from `CPUState.pc`. The module's chassis can execute
+Each outer turn applies pending host work and establishes the next guest-time
+budget. At the **Dispatch** transition, the host calls the game module's
+dispatcher with `CPUState.pc`; this is where the main loop enters the game
+module. The module's chassis can execute
 several translated blocks before returning at a cycle budget, exception, edge
 service, or no-progress boundary. Once control returns, the host accounts for
 elapsed guest cycles, advances devices, delivers ready disc callbacks and the
@@ -281,8 +294,8 @@ order.
 | --- | --- |
 | Turn setup | Applies save-state and other ready host work, begins the cycle-domain turn, checks quit conditions, and services pending card callbacks. [Source](../../../runtime/host/src/main.c#L8651-L8662) |
 | Interrupt boundary | Delivers a pending external interrupt only when the guest scheduler and architectural state allow it. [Source](../../../runtime/host/src/main.c#L9577-L9589) |
-| Translated dispatch | Computes the current cycle budget and invokes the module dispatcher at the guest program counter. [Source](../../../runtime/host/src/main.c#L14079-L14094) |
-| Chassis loop | Continues through translated blocks until a budget, exception, edge-service, unmapped-address, or no-progress boundary returns control to the host. [Source](../../../cmake/composite/dispatch_loop.h#L39-L84) |
+| Host-to-module dispatch | Once per guest-time turn, the host computes the cycle budget and calls `mod->dispatch(&cpu, cpu.pc)`, entering the game module at the current guest program counter. [Source](../../../runtime/host/src/main.c#L14079-L14094) |
+| Game-module execution | The module's chassis continues through translated DOL or REL blocks until a budget, exception, edge-service, unmapped-address, or no-progress boundary yields control back to the host. [Source](../../../cmake/composite/dispatch_loop.h#L39-L84) |
 | End-of-turn service | Commits translated cycle charges, synchronizes devices, delivers ready disc callbacks and decrementer work, and updates guest-visible state. [Source](../../../runtime/host/src/main.c#L15704-L15802) |
 | Exception and stop handling | Handles resumable guest exceptions, records completed turns, or leaves the loop with a fatal or configured stop reason. [Source](../../../runtime/host/src/main.c#L15981-L16019) |
 
