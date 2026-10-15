@@ -25,10 +25,10 @@ released 0.2.0 app (version 0.2.0, build 3) with a 502 MB module made from the d
 - The first attempt was interrupted and left its training run behind; the retry reported that run's
   failure, then trained again and passed. A single uninterrupted run should not see this.
 - `--out NAME.ipa` creates a folder of that name with `BlueWake-v0.2.0-ios-personal.ipa` inside.
-- Not checked: installing this IPA on a device (the iPad was away). No player has reported a PadMint
-  build yet; [#104](https://github.com/chrissotraidis/bluewake/issues/104) asks.
+- Not checked: installing this IPA on a device (the iPad was away). No player had reported a PadMint
+  build by then; players' reports since are in [#104](https://github.com/chrissotraidis/bluewake/issues/104).
 
-## Current reconciliation evidence (October 3)
+## Reconciliation evidence (October 3)
 
 The tested PadMint CLI is 0.2.9 at
 `de13bd769540642f89d6fb2e0492d466a58ae32b`. A new source-only workspace passes at
@@ -68,8 +68,8 @@ The source-only route must not receive the full mode's `--app` argument.
 A supplied app shell must match the intended source/module compatibility;
 never infer compatibility from the IPA filename alone.
 
-The [reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md) is the
-single current platform and acceptance matrix. Player instructions are in
+The [reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md) records the
+October 2 platform and acceptance matrix; current status is in [GOAL_LOOP.md](GOAL_LOOP.md). Player instructions are in
 [Build your own BlueWake](BUILD_YOUR_OWN.md). Older design and implementation
 snapshots below explain the history; they do not override current evidence.
 
@@ -103,8 +103,8 @@ backend commits still use separate workspaces, so those builds can require a
 full rebuild; cross-revision cache reuse is future work.
 This establishes source generation through the shared runner. Full-build,
 packaging and hardware acceptance are separate checks; it does not yet prove
-the complete PadMint-to-iPad workflow. The CLI is the current interface; a Mac
-GUI remains future work.
+the complete PadMint-to-iPad workflow. The CLI was the interface then; PadMint is
+now a download that opens its page on the player's own computer.
 
 Reuse these implementations through adapters. Do not rewrite KartPad's working
 pipeline or move game-specific translation into PadMint merely to make the
