@@ -53,7 +53,7 @@ PadMint's complete Mac path is not implemented or claimed here.
 build completes translation, local training, compilation, packaging and local
 signature checks. Its relocated app passes actual game save/reload while
 preserving the original card and other slots, and fullscreen/preferences survive
-a separate launch. Fresh start reaches player control; a current-module F5/F9
+a separate launch. Fresh start reaches player control; a current-module save
 state also restores correctly after quitting and reopening the app. A fresh
 ladder/outdoor/door/indoor route passes. These checks do not establish every
 scene, audible output, physical
@@ -170,8 +170,8 @@ BlueWake slot for it; your current saves are backed up first. USA saves only.
 
 ## Mods
 
-The build includes the Widescreen (16:9 and 16:10) and Better Wind Waker mods (`--no-mods` leaves them
-out). Better Wind Waker's settings are built in: turn it on in **⋯ › Mods** and choose its settings in
+The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Better Wind Waker mods
+(`--no-mods` leaves them out). Better Wind Waker's settings are built in: turn it on in **⋯ › Mods** and choose its settings in
 **⋯ › Mods › Better Wind Waker Settings**. No patched disc is needed. See [MODS.md](MODS.md).
 
 ## If something fails

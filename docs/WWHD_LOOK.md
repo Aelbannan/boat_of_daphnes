@@ -3,8 +3,7 @@
 BlueWake is rebuilding the look of *The Wind Waker HD* (Wii U, 2013) on top of the GameCube game, one piece at a
 time. Each piece is an option, off by default, and one switch turns on every piece that exists so far:
 
-- **Mac and Linux:** F1 › Display › **Wind Waker HD look**, or **F2** in the game to switch between it and the GameCube look. It applies straight away and is kept.
-- **Windows:** the settings menu › Display › **Wind Waker HD look**, or **F2** in the game. It applies straight away and is kept.
+- **Mac, Windows and Linux:** F1 › Display › **Wind Waker HD look**, or **F2** in the game to switch between it and the GameCube look. It applies straight away and is kept.
 - **iPhone and iPad:** Mods › **Wind Waker HD Look**, then restart BlueWake.
 - **Android:** not yet (the port is in #93).
 - **From a terminal:** `BLUEWAKE_HD_LOOK=1`.
@@ -29,7 +28,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 
 | Piece | In the video | Status | Variable |
 | --- | --- | --- | --- |
-| HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)); choosing it in the app's setup is next | `DOL_AURORA_TEXTURE_PACK` |
+| HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)) and chosen in **Mods › Wind Waker HD textures**; making it in the app is in progress in #315 | `DOL_AURORA_TEXTURE_PACK` |
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
 | Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
@@ -78,7 +77,7 @@ and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL
 0.35) tune it; `DOL_AURORA_PASS_TRACE=1` logs one frame's passes.
 
 Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
-bloom; Smooth Motion runs with it. Not yet on Windows, Linux, a Deck or a phone.
+bloom; Smooth Motion runs with it. Not yet checked on Windows, Linux, a Deck or a phone.
 
 ### Far blur
 

@@ -7,7 +7,7 @@ says which step is being done on which day. Owner: Chris. Updated October 15, 20
 `--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
 The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
 comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
-opt-out; final review/CI of the app-only cached-module validation follow-up remain before merging. Earlier measurements below retain their original dates.
+opt-out; its merge status is in [PRIORITIES.md](PRIORITIES.md). Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -80,7 +80,7 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | `--lean-blocks` on by default for Windows and Linux (and Android, which uses the Windows defaults) | **Accepted by Chris, October 10,** on #208's numbers: 5 to 8% on fast cores, 8 to 12% on slow and four-core CPUs, played the same. `--no-lean-blocks` builds the conservative copies. | Chris |
 | Draw fusion (RecompCore patch 0166) on by default | **On for Windows** (Elliott tested it there) **and Linux** (jkoehler11 on a Steam Deck, #215: a tenth of the draws, the GX worker from 45% to 24%, nothing missing on screen; the Deck's frame rate is set by the game thread, so it stays about 27); off on Mac and iPhone until played on each, and on Android, where it halves the draws but not the game thread's work (#93). `DOL_GX_FUSE` overrides it. | Chris, October 10; Linux October 11 |
 | Lean memory, lean deadlines and the lazy overlap watch | **Defaults since #277** in the Windows/Linux builders and host. #297 is merged: training keeps the full watch only until opening player control, then profiles the lazy path. Apple preparations remain opt-in. | Chris, October 12 |
-| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes, with final review/CI of the app-only validation follow-up pending. | Chris, October 15 (JST) |
+| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes. | Chris, October 15 (JST) |
 
 ## Results
 
@@ -178,6 +178,8 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
 
+**Not written yet** (October 15): the script below is a plan.
+
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.
 
@@ -220,14 +222,15 @@ with the real stop list. About a day.
 
 One pull request each. They don't recompile the game module, so each is minutes to build.
 
-**2a. Say when the renderer falls back** (lever 4). After Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
+**2a. Say when the renderer falls back** (lever 4). **Done in 0.7.0** (RecompCore patch 0163): the log names the renderer on every desktop build, and on Linux a notice says so on screen for the first 20 seconds when Aurora falls back to OpenGL. The plan was: after Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
 `aurora_initialize` returns in RecompCore's `dol_aurora_initialize` (`GXRuntime/backends/aurora/aurora_backend.cpp`),
 which needs a small getter there, for example `dol_aurora_backend()`. `aurora_get_backend()` is not it: it returns the
 requested backend (usually `BACKEND_AUTO`). On Linux, if it isn't Vulkan, and on Windows, if it isn't D3D12 or Vulkan, write
 `[renderer] fell back to NAME: ...` to the log and show a notice once on screen that names what to install
 (Linux: the Vulkan loader, `libvulkan1` / `vulkan-loader`). The getter goes to RecompCore; the message is host code (`runtime/host/src`, `linux/src`). *Check:* Linux CI; ask fehnomenal or jkoehler11 to confirm with Vulkan missing (#107).
 
-**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). In RecompCore
+**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). **Half done in 0.7.0** (patch 0164):
+with 8 threads or more, a slow game keeps its in-between frames; the quicker return after a drop is still to do. In RecompCore
 `GXRuntime/graphics/aurora/lib/gfx/frame_interp.cpp`, `slow_game` and `pace_steps` drop in-between frames
 whenever the game runs slow, and after a slow drop wait 3 s, then double up to `kCalmMostSlow` (2 minutes). Change
 two things. With `std::thread::hardware_concurrency() >= 8`, a slow game alone no longer drops in-between frames;
