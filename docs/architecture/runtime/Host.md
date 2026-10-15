@@ -216,6 +216,20 @@ loading the module ABI, it selects shared machine-state storage, initializes
 devices and graphics, boots guest state, and repeatedly alternates translated
 execution with service work.
 
+```mermaid
+flowchart TD
+    Configure["Configure settings<br/>and validate inputs"]
+    Load["Load game module<br/>and validate ABI"]
+    Initialize["Initialize guest state,<br/>services, and graphics"]
+    Run["Run translated code"]
+    Service["Service deadlines,<br/>callbacks, and interrupts"]
+    Stop["Persist player data<br/>and shut down"]
+
+    Configure --> Load --> Initialize --> Run
+    Run <--> Service
+    Run -->|"quit or stop reason"| Stop
+```
+
 | Phase | Host responsibility | Cooperating entity | Code reference |
 | --- | --- | --- | --- |
 | Configure | Applies settings and feature flags and validates required inputs. | Platform application | [Host startup](../../../runtime/host/src/main.c#L7248-L7314) |
