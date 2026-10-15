@@ -114,7 +114,10 @@ static unsigned long long s_gx_runs[GX_COUNT], s_gx_declined[GX_COUNT], s_gx_ski
  * exact: the translation runs from an unchanged state), then the entry is
  * tried again. bluewake_native_gate_enabled = 0 tries every call (the
  * tests). */
+/* native_libm.c defines this when the seventh set is linked too. */
+#ifndef BLUEWAKE_NATIVE_ENTRIES
 int bluewake_native_gate_enabled = 1;
+#endif
 static NativeGate s_gx_gates[GX_COUNT];
 
 void bluewake_native_gx_report(void) {

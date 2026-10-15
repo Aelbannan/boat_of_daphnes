@@ -18,6 +18,7 @@ option(BLUEWAKE_NATIVE_SKIN "Use certified native skinning" OFF)
 option(BLUEWAKE_NATIVE_VEC "Use certified native vector functions" OFF)
 option(BLUEWAKE_NATIVE_MATH "Use certified native matrix functions" OFF)
 option(BLUEWAKE_NATIVE_ENTRIES "Use Wind Waker Recomp's certified native entries (scripts/windows/native_entries.py)" OFF)
+option(BLUEWAKE_NATIVE_GX "Use Wind Waker Recomp's GX FIFO writer natives (the fifth set)" OFF)
 option(BLUEWAKE_DIRECT_CALLS "Use explicitly prepared direct-call chunks" OFF)
 option(BLUEWAKE_FIXED_CPU "Use explicitly prepared fixed-address guest CPU chunks" OFF)
 option(BLUEWAKE_FIXED_MEM1 "Use module-owned guest RAM (requires fixed CPU)" OFF)
@@ -185,6 +186,24 @@ if(BLUEWAKE_NATIVE_ENTRIES)
   target_include_directories(${MODULE_NAME} BEFORE PRIVATE "${BLUEWAKE_NATIVE_GEN_DIR}")
   target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
   target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_ENTRIES=1)
+endif()
+
+if(BLUEWAKE_NATIVE_GX)
+  # The fifth set (native_gx.c). Hooks stay out of the translation until
+  # native_entries.py records hashes for this tree, so an uncertified build
+  # links the objects and never calls them. The replay is generated from this
+  # build's composite, same folder as the seventh set.
+  if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
+    message(FATAL_ERROR "Native GX needs BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
+  endif()
+  if(NOT EXISTS "${BLUEWAKE_NATIVE_GEN_DIR}/native_gx_gen.inc")
+    message(FATAL_ERROR
+      "Native GX needs ${BLUEWAKE_NATIVE_GEN_DIR}/native_gx_gen.inc from native_gx_gen.py")
+  endif()
+  target_sources(${MODULE_NAME} PRIVATE native_gx.c)
+  target_include_directories(${MODULE_NAME} BEFORE PRIVATE "${BLUEWAKE_NATIVE_GEN_DIR}")
+  target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_GX=1)
 endif()
 
 if(BLUEWAKE_DIRECT_CALLS)

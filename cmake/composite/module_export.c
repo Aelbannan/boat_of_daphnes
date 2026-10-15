@@ -235,10 +235,33 @@ static void bluewake_native_entries_enable(void)
 }
 #endif
 
+#if defined(BLUEWAKE_NATIVE_GX)
+#include "native_gx.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static void bluewake_native_gx_enable(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* setting = getenv("BLUEWAKE_NATIVE_GX");
+    const int on = !(setting && strcmp(setting, "0") == 0);
+    bluewake_native_gx_enabled = on;
+    if (on) {
+        atexit(bluewake_native_gx_report);
+        fprintf(stderr, "[native-gx] GX FIFO writers enabled\n");
+    }
+}
+#endif
+
 RECOMP_MODULE_EXPORT const StaticRecompModuleDesc* staticrecomp_get_module(void)
 {
 #if defined(BLUEWAKE_NATIVE_ENTRIES)
     bluewake_native_entries_enable();
+#endif
+#if defined(BLUEWAKE_NATIVE_GX)
+    bluewake_native_gx_enable();
 #endif
     return &s_desc;
 }
