@@ -9,6 +9,7 @@
   - [Apple entry](#apple-entry)
   - [Shared host handoff](#shared-host-handoff)
 - [Host lifecycle](#host-lifecycle)
+  - [Main loop execution](#main-loop-execution)
 - [Runtime inputs and persistence](#runtime-inputs-and-persistence)
 - [Shutdown](#shutdown)
 
@@ -237,6 +238,53 @@ flowchart TD
 | Initialize | Creates renderer, device, storage, audio, DSP, and guest-memory state. | [Guest state](GuestState.md), [services](Services.md), and [graphics](Graphics.md) | [Host initialization](../../../runtime/host/src/main.c#L7550-L7686) |
 | Run | Dispatches translated code for a bounded guest-time interval, then services deadlines, callbacks, and interrupts. | Module and compatibility services | [Main runtime loop](../../../runtime/host/src/main.c#L8651-L8662) |
 | Stop | Reaches a safe host boundary, persists durable state, and tears down native services. | Platform application and player storage | [Host shutdown](../../../runtime/host/src/main.c#L16364-L16373) |
+
+### Main loop execution
+
+```mermaid
+flowchart TD
+    Check{"Execution limit or<br/>stop reason reached?"}
+    Turn["Apply per-turn host work<br/>and begin guest-time turn"]
+    Quit{"Platform quit<br/>requested?"}
+    Ready["Service ready host work<br/>and pending interrupts"]
+    Budget["Prepare cycle budget<br/>and device deadline"]
+    Dispatch["Dispatch translated code<br/>from the guest PC"]
+    Mapped{"Dispatch resolved<br/>or recovered?"}
+    End["End guest-time turn<br/>and advance devices"]
+    Events["Deliver ready callbacks,<br/>decrementer, and exceptions"]
+    Outcome{"Turn outcome?"}
+    Record["Record completed turn"]
+    Stop["Leave loop and<br/>report stop reason"]
+
+    Check -->|"no"| Turn --> Quit
+    Check -->|"yes"| Stop
+    Quit -->|"yes"| Stop
+    Quit -->|"no"| Ready --> Budget --> Dispatch --> Mapped
+    Mapped -->|"no"| Stop
+    Mapped -->|"yes"| End --> Events --> Outcome
+    Outcome -->|"fatal"| Stop
+    Outcome -->|"resumable exception"| Check
+    Outcome -->|"completed"| Record --> Check
+```
+
+Each outer turn applies pending host work, establishes the next guest-time
+budget, and dispatches from `CPUState.pc`. The module's chassis can execute
+several translated blocks before returning at a cycle budget, exception, edge
+service, or no-progress boundary. Once control returns, the host accounts for
+elapsed guest cycles, advances devices, delivers ready disc callbacks and the
+decrementer, handles exceptions, and begins another turn unless a stop
+condition was set. MMIO and edge services can also run while translated code
+is dispatching, so the diagram summarizes control flow rather than exact call
+order.
+
+| Component | What it does |
+| --- | --- |
+| Turn setup | Applies save-state and other ready host work, begins the cycle-domain turn, checks quit conditions, and services pending card callbacks. [Source](../../../runtime/host/src/main.c#L8651-L8662) |
+| Interrupt boundary | Delivers a pending external interrupt only when the guest scheduler and architectural state allow it. [Source](../../../runtime/host/src/main.c#L9577-L9589) |
+| Translated dispatch | Computes the current cycle budget and invokes the module dispatcher at the guest program counter. [Source](../../../runtime/host/src/main.c#L14079-L14094) |
+| Chassis loop | Continues through translated blocks until a budget, exception, edge-service, unmapped-address, or no-progress boundary returns control to the host. [Source](../../../cmake/composite/dispatch_loop.h#L39-L84) |
+| End-of-turn service | Commits translated cycle charges, synchronizes devices, delivers ready disc callbacks and decrementer work, and updates guest-visible state. [Source](../../../runtime/host/src/main.c#L15704-L15802) |
+| Exception and stop handling | Handles resumable guest exceptions, records completed turns, or leaves the loop with a fatal or configured stop reason. [Source](../../../runtime/host/src/main.c#L15981-L16019) |
 
 ## Runtime inputs and persistence
 
