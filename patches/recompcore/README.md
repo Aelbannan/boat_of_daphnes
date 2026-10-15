@@ -135,3 +135,9 @@ Patch 0177 is jslay88's RecompCore #36: the Picto Box reads its actor ids from t
 receiving zero for every pixel. It needs BlueWake's host MMIO handler from #334. Cold-cache alpha-only
 pipeline compilation remains a separate follow-up (RecompCore#39), not part of this pin.
 Mac recognition and remaining checks: [Picto validation](../../docs/status/PICTO_RECOGNITION_2026-10-15.md).
+
+Patch 0178 is pdale-boop's RecompCore #38, for BlueWake #325: on Vulkan, a resized window keeps its surface and keeps
+drawing. A lost surface is configured again (up to 30 times in a row) instead of released at once, which on Linux
+made the replacement surface fail with `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`; between the game's frames the surface
+follows the window's size, so the picture no longer trails behind a window being dragged. The size following is
+Vulkan only. On every backend a suboptimal texture is now drawn and the surface configured again after it.
