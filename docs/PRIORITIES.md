@@ -52,7 +52,7 @@ are #60). Closed as a duplicate of #59: #255.
 | LiquidAzir | Reject `--app-only --no-tiered` for a tiered module, with a fixture; Bluetooth with the D-pad option | #93 |
 | pdale-boop | A Windows import with the in-app importer, and a WUD/WUX import if he has one (asked October 15) | #315 |
 | cforain, jkoehler11 | An AppImage from their own disc at the next release candidate, on the agreed Clang 22 path | #56, #215, #254 |
-| cforain | Clang 18 against `--clang22` at one benchmark spot; the runtime docs feedback | #254, #337 |
+| cforain | Clang 18 against `--clang22` at one benchmark spot; runtime docs still being revised | #254, #337 |
 | elbahijeadam | A log from Outset and the open sea | #246 |
 | jay080021 | Their CPU and a bird-scene log; whether the pirate flag has its texture | #59, #69 |
 | A physical iPad | A tap through the ⋯ menu's switches with #316 | #316 |
@@ -70,6 +70,7 @@ Open now:
 
 - **#93** (LiquidAzir, Android): one option check left, then CI and merge as experimental.
 - **#338** (pdale-boop, opt-in 4:3 Picto Box photos under widescreen): needs RecompCore#37 and a runtime decision;
-  its CI fails until then.
-- **#337** (cforain, runtime docs): draft; feedback on the Mac and mobile entry paths and duplication sent.
+  its CI fails until then, and conflicts with `main` need resolving before integration.
+- **#337** (cforain, runtime docs): still draft; revised October 15 after feedback on platform entry paths and
+  duplication. Review the latest revision when the author marks it ready.
 - **RecompCore#37** (pdale-boop, the crop API): goes with #338.
