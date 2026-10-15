@@ -68,7 +68,7 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 
 ### Waiting on Chris
 
-- **#321:** whether the softer HD look is right; a build with it is going on Chris's iPad.
+- **#321:** whether the softer HD look is right. A build with it is on Chris's iPad Pro since October 15 (sun shadows off; ambient occlusion, cloud shadows, bloom and the far blur gentler); saves unchanged.
 - **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
 - **0.8.0:** when to freeze.
@@ -80,7 +80,8 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 2. #93: merge once LiquidAzir's `--no-tiered` check is in and CI passes.
 3. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
    While its release build runs on someone's PC, merge only docs into `main`.
-4. Speed, horizon 2: profile what is left, then one measured change per pull request.
+4. Speed, horizon 2: first the benchmark tour ([BENCHMARK_TOUR.md](BENCHMARK_TOUR.md)), so every change is measured the
+   same way; then profile what is left, one measured change per pull request.
 
 ## The plan from October 12 (Chris's decisions)
 
