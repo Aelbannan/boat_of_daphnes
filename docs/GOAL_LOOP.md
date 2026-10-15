@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 15, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 16, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -72,6 +72,14 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 - **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks; #342 also needs its conflicts with `main` resolved before integration.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
 - **0.8.0:** when to freeze.
+
+### Mac builder follow-up, October 16
+
+[PR #367](https://github.com/chrissotraidis/bluewake/pull/367) makes the training host and final Mac app use the
+same pinned static SQLite. The regression covers both fresh discovery and existing caches that select Mono's
+old header and an external library; both cases pass, and both fail with the fix removed. The PR records the
+full private Mac build with conflicting paths and the CI results. Players can update and rerun without moving
+Mono, editing caches, or deleting their build directory once the fix is merged.
 
 ### Next, in order
 
