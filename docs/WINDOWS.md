@@ -284,34 +284,32 @@ The pinned runtime also fixes aliases in the host's extra 8 MiB of RAM; this
 fix applies to ordinary modules too. Sanitizer checks cover the memory contract,
 but full module correctness, Windows timing and gameplay are still pending.
 
-## Disc recovery in the reconciliation candidate
+## When the disc goes missing
 
-The launcher now accepts a replacement owned USA revision-0 disc when the
-prepared files/disc are missing. It validates and prepares a selected ISO/GCM,
-then remembers its location. Compressed inputs require nodtool.exe beside the
-app; the Windows builder copies its pinned nodtool when it is available. An
-ISO-only build can instead use an ISO converted locally in Dolphin. A missing
-player-generated module still requires the source build; choosing a disc alone
-does not create translated game code inside the launcher.
+If the prepared game files or the disc image BlueWake used before are gone, the
+launcher asks for your own USA revision-0 disc (GZLE01) again. It checks the
+image (its game ID and `main.dol`), prepares `main.dol` and the 415 RELs once,
+and remembers where the disc is. An `.iso` or `.gcm` is used where it is. A
+Dolphin image (`.rvz` and the other compressed formats) needs `nodtool.exe`
+beside the app: a folder you build yourself gets the builder's pinned nodtool
+when the builder has made one, and the ready-made release leaves it out because
+it embeds Wii keys, so with the release convert the image to an ISO in Dolphin
+first. The launcher prepares the
+disc's files; the translated game module comes from the builder or the
+ready-made release.
 
-Conversions and preparation use unique `disc-import-*` folders under the data
-directory. Failed/previous inputs and prepared files remain there. `disc.txt`
-remembers the disc and `game.txt` the completed preparation. Failed preparation
-does not overwrite the last prepared files; a missing REL invalidates the
-cached preparation. Saves/settings keep their existing paths and behavior.
-This retains Elliott Tate's disc UI/import foundation while replacing the
-fork's overwrite/delete recovery paths. No donor compiled distribution is used.
+Each conversion and preparation goes into a new `disc-import-*` folder in the
+data folder, and earlier folders stay. `disc.txt` remembers the disc and
+`game.txt` the finished preparation. A failed preparation keeps the last good
+files, and if a REL is missing the disc is prepared again. Saves and settings
+stay where they are. This builds on Elliott Tate's disc picker and importer
+(`windows/src/win_disc.c`); the Windows CI runs `bluewake_windows_disc_test`
+with stand-in importer results.
 
-Native source-only CI builds the launcher and a Win32 filesystem/process
-regression with synthetic importer results. Real owned-disc picking/conversion,
-Unicode paths, interruption, gameplay and physical Windows save/reload remain
-acceptance gates until recorded against this candidate.
-
-The Display tab offers 60 FPS, 120 FPS and Match the display (up to 240 FPS)
-for experimental Smooth Motion. Game logic stays at 30 Hz; Smooth Motion stays
-off until explicitly enabled. A slower or unknown display temporarily uses
-60 FPS and keeps a saved 120/display preference. Moving the window rechecks
-the display within a second. Overload pacing may reduce the displayed rate.
-`--smooth` explicitly selects 60 for that session without replacing a stored
-rate unless the player edits it. These settings are source-integrated; actual
-window movement and gameplay acceptance remain pending.
+**Smooth Motion** (experimental, off by default, F10): the Display tab offers
+60 FPS, 120 FPS and Match the display (up to 240 FPS). The game's logic stays
+at 30 Hz. A display slower than 120 Hz, or one whose rate isn't known yet, uses
+60 FPS and keeps the saved choice. BlueWake checks the display every second, so
+moving the window to another screen takes effect within a second. When the PC
+can't keep up, the shown rate can drop. `--smooth` turns it on at 60 FPS for
+that session and leaves a saved rate alone unless you change it in the menu.

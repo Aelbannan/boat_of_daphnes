@@ -1,5 +1,7 @@
 # Independent review adoption — 2026-09-09
 
+> Historical research: the Route B prototype this note describes (a native build from the decompilation) was later removed, so the `route_b` paths it names no longer exist. Current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 The implementation agent has read the complete
 [independent report](INDEPENDENT_DEEP_DIVE_REPORT_2026-09-09.md) and preserves
 it unchanged. This note records accepted findings, local verification, and
