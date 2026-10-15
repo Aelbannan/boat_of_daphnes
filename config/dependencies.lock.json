@@ -112,7 +112,7 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "bcc1b03a4dbc05c1824092a230f9b3e9db6b1336",
+      "sha": "f647d03d3886eb2357950190fe1cba3fa3d10242",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
@@ -604,7 +604,7 @@
           "evidence": "Mac M3 Max Metal: clear Lenzo subject 94/detail 0; empty-wall subject 0 with normal warm-cache rendering. Copied card unchanged. Contributors confirmed Linux/M4 Pro and all three Lenzo photos plus bad-photo rejection on Windows. Cold first-use alpha-only draws can still be skipped while pipelines compile; RecompCore#39 is a separate Mac-tested follow-up awaiting Windows/Linux gameplay checks."
         },
         "vulkan_resize": {
-          "runtime": "bcc1b03a4dbc05c1824092a230f9b3e9db6b1336",
+          "runtime": "f647d03d3886eb2357950190fe1cba3fa3d10242",
           "tracked_patches": [
             "patches/recompcore/0178-Aurora-a-resized-Vulkan-window-keeps-its-surface.patch"
           ],
