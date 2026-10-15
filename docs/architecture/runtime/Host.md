@@ -242,8 +242,9 @@ flowchart TD
 ### Main loop execution
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph Host["BlueWake host"]
+        direction TB
         Check{"Execution limit or<br/>stop reason reached?"}
         Turn["Apply per-turn host work<br/>and begin guest-time turn"]
         Quit{"Platform quit<br/>requested?"}
@@ -258,6 +259,7 @@ flowchart TD
     end
 
     subgraph Module["Native game module"]
+        direction TB
         Dispatch["Resolve guest PC and run<br/>translated DOL or REL code"]
         Boundary{"Timing, exception, callback,<br/>or service boundary?"}
         Dispatch --> Boundary
