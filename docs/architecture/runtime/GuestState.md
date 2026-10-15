@@ -5,6 +5,7 @@
 - [Responsibility](#responsibility)
 - [Mechanical contents](#mechanical-contents)
 - [Ownership and address model](#ownership-and-address-model)
+  - [Guest-to-host address resolution](#guest-to-host-address-resolution)
 - [Boot state](#boot-state)
 - [DOL and REL roles](#dol-and-rel-roles)
 - [Guest time and exceptions](#guest-time-and-exceptions)
@@ -66,6 +67,54 @@ The module can export aligned `CPUState` and MEM1 storage. The host selects
 those exports when present, initializes them, and passes the same CPU pointer
 through dispatch, memory, device, and callback paths. No state copy is required
 when execution crosses the host/module ABI.
+
+### Guest-to-host address resolution
+
+A guest address is a 32-bit value in the emulated Gekko address space. It is
+not normally a host pointer, and BlueWake does not require the operating system
+to map memory at that numeric address. The memory helpers translate it to a
+pointer inside the BlueWake process on each access. Consequently, the host
+virtual address can change between launches because the module loader and OS
+choose where native allocations and code reside.
+
+```mermaid
+flowchart TD
+    Address["32-bit guest address"]
+    Use{"How is it used?"}
+    Dispatch["Look up guest PC<br/>in dispatch tables"]
+    Native["Call native translated<br/>function"]
+    Alias{"Registered REL<br/>alias match?"}
+    AliasPointer["Alias backing pointer<br/>+ range offset"]
+    Mirror["Canonicalize cached or<br/>uncached MEM1 address"]
+    RAM{"Inside allocated<br/>MEM1?"}
+    RAMPointer["`CPUState.ram<br/>+ MEM1 offset`"]
+    Callback["Call external read or<br/>write hook"]
+    Service["MMIO or other<br/>compatibility service"]
+
+    Address --> Use
+    Use -->|"program counter"| Dispatch --> Native
+    Use -->|"load or store"| Alias
+    Alias -->|"yes"| AliasPointer
+    Alias -->|"no"| Mirror --> RAM
+    RAM -->|"yes"| RAMPointer
+    RAM -->|"no"| Callback --> Service
+```
+
+Address intervals below are half-open: the first address is included and the
+end address is excluded.
+
+| Guest range or address kind | Resolution | Host representation |
+| --- | --- | --- |
+| `0x80000000–0x81800000` | Retail 24 MiB cached MEM1. Subtract `0x80000000` to obtain the byte offset. | If the MEM1 allocation begins at host pointer `B`, guest `0x80300000` becomes `B + 0x00300000`. `B` is chosen at runtime and is not required to equal `0x80000000`. |
+| `0x81800000–0x82000000` | BlueWake's extension from retail MEM1 to the 32 MiB backing allocation. It provides space for raw or deterministically linked REL storage. Registered alias ranges take precedence over the contiguous fallback. | Either `B + (address - 0x80000000)` or the matching alias pointer plus its range offset. [Allocation and extension](../../../runtime/host/src/main.c#L7688-L7696) |
+| `0xC0000000–0xC2000000` | Uncached mirror of the same 32 MiB guest-memory window. Clearing bit `0x40000000` produces the corresponding `0x80000000–0x82000000` address before normal alias/MEM1 resolution. | The same host byte as the cached form; for example, `0xC0300000` and `0x80300000` both resolve to `B + 0x00300000`. [Memory resolver](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L197-L255) |
+| Generated REL data and BSS ranges | The composite metadata supplies exact linked ranges. The resolver checks the alias registry using the original address and then its bit-`0x40000000`-cleared form. These ranges are generated per module rather than assigned one universal interval. | `alias.storage + (address - alias.linked_start)`. Host services and translated code register the same backing pointer, so both observe the same bytes. [Alias API](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L111-L121), [shared registration](../../../runtime/host/src/main.c#L141-L192) |
+| Device and special ranges, including the `0xCC00xxxx` MMIO area and `0xC800xxxx` graphics paths | If no RAM or REL alias matches, the memory helper invokes `CPUState.external_read` or `external_write` with the guest address, access width, and value. | A native function call into the host's device router; there is no host-memory pointer corresponding to the MMIO address. [Memory fallback](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L271-L363), [read routing](../../../runtime/host/src/main.c#L3581-L3820), [write routing](../../../runtime/host/src/main.c#L4723) |
+| DOL or REL code address in `pc`, `lr`, or `ctr` | The generated dispatcher searches guest code ranges and chooses the translated native function. Physical code PCs below `ram_size` are canonicalized to their cached form; supported uncached DOL PCs are likewise canonicalized before a second lookup. | A loader-assigned native function address, used only for the call. The guest-visible `pc`, `lr`, and `ctr` remain 32-bit guest addresses. [Generated dispatch](../../../scripts/generate_composite.py#L630-L675) |
+
+The formulas describe address translation, not a bulk conversion of guest
+memory. Host and translated code retain guest addresses in registers and data
+structures, resolving a pointer only when they access the referenced bytes.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
