@@ -59,9 +59,9 @@ devices`"]
 | Layer | Owns | Does not own | Code reference |
 | --- | --- | --- | --- |
 | Translated game | Guest device commands and responses | Native resources | [Guest-state boundary](GuestState.md#host-work-across-the-guestnative-boundary) |
-| RecompCore | Reusable DI, SI, VI, PI, audio-DMA, and interrupt rules | BlueWake file layout or event loop | [Platform interface](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/platform.h) |
+| RecompCore | Reusable DI, SI, VI, PI, audio-DMA, and interrupt rules | BlueWake file layout or event loop | [Platform interface](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/platform.h) |
 | BlueWake host | Address routing, scheduling, adapters, and game integration | The game's decisions to access devices | [Host runtime](../../runtime/host/src/main.c), [cycle domain](../../runtime/host/src/cycle_domain.h) |
-| Native platform | OS input, audio, and storage facilities | GameCube-visible semantics | [RecompCore platform ABI](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/platform.h) |
+| Native platform | OS input, audio, and storage facilities | GameCube-visible semantics | [RecompCore platform ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/platform.h) |
 
 Native facilities return results through guest memory, MMIO registers,
 interrupts, or callbacks rather than directly replacing arbitrary guest state.
@@ -76,8 +76,8 @@ raises or acknowledges an event.
 | MMIO family | Guest-visible purpose | Host integration |
 | --- | --- | --- |
 | PI, VI, PE | Interrupt masks, video timing, and graphics completion | [Interrupt refresh](../../runtime/host/src/main.c#L3525-L3544), [VI synchronization](../../runtime/host/src/main.c#L5381-L5453) |
-| DI | Disc commands, DMA, status, and completion | [DI adapter](../../runtime/host/src/main.c#L3024-L3076), [DI model](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/di.h) |
-| SI | Controller polls, channel status, and interrupts | [SI model](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/si.h) |
+| DI | Disc commands, DMA, status, and completion | [DI adapter](../../runtime/host/src/main.c#L3024-L3076), [DI model](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/di.h) |
+| SI | Controller polls, channel status, and interrupts | [SI model](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/si.h) |
 | AI, DSP, ARAM | Audio DMA, mailboxes, accelerator state, and transfers | [Audio synchronization](../../runtime/host/src/main.c#L5148-L5220), [ARAM DMA](../../runtime/host/src/aram_dma.c) |
 | GX, EFB | FIFO traffic, PE state, and graphics barriers | [Graphics stack](Graphics.md) |
 | EXI storage | Memory-card and console-configuration transactions | [Card runtime](../../runtime/host/src/card_runtime.c), [SRAM runtime](../../runtime/host/src/ipl_sram.c) |
@@ -120,7 +120,7 @@ whether the host delivers an external interrupt at a safe execution boundary.
 
 | Stage | State change | Code reference |
 | --- | --- | --- |
-| Device completion | DI, SI, DSP, AI, VI, or PE records a pending source | [BlueWake sources](../../runtime/host/src/interrupt_sources.c), [RecompCore state](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/interrupts.h) |
+| Device completion | DI, SI, DSP, AI, VI, or PE records a pending source | [BlueWake sources](../../runtime/host/src/interrupt_sources.c), [RecompCore state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/interrupts.h) |
 | Source publication | Device state becomes guest-visible PI cause state | [Interrupt refresh](../../runtime/host/src/main.c#L3525-L3544) |
 | Mask evaluation | PI and CPU masks gate delivery | [Interrupt delivery](../../runtime/host/src/main.c#L3078-L3234) |
 | Safe boundary | Guest exception state is updated before execution resumes | [Guest exceptions](GuestState.md#guest-time-and-exceptions) |
@@ -140,7 +140,7 @@ The card and SRAM services separately map mutable console data to host files.
 
 | Operation | Runtime result | Code reference |
 | --- | --- | --- |
-| Open the disc and its FST | Original assets become addressable by path or offset | [Host disc setup](../../runtime/host/src/main.c#L7819-L7865), [RecompCore DVD service](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/src/dvd.c) |
+| Open the disc and its FST | Original assets become addressable by path or offset | [Host disc setup](../../runtime/host/src/main.c#L7819-L7865), [RecompCore DVD service](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/dvd.c) |
 | Complete asynchronous reads | Requested bytes enter guest memory and callbacks run on the guest timeline | [DVD completion queue](../../runtime/host/src/dvd_completion.h), [callback delivery](../../runtime/host/src/callback_delivery.c) |
 
 ### Memory card and SRAM
@@ -165,7 +165,7 @@ controller sample.
 | --- | --- | --- |
 | Poll native sources | Current platform input is captured at a stable frame boundary | [VI retrace service](../../runtime/host/src/main.c#L5381-L5453) |
 | Apply mappings | Buttons, sticks, camera, gyro, ports, and enabled policies produce configured pad state | [Input remapping](../../runtime/host/src/input_remap.h), [controller ports](../../runtime/host/src/controller_ports.h) |
-| Publish through SI | Translated PAD code receives the sample and device event | [RecompCore SI interface](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/si.h) |
+| Publish through SI | Translated PAD code receives the sample and device event | [RecompCore SI interface](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/si.h) |
 
 The published pad state contains digital buttons, both sticks, analog triggers,
 analog A/B values, and an error field. Guest code receives that stable sample,
@@ -180,7 +180,7 @@ completion and interrupt behavior.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
-| Advance audio DMA | Guest memory becomes a timed PCM stream | [Audio DMA service](../../runtime/host/src/main.c#L5150-L5220), [RecompCore DMA](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/src/audio_dma.c) |
+| Advance audio DMA | Guest memory becomes a timed PCM stream | [Audio DMA service](../../runtime/host/src/main.c#L5150-L5220), [RecompCore DMA](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/audio_dma.c) |
 | Service DSP and ARAM | Audio commands produce samples, mailbox responses, and completion events | [DSP adapter](../../runtime/host/src/dsp_adapter.cpp), [ARAM DMA](../../runtime/host/src/aram_dma.c) |
 | Output audio | Completed frames enter the platform audio queue | [Stereo output bridge](../../runtime/host/src/audio_dma_stereo.h) |
 

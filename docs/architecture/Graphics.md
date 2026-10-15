@@ -62,9 +62,9 @@ barriers determine when their effects must become observable.
 | --- | --- | --- | --- |
 | Translated game | Original GX control flow, command writes, and guest addresses | FIFO bytes and display-list calls | [Runtime entities](Runtime.md#runtime-entities) |
 | Gather-pipe bridge | Ordered module-to-host transport | GX byte stream | [Bridge ABI](../../runtime/host/src/gather_pipe_bridge.h), [writer](../../cmake/composite/gather_pipe.h) |
-| GXRuntime | FIFO, CP, XF, BP, PE, texture, and copy state | Normalized draws, resources, copies, and completion state | [GX front end](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/gx_recomp.h) |
-| Aurora | Renderer resources, translation, and frame work | Native render passes and resources | [Aurora integration](https://github.com/chrissotraidis/RecompCore/tree/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/graphics/aurora) |
-| Dawn | API-neutral device, queue, shader, and surface interfaces | Work for an enabled native GPU API | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/aurora_backend.h) |
+| GXRuntime | FIFO, CP, XF, BP, PE, texture, and copy state | Normalized draws, resources, copies, and completion state | [GX front end](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h) |
+| Aurora | Renderer resources, translation, and frame work | Native render passes and resources | [Aurora integration](https://github.com/chrissotraidis/RecompCore/tree/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora) |
+| Dawn | API-neutral device, queue, shader, and surface interfaces | Work for an enabled native GPU API | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/aurora_backend.h) |
 | BlueWake host | Initialization, address resolution, barriers, retrace, and shutdown order | Resolved ranges, flushes, PE events, and presents | [Renderer setup](../../runtime/host/src/main.c#L7550-L7628) |
 
 BlueWake does not replace the game's draw logic. It supplies the environment in
@@ -118,7 +118,7 @@ Linked REL aliases take precedence over ordinary MEM1 backing. The result is a
 temporary native view; it does not replace the address stored in guest state.
 
 References: [BlueWake resolver](../../runtime/host/src/main.c#L5040-L5147),
-[guest-memory contract](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/guest_memory.h),
+[guest-memory contract](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h),
 and [guest address resolution](GuestState.md#guest-to-host-address-resolution).
 
 ## GX command path
@@ -133,7 +133,7 @@ the points required by guest semantics.
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
 | Collect gather-pipe writes | Ordered GX byte batches cross the module/host boundary | [Gather-pipe setup](../../runtime/host/src/main.c#L8269-L8274), [bridge ABI](../../runtime/host/src/gather_pipe_bridge.h) |
-| Parse FIFO and display lists | GX registers, resources, and draw commands reflect the game's command stream | [RecompCore GX interface](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/gx_recomp.h) |
+| Parse FIFO and display lists | GX registers, resources, and draw commands reflect the game's command stream | [RecompCore GX interface](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h) |
 | Flush required work | Complete render operations become available to Aurora | [Host GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
 
 The retail gather pipe is at guest address `0xCC008000`. BlueWake can use a
@@ -178,7 +178,7 @@ barriers so asynchronous native work cannot appear complete too early.
 | Draw done | Earlier work completed before finish status | [GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
 | Draw-sync token | The visible token follows prior work | [GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
 | PE event | Finish or token state reaches the interrupt controller | [Interrupt delivery](Services.md#interrupt-delivery) |
-| Save/load or shutdown | Front-end and worker state reaches a coherent lifecycle boundary | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/aurora_backend.h) |
+| Save/load or shutdown | Front-end and worker state reaches a coherent lifecycle boundary | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/aurora_backend.h) |
 
 These host barriers expose expected completion semantics; they do not imply
 that every hook replaces an original game routine.
@@ -193,7 +193,7 @@ sample against the same guest-time boundary.
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
 | Initialize | A native graphics device and renderer state are available before guest execution | [Renderer initialization](../../runtime/host/src/main.c#L7550-L7628) |
-| Record and submit | Parsed GX state becomes GPU resources, passes, and commands | [Aurora backend](https://github.com/chrissotraidis/RecompCore/tree/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/graphics/aurora) |
+| Record and submit | Parsed GX state becomes GPU resources, passes, and commands | [Aurora backend](https://github.com/chrissotraidis/RecompCore/tree/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora) |
 | Present | A completed frame reaches the display with guest-timed cadence | [Retrace and presentation](../../runtime/host/src/main.c#L5381-L5453) |
 
 At each completed guest retrace, the host advances VI-visible state and services
@@ -214,7 +214,7 @@ and guest data.
 | Desktop OpenGL fallback | Warn about the selected compatibility path | Expose capability or performance limits |
 | Shutdown | Disable gather-pipe writers before destroying Aurora | Prevent late writes into torn-down resources |
 
-Lifecycle entry points are defined by the [Aurora backend ABI](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/aurora_backend.h)
+Lifecycle entry points are defined by the [Aurora backend ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/aurora_backend.h)
 and coordinated by the [BlueWake host](../../runtime/host/src/main.c).
 
 Return to the runtime [high-level view](Runtime.md#high-level-view).
