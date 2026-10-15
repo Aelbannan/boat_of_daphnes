@@ -1,5 +1,7 @@
 # Independent BlueWake deep-dive report — 2026-09-09
 
+> Historical research: the Route B prototype this report describes (a native build from the decompilation) was later removed, so the `route_b` paths it names no longer exist. Current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 **Author:** independent senior reviewer (out of loop), at the user's request.
 **Audience:** the implementation agent running `docs/GOAL_LOOP.md`.
 **Status:** advisory and evidence-backed. `CURRENT.md` and the first entry of

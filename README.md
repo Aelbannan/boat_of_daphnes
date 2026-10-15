@@ -267,10 +267,10 @@ following [the Linux guide](docs/LINUX.md). A ready-made Linux download has not 
 <details>
 <summary><strong>Is there an Android version?</strong></summary>
 
-Not yet. LiquidAzir's Android port ([#93](https://github.com/chrissotraidis/bluewake/pull/93)) builds the game
-from your own disc and plays, with the iPhone app's menu, touch controls, controllers and saves. It will be
-merged as an experimental build-it-yourself option once it holds full speed on a phone; on a Galaxy Z Fold 7 it
-runs Outset at about 70 to 80% today. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
+Not yet. The Android port is still in review ([#93](https://github.com/chrissotraidis/bluewake/pull/93)) and
+isn't in `main`. It builds from your own disc and plays on a Galaxy Z Fold 7, where its latest cool-start
+check ran at full speed at Outset's pier (October 14). There is no Android release yet. Follow
+[#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
 
 </details>
 
@@ -347,9 +347,9 @@ unless you pick specific ones, since they compete with the main textures. You do
 <details>
 <summary><strong>BlueWake.exe does nothing when I open it</strong></summary>
 
-The most common cause is an older processor. The Windows build needs a CPU with AVX2 (Intel Haswell
-from 2013, AMD Ryzen, or newer) and stops before showing any message without it. Check your CPU in
-**Settings › System › About**.
+First check your processor. The Windows build needs a CPU with AVX2 (Intel Haswell from 2013, AMD
+Ryzen, or newer). Without it, BlueWake shows "BlueWake can't run on this processor" and closes. Check
+your CPU in **Settings › System › About**.
 
 If your CPU has AVX2:
 

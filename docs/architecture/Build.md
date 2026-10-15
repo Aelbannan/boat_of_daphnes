@@ -18,10 +18,12 @@
   - [Input and platform paths](#input-and-platform-paths)
   - [Shared extraction](#shared-extraction)
 - [4. Translate](#4-translate)
+  - [Translation pipeline](#translation-pipeline)
 - [5. Compose and prepare](#5-compose-and-prepare)
   - [Generate the composite source](#generate-the-composite-source)
   - [Apply mods and optimizations](#apply-mods-and-optimizations)
 - [6. Train](#6-train)
+  - [Training pipeline](#training-pipeline)
 - [7. Compile and package](#7-compile-and-package)
   - [Linux](#linux-x86-64)
   - [Windows](#windows-x86-64)
@@ -76,9 +78,9 @@ host and a separate native module containing the translated game code.
 
 - [Composite generation](../../scripts/generate_composite.py) — combines the separately translated main DOL and all 415 RELs into one deterministic source tree, with a shared dispatcher and ABI tables for building one native game module. “Composite” here means composing translated program units, not combining rendered images; BlueWake verifies the generated tree against the profile's expected digest before modifying or compiling it.
 
-- [Profile-guided optimization (PGO)](../../scripts/linux/build.py#L771-L906) — PGO uses recorded execution counts to help the final compiler optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
+- [Profile-guided optimization (PGO)](../../scripts/linux/build.py) (`compile_module`) — PGO uses recorded execution counts to help the final compiler optimize frequently executed translated paths. The resulting `.profdata` is a compiler input, separate from the build profile above.
 
-- [Training](../../scripts/linux/build.py#L979-L1105) — deterministic headless game playbacks used to produce PGO counters, not machine learning. Builders merge the raw counters with `llvm-profdata` and keep game-derived profiles in the private build directory.
+- [Training](../../scripts/linux/build.py) (`train`) — deterministic headless game playbacks used to produce PGO counters, not machine learning. Builders merge the raw counters with `llvm-profdata` and keep game-derived profiles in the private build directory.
 
 `OUT` below is the exact output directory passed to the selected builder with
 `--out`; build artifacts are expressed relative to it. `ROOT` is the repository
@@ -131,12 +133,12 @@ pipeline.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Check environment | Verifies Clang, LLD, `llvm-profdata`, CMake, Ninja, Git, and Python. `--ci-container` builds the shared image and reinvokes the builder inside it. | Native or containerized Linux toolchain ready | Stage logs under `OUT/logs/` | [`run_in_ci_container`](../../scripts/linux/build.py#L236-L284), [`check_tools`](../../scripts/linux/build.py#L348-L438) |
-| Prepare inputs | Fetches pinned dependencies, validates the disc, and extracts `main.dol` plus 415 RELs. | Verified source inputs | `ROOT/ref/recompcore/` and `OUT/game/` | [`dependencies`](../../scripts/linux/build.py#L439-L475), [`disc` and `extract`](../../scripts/linux/build.py#L476-L541) |
-| Generate source | Builds DolRecomp, translates DOL/REL code, verifies the composite digest, and applies selected mods and guarded preparations. | Compilable prepared composite | `OUT/translated/` and `OUT/composite-src/` | [`build_dolrecomp` through `generate`](../../scripts/linux/build.py#L496-L632), [`build_mods` and preparation](../../scripts/linux/build.py#L633-L770) |
-| Train | Builds an instrumented module, runs headless playbacks, and merges profiles unless training is skipped or reused. | Local optimization profile | `OUT/pgo-local/composite.profdata` | [`train`](../../scripts/linux/build.py#L979-L1105) |
-| Compile and assemble | Compiles the game module and host, then copies game inputs, DSP data, and provenance into the app folder. | Runnable Linux folder | `OUT/BlueWake/bluewake` and `OUT/BlueWake/gGZLE01_recomp.so` | [`compile_module`](../../scripts/linux/build.py#L771-L906), [`build_app` and `package`](../../scripts/linux/build.py#L1115-L1178) |
-| Package AppImage | With `--appimage`, packages and audits the assembled outputs. | Portable Linux package | `OUT/BlueWake-x86_64.AppImage` | [`package_appimage`](../../scripts/linux/build.py#L1179-L1205) |
+| Check environment | Verifies Clang, LLD, `llvm-profdata`, CMake, Ninja, Git, and Python. `--ci-container` builds the shared image and reinvokes the builder inside it. | Native or containerized Linux toolchain ready | Stage logs under `OUT/logs/` | [`run_in_ci_container`](../../scripts/linux/build.py), [`check_tools`](../../scripts/linux/build.py) |
+| Prepare inputs | Fetches pinned dependencies, validates the disc, and extracts `main.dol` plus 415 RELs. | Verified source inputs | `ROOT/ref/recompcore/` and `OUT/game/` | [`dependencies`](../../scripts/linux/build.py), [`disc` and `extract`](../../scripts/linux/build.py) |
+| Generate source | Builds DolRecomp, translates DOL/REL code, verifies the composite digest, and applies selected mods and guarded preparations. | Compilable prepared composite | `OUT/translated/` and `OUT/composite-src/` | [`build_dolrecomp` through `generate`](../../scripts/linux/build.py), [`build_mods` and preparation](../../scripts/linux/build.py) |
+| Train | Builds an instrumented module, runs headless playbacks, and merges profiles unless training is skipped or reused. | Local optimization profile | `OUT/pgo-local/composite.profdata` | [`train`](../../scripts/linux/build.py) |
+| Compile and assemble | Compiles the game module and host, then copies game inputs, DSP data, and provenance into the app folder. | Runnable Linux folder | `OUT/BlueWake/bluewake` and `OUT/BlueWake/gGZLE01_recomp.so` | [`compile_module`](../../scripts/linux/build.py), [`build_app` and `package`](../../scripts/linux/build.py) |
+| Package AppImage | With `--appimage`, packages and audits the assembled outputs. | Portable Linux package | `OUT/BlueWake-x86_64.AppImage` | [`package_appimage`](../../scripts/linux/build.py) |
 
 ### Windows builder
 
@@ -145,12 +147,12 @@ Windows x86-64 pipeline.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Check environment | Verifies Visual Studio's LLVM/Clang, the Windows SDK, CMake, Ninja, and Git. | Windows toolchain ready | Stage logs under `OUT/logs/` | [`check_tools` and Visual Studio environment](../../scripts/windows/build.py#L271-L374) |
-| Prepare inputs | Converts supported Dolphin formats through pinned `nodtool`, validates the disc, and extracts the DOL and 415 RELs. | Verified source inputs | Converted ISO when needed and `OUT/game/` | [`dependencies` and `disc`](../../scripts/windows/build.py#L375-L471), [`extract`](../../scripts/windows/build.py#L547-L561) |
-| Generate source | Builds DolRecomp, translates the DOL/REL code, verifies the composite, and applies requested mod variants. | Compilable prepared composite | `OUT/translated/` and `OUT/composite-src/` | [`build_dolrecomp` through `generate`](../../scripts/windows/build.py#L472-L676), [`build_mods` and preparation](../../scripts/windows/build.py#L677-L871) |
-| Train | Builds an instrumented module, runs headless playbacks, and merges or reuses the local profile. | Local optimization profile | `OUT/pgo-local/composite.profdata` | [`train`](../../scripts/windows/build.py#L1046-L1173) |
-| Compile | Compiles the translated module and Windows host with the selected profile. | Native Windows binaries | `OUT/composite/gGZLE01_recomp.dll` and `OUT/app/BlueWake.exe` | [`compile_module`](../../scripts/windows/build.py#L872-L1006), [`build_app`](../../scripts/windows/build.py#L1216-L1224) |
-| Assemble | Copies Dawn, SDL, DSP, game inputs, runtime DLLs, and provenance into one folder. | Directly runnable Windows build | `OUT/BlueWake/` | [`package`](../../scripts/windows/build.py#L1225-L1294) |
+| Check environment | Verifies Visual Studio's LLVM/Clang, the Windows SDK, CMake, Ninja, and Git. | Windows toolchain ready | Stage logs under `OUT/logs/` | [`check_tools` and Visual Studio environment](../../scripts/windows/build.py) |
+| Prepare inputs | Converts supported Dolphin formats through pinned `nodtool`, validates the disc, and extracts the DOL and 415 RELs. | Verified source inputs | Converted ISO when needed and `OUT/game/` | [`dependencies` and `disc`](../../scripts/windows/build.py), [`extract`](../../scripts/windows/build.py) |
+| Generate source | Builds DolRecomp, translates the DOL/REL code, verifies the composite, and applies requested mod variants. | Compilable prepared composite | `OUT/translated/` and `OUT/composite-src/` | [`build_dolrecomp` through `generate`](../../scripts/windows/build.py), [`build_mods` and preparation](../../scripts/windows/build.py) |
+| Train | Builds an instrumented module, runs headless playbacks, and merges or reuses the local profile. | Local optimization profile | `OUT/pgo-local/composite.profdata` | [`train`](../../scripts/windows/build.py) |
+| Compile | Compiles the translated module and Windows host with the selected profile. | Native Windows binaries | `OUT/composite/gGZLE01_recomp.dll` and `OUT/app/BlueWake.exe` | [`compile_module`](../../scripts/windows/build.py), [`build_app`](../../scripts/windows/build.py) |
+| Assemble | Copies Dawn, SDL, DSP, game inputs, runtime DLLs, and provenance into one folder. | Directly runnable Windows build | `OUT/BlueWake/` | [`package`](../../scripts/windows/build.py) |
 
 ### Apple builder
 
@@ -159,13 +161,13 @@ pipeline for macOS, iOS/iPadOS, and tvOS.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Select target | Parses signing, PGO, optimization, packaging, and device options; selects `macosx`, `iphoneos`, or `appletvos`. | Configured Apple build | Selected Xcode SDK and `OUT/logs/` | [Argument and SDK selection](../../scripts/builder/build.sh#L68-L207) |
-| Load profile | Sources `bluewake.sh`, checks Xcode/CMake/Ninja, and calls its dependency, extraction, translation, generation, and mod hooks. | Verified prepared composite | `ROOT/ref/recompcore/`, `OUT/game/`, and `OUT/composite-src/` | [Profile loading](../../scripts/builder/build.sh#L150-L173), [pipeline hooks](../../scripts/builder/build.sh#L225-L271) |
-| Train | Optionally invokes the profile's local training hook and merges the recorded profile. | Local optimization profile | `OUT/composite.profdata` | [Training dispatch](../../scripts/builder/build.sh#L272-L283), [`profile_train`](../../scripts/builder/profiles/bluewake.sh#L204-L215) |
-| Compile module | Calls the profile compile hook for the selected SDK and architecture. | Native translated module | `OUT/composite-{ios,macos,tvos}/gGZLE01_recomp.dylib` | [Compile stage](../../scripts/builder/build.sh#L284-L290), [`profile_compile`](../../scripts/builder/profiles/bluewake.sh#L216-L258) |
-| Build and sign app | Builds or imports the app, embeds the module, records module optimizations, and signs the module and bundle. | Installable target app | `OUT/app/BlueWake.app`, `OUT/app-tvos/BlueWake.app`, or `OUT/app-macos/host/BlueWake.app` | [Build, embed, and sign](../../scripts/builder/build.sh#L291-L340) |
-| Package | Creates macOS `BlueWake.app` or an optional unsigned IPA. IPA staging removes signing material and rejects private game/save/key files. | Distributable package | `OUT/packaged/BlueWake.app`; use `--ipa OUT/BlueWake.ipa` for an IPA under `OUT` | [Packaging and privacy checks](../../scripts/builder/build.sh#L341-L390) |
-| Install | When requested, transfers and launches the supported device build. | Running device installation | Installed app and device launch | [Device installation](../../scripts/builder/build.sh#L391-L410) |
+| Select target | Parses signing, PGO, optimization, packaging, and device options; selects `macosx`, `iphoneos`, or `appletvos`. | Configured Apple build | Selected Xcode SDK and `OUT/logs/` | [Argument and SDK selection](../../scripts/builder/build.sh) |
+| Load profile | Sources `bluewake.sh`, checks Xcode/CMake/Ninja, and calls its dependency, extraction, translation, generation, and mod hooks. | Verified prepared composite | `ROOT/ref/recompcore/`, `OUT/game/`, and `OUT/composite-src/` | [Profile loading](../../scripts/builder/build.sh), [pipeline hooks](../../scripts/builder/build.sh) (steps 1/9 to 6/9) |
+| Train | Optionally invokes the profile's local training hook and merges the recorded profile. | Local optimization profile | `OUT/composite.profdata` | [Training dispatch](../../scripts/builder/build.sh) (the local optimization training step), [`profile_train`](../../scripts/builder/profiles/bluewake.sh) |
+| Compile module | Calls the profile compile hook for the selected SDK and architecture. | Native translated module | `OUT/composite-{ios,macos,tvos}/gGZLE01_recomp.dylib` | [Compile stage](../../scripts/builder/build.sh) (step 7/9), [`profile_compile`](../../scripts/builder/profiles/bluewake.sh) |
+| Build and sign app | Builds or imports the app, embeds the module, records module optimizations, and signs the module and bundle. | Installable target app | `OUT/app/BlueWake.app`, `OUT/app-tvos/BlueWake.app`, or `OUT/app-macos/host/BlueWake.app` | [Build, embed, and sign](../../scripts/builder/build.sh) (step 8/9) |
+| Package | Creates macOS `BlueWake.app` or an optional unsigned IPA. IPA staging removes signing material and rejects private game/save/key files. | Distributable package | `OUT/packaged/BlueWake.app`; use `--ipa OUT/BlueWake.ipa` for an IPA under `OUT` | [Packaging and privacy checks](../../scripts/builder/build.sh) (step 9/9) |
+| Install | When requested, transfers and launches the supported device build. | Running device installation | Installed app and device launch | [Device installation](../../scripts/builder/build.sh) (`--install`) |
 
 All three builders validate their tools, reuse safe intermediates, and record
 provenance. Platform options change compilation and packaging, not the
@@ -207,7 +209,7 @@ repository-wide provenance and audit record; it does not drive these fetches.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Declare executable pins | Records the RecompCore URL and revision, DolRecomp revision, and Dawn URL/checksum used by the builders. | One dependency selection across platforms | `RECOMPCORE_*`, `DOLRECOMP_SHA`, `DAWN_*` | [Build-profile pins](../../scripts/builder/profiles/bluewake.sh#L37-L44) |
+| Declare executable pins | Records the RecompCore URL and revision, DolRecomp revision, and Dawn URL/checksum used by the builders. | One dependency selection across platforms | `RECOMPCORE_*`, `DOLRECOMP_SHA`, `DAWN_*` | [Build-profile pins](../../scripts/builder/profiles/bluewake.sh) |
 | Record dependency provenance | Documents dependency origins, licenses, roles, exact revisions, local paths, and patch history for audits. | Reviewable dependency inventory | `config/dependencies.lock.json` | [Dependency lock](../../config/dependencies.lock.json) |
 
 ### RecompCore and DolRecomp checkout
@@ -216,10 +218,10 @@ Linux, Windows, and Apple implement the same guarded checkout sequence.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Initialize | Creates `ROOT/ref/recompcore` as a Git checkout only when the path is absent or empty; refuses to replace unrelated files. | Safe checkout location | `ROOT/ref/recompcore/.git/` | [Linux](../../scripts/linux/build.py#L439-L448), [Windows](../../scripts/windows/build.py#L375-L390), [Apple](../../scripts/builder/profiles/bluewake.sh#L56-L66) |
-| Fetch RecompCore | Fetches only the pinned SHA without recursively fetching submodules, then checks out `FETCH_HEAD` detached. | Exact runtime source | `ROOT/ref/recompcore/` at `RECOMPCORE_SHA` | [Linux](../../scripts/linux/build.py#L449-L460), [Windows](../../scripts/windows/build.py#L390-L400), [Apple](../../scripts/builder/profiles/bluewake.sh#L67-L81) |
-| Fetch DolRecomp | Synchronizes the parent's DolRecomp submodule and initializes its pinned revision with a shallow update. | Exact translator source | `ROOT/ref/recompcore/DolRecomp/` at `DOLRECOMP_SHA` | [Linux](../../scripts/linux/build.py#L461-L469), [Windows](../../scripts/windows/build.py#L401-L415), [Apple](../../scripts/builder/profiles/bluewake.sh#L82-L86) |
-| Verify | Checks both HEAD revisions and rejects tracked local modifications before building. | Clean, attributable dependency tree | Successful dependency-stage log | [Linux](../../scripts/linux/build.py#L459-L473), [Windows](../../scripts/windows/build.py#L399-L419), [Apple](../../scripts/builder/profiles/bluewake.sh#L81-L91) |
+| Initialize | Creates `ROOT/ref/recompcore` as a Git checkout only when the path is absent or empty; refuses to replace unrelated files. | Safe checkout location | `ROOT/ref/recompcore/.git/` | [Linux](../../scripts/linux/build.py) (`dependencies`), [Windows](../../scripts/windows/build.py) (`dependencies`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
+| Fetch RecompCore | Fetches only the pinned SHA without recursively fetching submodules, then checks out `FETCH_HEAD` detached. | Exact runtime source | `ROOT/ref/recompcore/` at `RECOMPCORE_SHA` | [Linux](../../scripts/linux/build.py) (`dependencies`), [Windows](../../scripts/windows/build.py) (`dependencies`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
+| Fetch DolRecomp | Synchronizes the parent's DolRecomp submodule and initializes its pinned revision with a shallow update. | Exact translator source | `ROOT/ref/recompcore/DolRecomp/` at `DOLRECOMP_SHA` | [Linux](../../scripts/linux/build.py) (`dependencies`), [Windows](../../scripts/windows/build.py) (`dependencies`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
+| Verify | Checks both HEAD revisions and rejects tracked local modifications before building. | Clean, attributable dependency tree | Successful dependency-stage log | [Linux](../../scripts/linux/build.py) (`dependencies`), [Windows](../../scripts/windows/build.py) (`dependencies`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
 
 ### Apple Dawn package
 
@@ -228,9 +230,9 @@ prepare the mobile archive during the dependency hook.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Download and verify | Reuses the cached iOS arm64 archive only when its SHA-256 matches; otherwise downloads it and verifies the new file. | Trusted renderer package | `ROOT/build/deps/dawn-ios-arm64.tar.gz` | [Archive fetch](../../scripts/builder/profiles/bluewake.sh#L93-L101) |
-| Extract | Expands the verified archive when its CMake package is absent. | Dawn headers, libraries, and CMake configuration | `ROOT/build/deps/dawn-ios/` | [iOS extraction](../../scripts/builder/profiles/bluewake.sh#L102-L106) |
-| Prepare tvOS | Copies the iOS archive, retags its Mach-O platform as tvOS, rebuilds its index, and records the source checksum. | Development tvOS Dawn archive | `ROOT/build/deps/dawn-tvos/` | [tvOS preparation](../../scripts/builder/profiles/bluewake.sh#L107-L119) |
+| Download and verify | Reuses the cached iOS arm64 archive only when its SHA-256 matches; otherwise downloads it and verifies the new file. | Trusted renderer package | `ROOT/build/deps/dawn-ios-arm64.tar.gz` | [Archive fetch](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
+| Extract | Expands the verified archive when its CMake package is absent. | Dawn headers, libraries, and CMake configuration | `ROOT/build/deps/dawn-ios/` | [iOS extraction](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
+| Prepare tvOS | Copies the iOS archive, retags its Mach-O platform as tvOS, rebuilds its index, and records the source checksum. | Development tvOS Dawn archive | `ROOT/build/deps/dawn-tvos/` | [tvOS preparation](../../scripts/builder/profiles/bluewake.sh) (`profile_dependencies`) |
 
 ## 3. Extract
 
@@ -268,9 +270,9 @@ flowchart TD
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Linux preflight | Accepts `.iso` or `.gcm`, reads the GameCube header, and rejects the wrong magic, game ID, or revision before extraction. | Confirmed `GZLE01` revision-0 candidate | Original disc path retained as the runtime disc | [`disc`](../../scripts/linux/build.py#L476-L493) |
-| Windows preflight | Accepts `.iso` or `.gcm` directly. As an optional convenience, it converts supported compressed Dolphin formats through pinned `nodtool`; it then rejects the wrong magic, game ID, or revision. | Confirmed uncompressed `GZLE01` revision-0 candidate | Original disc path or cached `OUT/disc/GZLE01.iso` | [`disc`](../../scripts/windows/build.py#L422-L455), [`nodtool`](../../scripts/windows/build.py#L457-L469) |
-| Apple wrapper | Compiles `disc_extract.c` with the shared importer, runs it on the uncompressed ISO, and checks for exactly 415 REL files. | Native extractor and verified extracted set | `OUT/tools/disc_extract` and `OUT/game/` | [`profile_extract`](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
+| Linux preflight | Accepts `.iso` or `.gcm`, reads the GameCube header, and rejects the wrong magic, game ID, or revision before extraction. | Confirmed `GZLE01` revision-0 candidate | Original disc path retained as the runtime disc | [`disc`](../../scripts/linux/build.py) |
+| Windows preflight | Accepts `.iso` or `.gcm` directly. As an optional convenience, it converts supported compressed Dolphin formats through pinned `nodtool`; it then rejects the wrong magic, game ID, or revision. | Confirmed uncompressed `GZLE01` revision-0 candidate | Original disc path or cached `OUT/disc/GZLE01.iso` | [`disc`](../../scripts/windows/build.py), [`nodtool`](../../scripts/windows/build.py) |
+| Apple wrapper | Compiles `disc_extract.c` with the shared importer, runs it on the uncompressed ISO, and checks for exactly 415 REL files. | Native extractor and verified extracted set | `OUT/tools/disc_extract` and `OUT/game/` | [`profile_extract`](../../scripts/builder/profiles/bluewake.sh) |
 
 ### Shared extraction
 
@@ -307,10 +309,10 @@ flowchart TD
     Disc -. "not extracted" .-> Runtime
 ```
 
-Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265),
-[`bluewake_disc_prepare`](../../apple/ios/src/disc_import.c#L318-L506),
-[`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316), and
-[`write_rel`](../../apple/ios/src/disc_import.c#L206-L221).
+Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c),
+[`bluewake_disc_prepare`](../../apple/ios/src/disc_import.c),
+[`unpack_rels_arc`](../../apple/ios/src/disc_import.c), and
+[`write_rel`](../../apple/ios/src/disc_import.c).
 
 **Safe publication and builder gate**
 
@@ -331,20 +333,20 @@ flowchart LR
     Count -->|yes| Translate
 ```
 
-Code: [staging, publication, and cleanup](../../apple/ios/src/disc_import.c#L318-L506);
-exact-count gates in [Linux](../../scripts/linux/build.py#L519-L525),
-[Windows](../../scripts/windows/build.py#L547-L559), and
-[Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130).
+Code: [staging, publication, and cleanup](../../apple/ios/src/disc_import.c) (`bluewake_disc_prepare`);
+exact-count gates in [Linux](../../scripts/linux/build.py) (`extract`),
+[Windows](../../scripts/windows/build.py) (`extract`), and
+[Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_extract`).
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Check disc identity | Opens the image, verifies the GameCube magic, and requires game ID `GZLE01`. | Supported game image | Validation result or specific error | [`bluewake_disc_check`](../../apple/ios/src/disc_import.c#L245-L265) |
-| Read the executable | Uses the disc header to locate the DOL, reads its section table, and computes the complete executable size. | In-memory main executable | DOL byte buffer | [DOL extraction](../../apple/ios/src/disc_import.c#L343-L367) |
-| Verify revision | Computes the DOL SHA-1 and compares it with the supported USA revision-0 value. | Exact supported executable, not only a matching disc ID | Verified DOL digest | [Revision check](../../apple/ios/src/disc_import.c#L368-L379) |
-| Extract modules | Walks the disc file-system table, decompresses loose Yaz0 RELs, locates `RELS.arc`, and unpacks its RARC/Yaz0 members. | Complete translated-code input set | Staged `main.dol` and `rels/*.rel` | [File-system extraction](../../apple/ios/src/disc_import.c#L395-L479), [`unpack_rels_arc`](../../apple/ios/src/disc_import.c#L267-L316) |
-| Normalize modules | Sets each extracted REL's alignment field to four, matching the canonical inputs from which BlueWake's composite source is generated. The disc image is not modified. | Consistent REL headers across both disc storage paths | Normalized staged `rels/*.rel` | [`write_rel`](../../apple/ios/src/disc_import.c#L206-L221) |
-| Publish outputs | Replaces the previous prepared files only after extraction succeeds; failures remove the temporary files. | Finished prepared game tree | `OUT/game/main.dol` and `OUT/game/rels/` | [Output swap and cleanup](../../apple/ios/src/disc_import.c#L481-L506) |
-| Verify module count | Each builder requires exactly 415 extracted RELs before translation begins. | Consistent input set on every platform | Successful extraction-stage log | [Linux](../../scripts/linux/build.py#L519-L525), [Windows](../../scripts/windows/build.py#L547-L559), [Apple](../../scripts/builder/profiles/bluewake.sh#L122-L130) |
+| Check disc identity | Opens the image, verifies the GameCube magic, and requires game ID `GZLE01`. | Supported game image | Validation result or specific error | [`bluewake_disc_check`](../../apple/ios/src/disc_import.c) |
+| Read the executable | Uses the disc header to locate the DOL, reads its section table, and computes the complete executable size. | In-memory main executable | DOL byte buffer | [DOL extraction](../../apple/ios/src/disc_import.c) (`fail`) |
+| Verify revision | Computes the DOL SHA-1 and compares it with the supported USA revision-0 value. | Exact supported executable, not only a matching disc ID | Verified DOL digest | [Revision check](../../apple/ios/src/disc_import.c) (`sha1_hex`) |
+| Extract modules | Walks the disc file-system table, decompresses loose Yaz0 RELs, locates `RELS.arc`, and unpacks its RARC/Yaz0 members. | Complete translated-code input set | Staged `main.dol` and `rels/*.rel` | [File-system extraction](../../apple/ios/src/disc_import.c) (`fail`), [`unpack_rels_arc`](../../apple/ios/src/disc_import.c) |
+| Normalize modules | Sets each extracted REL's alignment field to four, matching the canonical inputs from which BlueWake's composite source is generated. The disc image is not modified. | Consistent REL headers across both disc storage paths | Normalized staged `rels/*.rel` | [`write_rel`](../../apple/ios/src/disc_import.c) |
+| Publish outputs | Replaces the previous prepared files only after extraction succeeds; failures remove the temporary files. | Finished prepared game tree | `OUT/game/main.dol` and `OUT/game/rels/` | [Output swap and cleanup](../../apple/ios/src/disc_import.c) (`remove_flat_dir`) |
+| Verify module count | Each builder requires exactly 415 extracted RELs before translation begins. | Consistent input set on every platform | Successful extraction-stage log | [Linux](../../scripts/linux/build.py) (`extract`), [Windows](../../scripts/windows/build.py) (`extract`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_extract`) |
 
 These paths are private build intermediates under the caller-selected `OUT`.
 Linux and Windows also copy them into `OUT/BlueWake/game/` for the runnable
@@ -356,132 +358,253 @@ the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ## 4. Translate
 
-The builder compiles pinned DolRecomp, then runs its GameCube C backend over
-the DOL and each REL. The result preserves PowerPC operations and guest
-addresses; it is not reconstructed Nintendo source code.
+```mermaid
+flowchart TD
+    Source["DolRecomp<br/>source"]
+    Build["CMake<br/>+ Ninja"]
+    Tool["DolRecomp<br/>executable"]
+    Dol["Main DOL"]
+    Rels["415 RELs"]
+    Frontend["GameCube input<br/>Gekko CPU"]
+    Backend["Portable C<br/>backend"]
+    DolC["DOL C chunks"]
+    RelC["REL-grouped<br/>C chunks"]
 
-The builder checks out the
-[pinned DolRecomp revision](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de)
-under `ROOT/ref/recompcore/DolRecomp`. Each platform builder records its invocation
-in the build log.
+    Source --> Build --> Tool
+    Tool -. "contains" .-> Frontend
+    Tool -. "contains" .-> Backend
+    Dol --> Frontend
+    Rels --> Frontend
+    Frontend --> Backend
+    Backend --> DolC
+    Backend --> RelC
+```
+
+### Translation pipeline
+
+Each builder compiles the
+[pinned DolRecomp revision](https://github.com/elliotttate/DolRecomp)
+for its host, then invokes it with `--gamecube --backend c --cpu gekko`.
+“GameCube” selects the DOL/REL input rules and Gekko PowerPC model; “C backend”
+selects portable C as the translator's output instead of native LLVM objects.
+
+The frontend validates and decodes the executable units into DolRecomp's
+internal representation (DolIR). The backend emits split C sources, dispatch
+tables, and module metadata that preserve guest operations and addresses. This
+is compile-oriented generated code, not reconstructed Nintendo source and not
+a component that runs by itself.
+
+The platform compiler does not run in this stage. Section 7 later feeds the
+prepared C through Clang to produce an x86-64 or arm64 native game module; the
+module uses RecompCore at runtime for architectural state and host services.
+
+References: DolRecomp's pinned [backend overview](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/backend/README.md),
+[CLI mode selection](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/app/cli.c#L14-L33),
+and [portable C emitter](https://github.com/elliotttate/DolRecomp/blob/b8b534591cba8ca7cd43943a655ee6e2591cf5de/src/backend/emitter.c).
+The table below links the corresponding BlueWake invocation on each platform.
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Build DolRecomp | Configures and compiles the pinned translator with the platform toolchain. | Native translator for the build host | `OUT/dolrecomp/dolrecomp` or `OUT/dolrecomp/dolrecomp.exe` | [Linux](../../scripts/linux/build.py) (`build_dolrecomp`), [Windows](../../scripts/windows/build.py) (`build_dolrecomp`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_translate`) |
+| Translate the DOL | Runs the GameCube C backend for Gekko and partitions `main.dol` into 4,096-instruction chunks. | C functions for the main executable | `OUT/translated/dol/generated/` | [Linux](../../scripts/linux/build.py) (`translate`), [Windows](../../scripts/windows/build.py) (`translate`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_translate`) |
+| Translate the RELs | Translates all extracted modules with the shared REL address base `0xC0400000`. | C functions and metadata for 415 RELs | `OUT/translated/rels/generated/rels/` | [Linux](../../scripts/linux/build.py) (`translate`), [Windows](../../scripts/windows/build.py) (`translate`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_translate`) |
+| Publish the translation | Generates into a temporary tree and replaces the previous output only after both translator runs succeed. | Complete translation from one input set | `OUT/translated/` | [Linux](../../scripts/linux/build.py) (`translate`), [Windows](../../scripts/windows/build.py) (`translate`), [Apple](../../scripts/builder/profiles/bluewake.sh) (`profile_translate`) |
 
 ## 5. Compose and prepare
 
+```mermaid
+flowchart LR
+    DolC["DOL C chunks"]
+    RelC["REL C chunks"]
+    Binaries["DOL + REL<br/>metadata"]
+    Base["Verified composite<br/>source"]
+    Ready["Compile-ready<br/>source"]
+    Stop["Stop the build"]
+
+    subgraph BlueWake["BlueWake logic"]
+        Generate["Compose source"]
+        Verify{"Digest match?"}
+        Variants["Optional: add<br/>mod variants"]
+        Prepare["Optional: apply guarded<br/>optimizations"]
+    end
+
+    DolC --> Generate
+    RelC --> Generate
+    Binaries --> Generate
+    Generate --> Verify
+    Verify -->|yes| Base
+    Verify -->|no| Stop
+    Base --> Variants --> Prepare --> Ready
+    Base -. "mods and optimizations disabled" .-> Ready
+```
+
+Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
+output into BlueWake's compile-ready game-module source. Compositing,
+cross-DOL/REL dispatch, metadata generation, and base-digest verification are
+required correctness steps. Mods, native replacements, and performance
+transformations are selectable additions. The BlueWake host remains a separate
+component, although Stage 6 may build it early to run PGO training playbacks.
+
 ### Generate the composite source
 
-[`scripts/generate_composite.py`](../../scripts/generate_composite.py) combines
-the DOL and REL translations with shared dispatch and module metadata. The
-result can address code across the original executable and REL boundaries.
-
-[`scripts/audit_composite_provenance.py`](../../scripts/audit_composite_provenance.py)
-and the profile digest verify the generated base. Unexpected input stops the
-normal build instead of silently producing a different module.
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Combine translations | Joins DOL chunks and REL translations with shared dispatch, ABI tables, and module metadata. | One source tree that can address code across DOL and REL boundaries | `OUT/composite-src.new/` | [`generate_composite.py`](../../scripts/generate_composite.py), [Linux invocation](../../scripts/linux/build.py) (`generate`), [Windows invocation](../../scripts/windows/build.py) (`generate`), [Apple invocation](../../scripts/builder/profiles/bluewake.sh) (`profile_generate`) |
+| Verify the base | Computes the deterministic tree digest and compares it with `COMPOSITE_DIGEST` from the game profile. | Known translation from the supported disc and translator | `OUT/composite-src.digest` | [Linux verification](../../scripts/linux/build.py) (`generate`), [Windows verification](../../scripts/windows/build.py) (`generate`), [Apple verification](../../scripts/builder/profiles/bluewake.sh) (`profile_generate`) |
+| Track inputs | Fingerprints generators, mod selection, and the optimization recipe so stale prepared trees are not reused. | Cache identity for the complete preparation recipe | `OUT/composite-inputs.digest` | [Linux inputs](../../scripts/linux/build.py) (`generate`), [Windows inputs](../../scripts/windows/build.py) (`generate`), [Apple inputs](../../scripts/builder/profiles/bluewake.sh) (`profile_generate`) |
+| Publish the composite | Reuses an identical tree or moves the verified temporary tree into place. | Stable base for modifications and compilation | `OUT/composite-src/` | [Linux publication](../../scripts/linux/build.py) (`generate`), [Windows publication](../../scripts/windows/build.py) (`generate`), [Apple publication](../../scripts/builder/profiles/bluewake.sh) (`profile_generate`) |
 
 ### Apply mods and optimizations
 
-[`scripts/mods/build_mod_variants.py`](../../scripts/mods/build_mod_variants.py)
-adds selected widescreen and Better Wind Waker variants. The builder applies
-selected guarded preparations through
-[`scripts/builder/module_optimizations.py`](../../scripts/builder/module_optimizations.py).
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Build mod inputs | Applies the widescreen patches and Better Wind Waker option sites, then translates their changed DOL or REL inputs. | Translated source for each requested variant | `OUT/mods/*/translated/` | [`build_mod_variants.py`](../../scripts/mods/build_mod_variants.py), [Linux entry](../../scripts/linux/build.py) (`build_mods`), [Windows implementation](../../scripts/windows/build.py) (`build_mods`), [Apple hook](../../scripts/builder/profiles/bluewake.sh) (`profile_mods`) |
+| Add variants | Merges the selected alternatives into the base composite so the runtime can select them without separate modules. | Base, widescreen, Better Wind Waker, and combined variants | Variant source inside `OUT/composite-src/` | [Linux mod stage](../../scripts/linux/build.py) (`build_mods`), [Windows mod stage](../../scripts/windows/build.py) (`build_mods`), [Apple mod hook](../../scripts/builder/profiles/bluewake.sh) (`profile_mods`) |
+| Prepare optimizations | Applies the selected native replacements and source transformations through a shared recipe. | Compile-ready optimized source | Updated `OUT/composite-src/` | [`module_optimizations.py`](../../scripts/builder/module_optimizations.py), [Linux preparation](../../scripts/linux/build.py) (`prepare_blocks`), [Windows preparation](../../scripts/windows/build.py) (`prepare_blocks`), [Apple dispatch](../../scripts/builder/build.sh) (step 6/9) |
+| Guard changes | Selected transformations check the source shape or digest they expect. Unselected transformations leave the verified base implementation in place; a failed selected transformation can stop the build. | Optional changes cannot silently target unknown generated code | Preparation logs and `OUT/composite-final.digest` | [`module_optimizations.py`](../../scripts/builder/module_optimizations.py), [Linux preparation](../../scripts/linux/build.py) (`prepare_blocks`), [Windows preparation](../../scripts/windows/build.py) (`prepare_blocks`), [Apple dispatch](../../scripts/builder/build.sh) (step 6/9) |
 
-Preparations verify the source shape or digest they expect. If a guard fails,
-the original translated implementation remains in place.
+[`audit_composite_provenance.py`](../../scripts/audit_composite_provenance.py)
+is a separate diagnostic for comparing two prepared trees; it is not the
+build-time guard that applies these transformations.
 
 ## 6. Train
 
-When enabled, the [Linux builder](../../scripts/linux/build.py) and
-[Windows builder](../../scripts/windows/build.py) run their platform training
-flows directly; the Apple builder uses
-[`train_local_pgo.py`](../../scripts/builder/train_local_pgo.py). Each builds
-an instrumented module, runs headless playbacks, and merges the results with
-`llvm-profdata` for the final compile.
+Stage 5 ends with prepared C source under `OUT/composite-src/`, not a compiled
+game module. When training is enabled and the fingerprint check finds no
+reusable profile, **Stage 6 compiles that Stage 5 source immediately after the
+fingerprint check and before any playback runs**. This first compilation
+produces a temporary native game module with execution counters and also needs
+a native host to run it. Linux and Windows build or reuse their normal host;
+Apple builds a dedicated instrumented training host. A verified profile-cache
+hit skips both training builds. Stage 7 then compiles the prepared source
+again, optionally using the profile to optimize frequently executed code
+without changing game behavior; no machine-learning model is trained.
 
-Fingerprints prevent reuse with incompatible inputs. Training output stays in
-the private build directory and is not a public artifact.
+```mermaid
+flowchart TD
+    Prepared["Stage 5 prepared<br/>C source"]
+    Fingerprint["Input<br/>fingerprint"]
+    Host["Build or reuse<br/>playback host"]
+    Compile["Stage 6: compile Stage 5<br/>source for training"]
+    Instrumented["Training module<br/>with counters"]
+    Playback["Headless<br/>playbacks"]
+    Raw["Raw profiles"]
+    Merge["Merge profiles"]
+    Profile["Optional PGO<br/>profile data"]
+    Disabled["No PGO profile"]
+    Final["Stage 7 final<br/>module compile"]
+    Module["Final native<br/>game module"]
+
+    Prepared -->|training enabled| Fingerprint
+    Fingerprint -->|cache miss| Host --> Playback
+    Fingerprint -->|cache miss| Compile --> Instrumented --> Playback
+    Playback --> Raw --> Merge --> Profile
+    Fingerprint -->|cache hit| Profile
+    Prepared -->|source input| Final
+    Prepared -->|training disabled| Disabled --> Final
+    Profile -. "optimization input" .-> Final
+    Final --> Module
+```
+
+### Training pipeline
+
+Training is optional profile-guided optimization (PGO), not machine learning.
+Linux and Windows implement the flow in their builders; Apple invokes the
+shared [`train_local_pgo.py`](../../scripts/builder/train_local_pgo.py).
+
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Fingerprint inputs | Hashes prepared source, compiler settings, and playback code; reuses a profile only when the receipt matches. | Safe cache decision | `OUT/pgo-local/training.json` | [Linux](../../scripts/linux/build.py) (`training_fingerprint`), [Windows](../../scripts/windows/build.py) (`training_fingerprint`), [shared Apple trainer](../../scripts/builder/train_local_pgo.py) |
+| Build the playback host | On a cache miss, provides a native executable that can load the instrumented module. Linux and Windows build or reuse the normal host target; Apple builds a dedicated instrumented host. | Runnable host for deterministic training | Platform app build or `OUT/pgo-local/host/` | [Linux](../../scripts/linux/build.py) (`train`), [Windows](../../scripts/windows/build.py) (`train`), [Apple](../../scripts/builder/train_local_pgo.py) |
+| Compile Stage 5 source for training | On a cache miss, Stage 6 compiles the prepared composite with LLVM profile-generation flags before running any playback. | Temporary native module that records executed translated functions | Instrumented build under `OUT/pgo-local/` | [Linux](../../scripts/linux/build.py) (`train`), [Windows](../../scripts/windows/build.py) (`train`), [Apple hook](../../scripts/builder/profiles/bluewake.sh) (`profile_train`) |
+| Run playbacks | Boots the instrumented module headlessly and exercises the opening plus configured tours and mod combinations. | Raw execution counters from representative game paths | `*.profraw` under `OUT/pgo-local/` | [Linux playbacks](../../scripts/linux/build.py) (`train`), [Windows playbacks](../../scripts/windows/build.py) (`train`), [training script](../../scripts/builder/train_local_pgo.py) |
+| Validate and merge | Rejects incomplete runs, merges counters with `llvm-profdata`, and confirms translated functions were recorded. | Compiler-readable local PGO profile | `OUT/pgo-local/composite.profdata` | [Linux merge](../../scripts/linux/build.py) (`train`), [Windows merge](../../scripts/windows/build.py) (`train`) |
+| Feed final compile | Hashes or copies the profile into the compiler inputs so a changed profile forces recompilation; optional tiering identifies unvisited chunks. | Hot translated paths optimized from observed execution | `OUT/profiles/composite-*.profdata` or `OUT/composite.profdata` | [Linux compile profile](../../scripts/linux/build.py) (`compile_module`), [Apple merge](../../scripts/builder/profiles/bluewake.sh) (`profile_compile`) |
+
+Profiles contain measurements derived from the player's game build. They stay
+inside the private `OUT` tree and are not release artifacts.
 
 ## 7. Compile and package
 
-CMake and Ninja compile the prepared composite into a native game module. A
-separate build produces the shared host, runtime, renderer, audio, input,
-storage, and platform entry code.
+```mermaid
+flowchart TD
+    Composite["Prepared game<br/>source"]
+    Runtime["BlueWake host<br/>+ RecompCore"]
+    Module["Native game<br/>module"]
+    Host["Platform host<br/>application"]
+    Assemble["Assemble host,<br/>module, data,<br/>and provenance"]
+    Package{"Package target"}
+    Desktop["Desktop app<br/>or folder"]
+    AppImage["AppImage"]
+    IPA["Unsigned IPA"]
 
-Packaging arranges those outputs and support files for the target. Platform
-SDKs, signing, and final artifact formats diverge here.
+    Composite --> Module
+    Runtime --> Host
+    Module --> Assemble
+    Host --> Assemble --> Package
+    Package --> Desktop
+    Package --> AppImage
+    Package --> IPA
+```
+
+CMake and Ninja compile the game module separately from the platform host.
+Assembly joins them only after both native outputs succeed; packaging and
+signing then diverge by target.
 
 ### Linux (x86-64)
 
-[`scripts/linux/build.py`](../../scripts/linux/build.py) uses Clang, LLD,
-CMake, and Ninja. [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt) builds
-the host; [`scripts/linux/make_appimage.sh`](../../scripts/linux/make_appimage.sh)
-optionally creates the AppImage.
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Compile module | Uses Clang and LLD with the selected CPU, PGO, tiering, and optimization flags. | Native translated game library | `OUT/composite/gGZLE01_recomp.so` | [`compile_module`](../../scripts/linux/build.py), [`cmake/composite`](../../cmake/composite) |
+| Build host | Compiles the Linux entry, RecompCore runtime, Aurora/Dawn renderer, SDL input/audio, and settings UI. | Native Linux executable | `OUT/app/bluewake` | [`configure_app`](../../scripts/linux/build.py), [`build_app`](../../scripts/linux/build.py), [`linux/CMakeLists.txt`](../../linux/CMakeLists.txt) |
+| Assemble folder | Copies the host, module, DSP data, game inputs, provenance, and optional portable marker into one runnable tree. | Personal runnable Linux build | `OUT/BlueWake/` | [`package`](../../scripts/linux/build.py) |
+| Package AppImage | With `--appimage`, packages the assembled folder, creates update metadata, and enforces the declared glibc ceiling. | Portable Linux package | `OUT/BlueWake-x86_64.AppImage` and `.zsync` | [`package_appimage`](../../scripts/linux/build.py), [`make_appimage.sh`](../../scripts/linux/make_appimage.sh), [`check_appimage_abi.py`](../../scripts/linux/check_appimage_abi.py) |
 
-| Artifact | Location relative to `OUT` |
-| --- | --- |
-| Host | `BlueWake/bluewake` |
-| Game module | `BlueWake/gGZLE01_recomp.so` |
-| App folder | `BlueWake/` |
-| Optional AppImage | `BlueWake-x86_64.AppImage` |
-
-`--ci-container` uses the shared
-[`scripts/linux/Dockerfile`](../../scripts/linux/Dockerfile) environment.
+`--ci-container` runs the same builder inside
+[`scripts/linux/Dockerfile`](../../scripts/linux/Dockerfile); it changes the
+toolchain environment, not these build stages or outputs.
 
 ### Windows (x86-64)
 
-[`scripts/windows/build.py`](../../scripts/windows/build.py) uses Visual Studio
-LLVM/Clang, CMake, and Ninja. [`windows/CMakeLists.txt`](../../windows/CMakeLists.txt)
-adds the Windows entry, settings, crash handling, resources, and compatibility
-layer.
-
-| Artifact | Location relative to `OUT` |
-| --- | --- |
-| Host | `BlueWake/BlueWake.exe` |
-| Game module | `BlueWake/gGZLE01_recomp.dll` |
-| App folder | `BlueWake/` |
-
-[`scripts/windows/package_release.py`](../../scripts/windows/package_release.py)
-assembles the distributable folder and runtime DLLs.
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Compile module | Uses Visual Studio LLVM/Clang and LLD with the selected CPU, PGO, tiering, and optimization flags. | Native translated game library | `OUT/composite/gGZLE01_recomp.dll` | [`compile_module`](../../scripts/windows/build.py), [`cmake/composite`](../../cmake/composite) |
+| Build host | Compiles the Windows entry, runtime, renderer, input/audio, settings, resources, and crash handling. | Native Windows executable and runtime DLLs | `OUT/app/BlueWake.exe` | [`configure_app`](../../scripts/windows/build.py), [`build_app`](../../scripts/windows/build.py), [`windows/CMakeLists.txt`](../../windows/CMakeLists.txt) |
+| Assemble folder | Copies binaries, Visual C++ runtime files, DSP data, game inputs, provenance, and optional portable marker. | Personal runnable Windows build | `OUT/BlueWake/` | [`package`](../../scripts/windows/build.py) |
+| Package release | Collects the application and required runtime files for distribution workflows. | Windows release folder | Packager-selected destination | [`package_release.py`](../../scripts/windows/package_release.py) |
 
 ### macOS (Apple silicon)
 
-[`scripts/builder/build.sh`](../../scripts/builder/build.sh) with `--platform
-macos` uses Apple Clang and the macOS SDK.
-[`scripts/builder/package_macos.py`](../../scripts/builder/package_macos.py)
-creates and signs the app bundle.
-
-| Artifact | Location relative to `OUT` |
-| --- | --- |
-| App | `packaged/BlueWake.app` |
-| Game module | `packaged/BlueWake.app/Contents/Frameworks/gGZLE01_recomp.dylib` |
-| Personal game inputs | `packaged/BlueWake.app/Contents/Resources/Game/` |
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Compile module | Uses Apple Clang, the macOS SDK, arm64 CPU flags, and any selected PGO profile. | Native translated game library | `OUT/composite-macos/gGZLE01_recomp.dylib` | [`profile_compile`](../../scripts/builder/profiles/bluewake.sh) |
+| Build host | Builds the shared host and desktop Aurora renderer as an application bundle. | Unsigned host app | `OUT/app-macos/host/BlueWake.app` | [`profile_build_app`](../../scripts/builder/profiles/bluewake.sh) |
+| Package and sign | Copies the module, runtime, game inputs, and provenance into a movable bundle, then signs it. | Personal runnable macOS app | `OUT/packaged/BlueWake.app` | [`profile_package_mac`](../../scripts/builder/profiles/bluewake.sh), [`package_macos.py`](../../scripts/builder/package_macos.py) |
 
 ### iPhone and iPad (iOS/iPadOS, arm64)
 
-The default [`scripts/builder/build.sh`](../../scripts/builder/build.sh) target
-uses Apple Clang and the iPhoneOS SDK.
-[`apple/ios/CMakeLists.txt`](../../apple/ios/CMakeLists.txt) adds UIKit, touch,
-controller, and mobile services.
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Compile module | Cross-compiles the translated source with Apple Clang for arm64 and the iPhoneOS SDK. | Native translated game library | `OUT/composite-ios/gGZLE01_recomp.dylib` | [`profile_compile`](../../scripts/builder/profiles/bluewake.sh) |
+| Build app | Compiles the UIKit entry, touch/controller services, runtime, and mobile renderer. | iOS application bundle | `OUT/app/BlueWake.app` | [`profile_build_app`](../../scripts/builder/profiles/bluewake.sh), [`apple/ios/CMakeLists.txt`](../../apple/ios/CMakeLists.txt) |
+| Embed and sign | Places the module in `Frameworks`, records optimization features, and applies development or ad-hoc signatures. | Installable personal app | `OUT/app/BlueWake.app/Frameworks/gGZLE01_recomp.dylib` | [Embed and sign](../../scripts/builder/build.sh) (step 8/9) |
+| Package personal IPA | With `--ipa`, requires the translated module, strips signing material, and audits out the disc image, DOL/REL inputs, saves, and keys. | Unsigned, sideloadable personal package containing translated game code but no raw game inputs | Caller-selected path, commonly `OUT/BlueWake.ipa` | [IPA packaging and privacy audit](../../scripts/builder/build.sh) (step 9/9) |
+| Package app-only IPA | With `--app-only --ipa`, builds the host package without a translated game module and verifies that the module is absent. | Unsigned host-only package to which a player can add their own module | Caller-selected path | [App-only validation](../../scripts/builder/build.sh) (step 9/9) |
 
-| Artifact | Location relative to `OUT` | Role |
-| --- | --- | --- |
-| App | `app/BlueWake.app` | Signed or ad-hoc app bundle |
-| Game module | `app/BlueWake.app/Frameworks/gGZLE01_recomp.dylib` | Translated game module |
-| Optional IPA | `BlueWake.ipa` when requested with `--ipa OUT/BlueWake.ipa` | Unsigned package for sideloading |
-
-The IPA path excludes disc and extracted game data. PadMint can add the
-player's module to an app-only build.
+PadMint can add the player's translated module to an app-only build. Neither
+IPA mode contains the raw disc image, extracted DOL/REL files, saves, keys, or
+signing material.
 
 ### Apple TV (tvOS, arm64; experimental)
 
-[`scripts/tvos/build_device.sh`](../../scripts/tvos/build_device.sh) selects
-the tvOS branch of the Apple builder. It creates a controller-first app and
-can install, transfer the disc, and launch through `devicectl`.
+| Stage | What it does | Result | Artifact/output | Code reference |
+| --- | --- | --- | --- | --- |
+| Select tvOS | The device wrapper selects the tvOS platform, device, signing options, and controller-first application path. | Configured Apple TV build | Build arguments and `OUT/logs/` | [`build_device.sh`](../../scripts/tvos/build_device.sh), [platform selection](../../scripts/builder/build.sh) |
+| Compile module and app | Uses Apple Clang, the tvOS SDK, retagged Dawn archive, and tvOS application target. | Native module and controller-first app | `OUT/composite-tvos/gGZLE01_recomp.dylib` and `OUT/app-tvos/BlueWake.app` | [`profile_compile`](../../scripts/builder/profiles/bluewake.sh), [`profile_build_app`](../../scripts/builder/profiles/bluewake.sh) |
+| Embed and sign | Adds the module to the bundle and signs both outputs. | Installable experimental tvOS app | `OUT/app-tvos/BlueWake.app/Frameworks/gGZLE01_recomp.dylib` | [Embed and sign](../../scripts/builder/build.sh) (step 8/9) |
+| Install and launch | When requested, installs the app, transfers the disc into its data container, and launches it through `devicectl`. | Running device installation | App data `Library/Caches/BlueWake/GZLE01.iso` | [Device deployment](../../scripts/builder/build.sh) (`--install`) |
 
-| Artifact | Location relative to `OUT` |
-| --- | --- |
-| App | `app-tvos/BlueWake.app` |
-| Game module | `app-tvos/BlueWake.app/Frameworks/gGZLE01_recomp.dylib` |
-
-The current Dawn archive bridge remains experimental. See the
+The Dawn archive bridge remains experimental; see the
 [tvOS build guide](../status/TVOS_BUILD.md).
 
 ### Android (in progress)

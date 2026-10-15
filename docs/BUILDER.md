@@ -130,11 +130,11 @@ That is CPU evidence from a headless test, not an iPad frame rate.
 
 ## PadMint
 
-[PadMint](https://github.com/chrissotraidis/padmint) is the shared Mac builder being developed for
-multiple ports. Its experimental Python CLI wraps the existing BlueWake and KartPad backends, with
-source revision checks, progress, cancellation and local build records. A real BlueWake source-only
-run has passed; complete packaging and device acceptance are separate checks. A graphical Mac app
-remains future work and is not required by the direct builder instructions above.
+[PadMint](https://github.com/chrissotraidis/padmint) is the shared builder for the Pad projects and the
+easiest way to build BlueWake for iPhone and iPad: a download for Windows, Mac and Linux that opens its
+page on the player's own computer (building BlueWake needs an Apple Silicon Mac). It takes the app
+without game code from BlueWake's latest release and adds the game module made from the player's disc.
+Players' reports are in [#104](https://github.com/chrissotraidis/bluewake/issues/104).
 
 Each game backend owns disc validation, translation, mods and optimization training. See the
 [PadMint handoff](PADMINT_HANDOFF.md) for the interface and validation status. Local profile
