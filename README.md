@@ -347,9 +347,9 @@ unless you pick specific ones, since they compete with the main textures. You do
 <details>
 <summary><strong>BlueWake.exe does nothing when I open it</strong></summary>
 
-The most common cause is an older processor. The Windows build needs a CPU with AVX2 (Intel Haswell
-from 2013, AMD Ryzen, or newer) and stops before showing any message without it. Check your CPU in
-**Settings › System › About**.
+First check your processor. The Windows build needs a CPU with AVX2 (Intel Haswell from 2013, AMD
+Ryzen, or newer). Without it, BlueWake shows "BlueWake can't run on this processor" and closes. Check
+your CPU in **Settings › System › About**.
 
 If your CPU has AVX2:
 

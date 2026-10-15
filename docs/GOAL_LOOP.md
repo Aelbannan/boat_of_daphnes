@@ -42,7 +42,7 @@ the HD work (Chris, October 12).
 | Platform | Download today | New in `main` | Still to do |
 | --- | --- | --- | --- |
 | Windows | 0.7.0 zip, built on Chris's PC | Behaviour timing on by default (#335); the Mac and Linux menu layout, controller navigation and the same hotkeys (#326, #329, #330, #332) | The checks in [WINDOWS_TASKS.md](WINDOWS_TASKS.md#1-in-main-for-the-next-windows-build) on a Windows PC, then the release build |
-| Linux | None: build from source ([LINUX.md](LINUX.md)). 0.7.0's notes promised an AppImage, which was never attached | The same menus, Restart now and safe mode (#324, #327, #328); portable mode (#303); the folder picker (#344); behaviour timing (#335) | The window-resize crash fix (RecompCore#38, waiting on Chris); an AppImage built from a contributor's own disc |
+| Linux | None: build from source ([LINUX.md](LINUX.md)). 0.7.0's notes say a ready-made AppImage comes with 0.8.0 | The same menus, Restart now and safe mode (#324, #327, #328); portable mode (#303); the folder picker (#344); behaviour timing (#335) | The window-resize crash fix (RecompCore#38, being pinned in #353); an AppImage built from a contributor's own disc |
 | Mac | None: build from source | The same menus and hotkeys (#324, #326, #327) | The menu with a controller; whether the prepared build becomes the default |
 | iPhone, iPad | 0.7.0 app, with PadMint | Mods › Wind Waker HD textures (#314); the D-pad in menus and gyro aim (#301, #304) | A tap test of #316 (menu switches keep the menu open) on the iPad; an HD import on hardware (#315) |
 | Android | None: experimental own-disc builds from #93 | Not in `main` yet | #93: one builder check from LiquidAzir, then merge as "build it yourself, experimental"; HD import (#347); other phones; #238 |
@@ -68,10 +68,8 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 
 ### Waiting on Chris
 
-- **RecompCore#38** (the Linux resize crash, #325): merge it into `bluewake-next` and move the pin.
-- **#321:** whether the softer HD look is right.
+- **#321:** whether the softer HD look is right; a build with it is going on Chris's iPad.
 - **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks.
-- **0.7.0's AppImage line:** build an AppImage for 0.7.0, or change the note to say it comes with 0.8.0.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
 - **0.8.0:** when to freeze.
 
@@ -80,7 +78,7 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 1. #315: a Windows import (asked of pdale-boop on October 15) and the iOS fix checked again on the simulator; then
    merge. #347 follows #93.
 2. #93: merge once LiquidAzir's `--no-tiered` check is in and CI passes.
-3. RecompCore#38 in the pin, with Linux CI and a resize check.
+3. #353: RecompCore#38 in the pin (Chris approved, October 15), after Windows/Linux CI and a Mac check.
 4. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
    While its release build runs on someone's PC, merge only docs into `main`.
 5. Speed, horizon 2: profile what is left, then one measured change per pull request.

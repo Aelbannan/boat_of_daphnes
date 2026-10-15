@@ -158,8 +158,8 @@ the file menu. To choose which controller button presses each GameCube button, o
 also under **Controls**: when enabled, hold the right-stick click and move that stick up or down; a tap still
 enters or leaves first person. The mouse turns the game's own camera around Link and tilts it, and a left click is A; a
 cutscene, door, Z-target or first-person view takes the camera back.
-**Controls › Mouse buttons** sets what the left, middle, right and side buttons press, and **Keyboard keys for
-the GameCube buttons** changes their keys. A controller SDL doesn't
+**Controls › Mouse buttons** sets what the left, middle, right and side buttons press, and **Keyboard keys**
+changes the GameCube buttons' keys. A controller SDL doesn't
 recognise works once its mapping is in a `gamecontrollerdb.txt` (from
 [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)) beside your saves; the session log's
 `[pad] N controller mappings` line shows it was read.
@@ -234,7 +234,7 @@ clang (GNU driver, MSVC ABI) from Visual Studio.
   reserves 64 MB for the main thread (Windows' default is 1 MB).
 
 - **Better Wind Waker's REL sites.** DolRecomp names a REL's option sites by its file name after the last `/`,
-  and on Windows it joins a folder and a file with ``, so the sites in `d_a_ship` and `d_a_agbsw0` would not
+  and on Windows it joins a folder and a file with `\`, so the sites in `d_a_ship` and `d_a_agbsw0` would not
   match. The builder names the RELs' folder with `/` and a trailing `/` for that translation, which gives the
   15 option chunks the Mac build has, not 11.
 - **Windows' own costs.** The C runtime's `getenv` locks and scans the whole environment, and GXRuntime reads

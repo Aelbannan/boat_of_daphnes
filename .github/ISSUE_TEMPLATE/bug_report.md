@@ -10,7 +10,7 @@ Describe what you expected and what happened. Include steps to reproduce it.
 ## Your setup
 
 - BlueWake source revision or app build:
-- Device and operating system/version (iOS/iPadOS, macOS, Windows or experimental tvOS):
+- Device and operating system/version (iOS/iPadOS, macOS, Windows, Linux or experimental tvOS):
 - For desktop performance/crashes: CPU, GPU and graphics driver version:
 - For Apple build failures: Mac model, Xcode version and target SDK:
 - Build: default (local training) or `--no-train`:
@@ -35,7 +35,7 @@ update; include reproduction steps using a separate test configuration if you ha
 
 On iPhone/iPad, **Help & Feedback › Report a Problem on GitHub** fills in device
 information. **Share Session Log**, in the same menu, exports the session log.
-On Windows, session logs are in `%APPDATA%\BlueWake\logs`.
+On Windows, session logs are in `%APPDATA%\BlueWake\logs`; on Linux, in `~/.local/share/BlueWake/logs`.
 
 ## If the build failed
 

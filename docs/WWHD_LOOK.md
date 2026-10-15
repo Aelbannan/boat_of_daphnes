@@ -77,7 +77,7 @@ and nothing while it's off. `DOL_AURORA_BLOOM_THRESHOLD` (default 0.72) and `DOL
 0.35) tune it; `DOL_AURORA_PASS_TRACE=1` logs one frame's passes.
 
 Checked on an M3 Max from an Outset save state: the clouds glow and the HUD is pixel for pixel the same as without
-bloom; Smooth Motion runs with it. Not yet on Windows, Linux, a Deck or a phone.
+bloom; Smooth Motion runs with it. Not yet checked on Windows, Linux, a Deck or a phone.
 
 ### Far blur
 
