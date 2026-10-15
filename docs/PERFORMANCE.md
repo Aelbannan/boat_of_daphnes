@@ -178,7 +178,7 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
 
-**Not written yet** (October 15): the script below is a plan.
+**Not written yet** (October 15): the script below is a plan. The handoff for doing it is [BENCHMARK_TOUR.md](BENCHMARK_TOUR.md).
 
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.
