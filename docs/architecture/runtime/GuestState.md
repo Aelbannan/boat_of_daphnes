@@ -302,15 +302,20 @@ structures, resolving a pointer only when they access the referenced bytes.
 ```mermaid
 flowchart TD
     DOL["main.dol"]
-    REL["`REL metadata
+    REL["`REL
+metadata
 and data
 images`"]
-    Loader["Image loader"]
+    Loader["`Image
+loader`"]
     Memory["`MEM1 +
 aliases`"]
-    OS["OS globals"]
-    Devices["Device state"]
-    PC["Entry PC"]
+    OS["`OS
+globals`"]
+    Devices["`Device
+state`"]
+    PC["`Entry
+PC`"]
 
     DOL --> Loader --> Memory
     REL --> Memory
