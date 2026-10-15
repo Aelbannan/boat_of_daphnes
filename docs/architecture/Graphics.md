@@ -60,9 +60,9 @@ the points required by guest semantics.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
-| Collect gather-pipe writes | Ordered GX byte batches cross the module/host boundary | [Gather-pipe setup](../../../runtime/host/src/main.c#L8269-L8274), [bridge ABI](../../../runtime/host/src/gather_pipe_bridge.h) |
+| Collect gather-pipe writes | Ordered GX byte batches cross the module/host boundary | [Gather-pipe setup](../../runtime/host/src/main.c#L8269-L8274), [bridge ABI](../../runtime/host/src/gather_pipe_bridge.h) |
 | Parse FIFO and display lists | GX registers, resources, and draw commands reflect the game's command stream | [RecompCore GX interface](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/gxruntime/gx_recomp.h) |
-| Flush required work | Complete render operations become available to Aurora | [Host GX synchronization](../../../runtime/host/src/main.c#L10214-L10281) |
+| Flush required work | Complete render operations become available to Aurora | [Host GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
 
 ## Native rendering and presentation
 
@@ -73,8 +73,8 @@ sample against the same guest-time boundary.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
-| Initialize | A native graphics device and renderer state are available before guest execution | [Renderer initialization](../../../runtime/host/src/main.c#L7550-L7628) |
+| Initialize | A native graphics device and renderer state are available before guest execution | [Renderer initialization](../../runtime/host/src/main.c#L7550-L7628) |
 | Record and submit | Parsed GX state becomes GPU resources, passes, and commands | [Aurora backend](https://github.com/chrissotraidis/RecompCore/tree/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/graphics/aurora) |
-| Present | A completed frame reaches the display with guest-timed cadence | [Retrace and presentation](../../../runtime/host/src/main.c#L5381-L5453) |
+| Present | A completed frame reaches the display with guest-timed cadence | [Retrace and presentation](../../runtime/host/src/main.c#L5381-L5453) |
 
-Return to the runtime [high-level view](../Runtime.md#high-level-view).
+Return to the runtime [high-level view](Runtime.md#high-level-view).
