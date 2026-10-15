@@ -477,7 +477,7 @@ the return dispatch through a label table, and gating the deadline test on the o
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DOL_AURORA_FRAME_INTERP` | 1 in the app | Smooth Motion on |
+| `DOL_AURORA_FRAME_INTERP` | off unless Smooth Motion is on in the menu | Smooth Motion on |
 | `DOL_AURORA_FRAME_INTERP_STEPS` | 1 | in-between frames: 1 for 60 Hz, 3 for 120 Hz, up to 7 (240 Hz) |
 | `DOL_AURORA_FRAME_INTERP_PACING` | 60 and 90 Hz; the game's own speed at any rate | 1 paces the GPU at 120 Hz and up too, 0 turns all pacing off |
 | `DOL_AURORA_PRESENT_CLOCK` | on | 0 keeps the old 60 Hz present timing |

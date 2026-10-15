@@ -1,5 +1,7 @@
 # BlueWake Experiments & Evidence
 
+> Historical research from August 2026, BlueWake's first days. The Route B prototype that followed it (a native build from the decompilation) was later removed; current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 Machine: Apple Silicon Mac (arm64), macOS 26.5, Xcode 26.6 (clang 21.0.0),
 CMake 3.27.1, Ninja 1.13.2, Python 3.8.10 (system; newer available via Xcode).
 

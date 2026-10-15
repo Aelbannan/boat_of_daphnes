@@ -1,5 +1,7 @@
 # Independent BlueWake deep-dive prompt
 
+> Historical research: the Route B prototype this prompt describes (a native build from the decompilation) was later removed, so the `route_b` paths it names no longer exist. Current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 You are an independent senior engineer reviewing BlueWake. Investigate the repository deeply and return an evidence-backed technical report that another implementation agent can save in the repository and use to redirect its goal-based implementation loop. Challenge the existing approach where the evidence warrants it. We need actionable diagnosis and a credible path to a playable native game, not another recap of passing probes.
 
 ## Assignment and authority

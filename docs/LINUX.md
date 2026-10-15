@@ -65,7 +65,7 @@ Install CMake 3.25+, Ninja, Git, `pkg-config`, Clang/Clang++ 17 or newer, LLD,
       git build-essential pkg-config libwayland-dev libxkbcommon-dev \
       libx11-xcb-dev libx11-dev libxrandr-dev libxext-dev libxi-dev \
       libxcursor-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev \
-      libxss-dev libxtst-dev zlib1g-dev libpng-dev libfreetype6-dev \
+      libxss-dev libxtst-dev libdbus-1-dev zlib1g-dev libpng-dev libfreetype6-dev \
       libsqlite3-dev libzstd-dev libfmt-dev libbz2-dev libbrotli-dev libicu-dev
 
 Use your distribution's equivalent packages, then run:
@@ -111,6 +111,9 @@ Useful options:
     --source-only  stop after translating: checks tools, disc and translation
                    in minutes, before the long compile
     --no-mods      skip the widescreen and Better Wind Waker variants
+    --no-behaviour-timing
+                   check the turn's budget after every block, as before behaviour
+                   timing (on by default since October 14); about 9% slower
     --opt-level 1  faster to compile, a little slower in game
     --jobs N       parallel compile jobs (default: all cores, limited by memory)
     --host-only    after pulling a change to the app's own code (runtime/host/src,
@@ -183,7 +186,7 @@ settings, closes and starts again by itself.
 
 **Safe mode:** if the last launch never reached a clean exit (it crashed or was killed), the next one starts
 in safe mode, as on Windows: Fast sound, 4:3, in a window, with the mods, Better Wind Waker's settings, the
-texture pack, the gameplay extras and the stage select off. Your earlier `settings.ini` is copied beside it
+texture pack, the HD look, the gameplay extras and the stage select off. Your earlier `settings.ini` is copied beside it
 first (`settings.ini.before-safe-mode-...`), and a note says so for fifteen seconds. Turn things back
 on in the settings menu. `--safe-mode` starts in safe mode on purpose.
 
@@ -260,9 +263,11 @@ it under the Linux release exception, after it passes the release asset check:
 
     scripts/release/check_public_assets.sh build/linux/BlueWake-x86_64.AppImage
 
-### Run the downloaded AppImage
+### Run the AppImage
 
-1. Make the download executable (you only need to do this once):
+No ready-made Linux AppImage has been published yet; these steps work for one you built.
+
+1. Make the AppImage executable (you only need to do this once):
 
        chmod +x BlueWake-x86_64.AppImage
 

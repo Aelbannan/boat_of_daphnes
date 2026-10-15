@@ -178,6 +178,6 @@ prototype design, not gameplay or performance evidence.
 **Decision:** Replace blanket WAIT with **PROCEED to a bounded, Mac-first
 static-recompilation prototype**. Retain the decomp/Aurora route as the
 cleaner long-term track. Keep full-product and iPad commitment behind the
-gates in `../FEASIBILITY_REASSESSMENT_2026-08-13.md`.
+gates in `../archive/FEASIBILITY_REASSESSMENT_2026-08-13.md`.
 
 ---
