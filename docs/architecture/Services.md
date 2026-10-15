@@ -7,6 +7,7 @@
   - [Ownership split](#ownership-split)
   - [MMIO dispatch](#mmio-dispatch)
   - [Guest time and deadlines](#guest-time-and-deadlines)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
 - [Interrupt delivery](#interrupt-delivery)
 - [Disc and persistent storage](#disc-and-persistent-storage)
   - [Disc commands and asynchronous completion](#disc-commands-and-asynchronous-completion)
@@ -111,6 +112,18 @@ devices`"]
 References: [cycle domain](../../runtime/host/src/cycle_domain.c),
 [device synchronization](../../runtime/host/src/main.c#L5455-L5474), and
 [deadline selection](../../runtime/host/src/main.c#L1435-L1518).
+
+### Artifact-to-game examples
+
+| Service artifact or data | In-game action | Runtime contact | Example project contribution |
+| --- | --- | --- | --- |
+| VI, PI, and PE state | A frame reaches retrace, the game observes graphics completion, or an enabled interrupt enters its handler. | Device models update status and causes; PI masks and CPU state determine delivery. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) exercises presentation continuity by keeping Vulkan rendering alive across a resize. |
+| DI registers and completion queue | Entering a scene or starting a sequence requests assets from the disc and later runs the game's completion path. | DI commands copy bytes to guest memory; guest-cycle deadlines expose status, interrupts, or callbacks. | [PR #142](https://github.com/chrissotraidis/bluewake/pull/142) defers DVD completion so the history intro retains its music transition. |
+| SI channels and pad samples | Moving Link, aiming, conducting, navigating a menu, or entering first person reads a GameCube-format controller sample. | Native input is mapped and latched into SI channel state at retrace. | [PR #222](https://github.com/chrissotraidis/bluewake/pull/222) assigns player one to the controller the player presses and limits rumble to that port. |
+| Host camera-input state | Holding R3 and moving the right stick changes follow-camera distance while a tap still enters first person. | Host gesture state updates the existing camera integration, which adjusts camera data in guest memory. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221), carrying [PR #213](https://github.com/chrissotraidis/bluewake/pull/213), adds optional controller camera zoom. |
+| AI, DSP, PCM, and ARAM data | Music, voices, ambient sound, and effects stream while gameplay continues. | Guest-cycle audio DMA reads PCM; DSP mailboxes and ARAM transfers publish completion and interrupts. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the DSP, audio-recovery, capture, and shared host integration. |
+| Memory-card image | Selecting or saving a file changes durable game progress. | EXI/card transactions update the validated host-backed card while preserving guest status and callbacks. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated card locking, backup, validation, and atomic persistence patches. |
+| IPL SRAM | The game observes console-like configuration such as sound or clock-related state. | The SRAM adapter exposes guest bytes and persists accepted changes separately from the disc. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the SRAM runtime and player-storage integration. |
 
 ## Interrupt delivery
 

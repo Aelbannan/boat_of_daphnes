@@ -12,6 +12,7 @@
 - [Host lifecycle](#host-lifecycle)
   - [Main loop execution](#main-loop-execution)
 - [Runtime inputs and persistence](#runtime-inputs-and-persistence)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
 - [Shutdown](#shutdown)
 
 ## Responsibility
@@ -348,6 +349,19 @@ separate even though the host coordinates all three.
 | Memory card and SRAM | Preserve game saves and console-like configuration. | Loaded at startup and updated during play or shutdown | [Memory-card runtime](../../runtime/host/src/card_runtime.c), [SRAM runtime](../../runtime/host/src/ipl_sram.c) |
 | Settings and logs | Preserve host preferences and diagnostics. | Platform-managed player data | [Host startup](../../runtime/host/src/main.c#L7248-L7314) |
 | Save states | Serialize authoritative CPU, memory, alias, device, DSP, and GX state. | Created or restored on request | [Save-state implementation](../../runtime/host/src/save_state.c) |
+
+### Artifact-to-game examples
+
+| Runtime artifact or data | In-game action | Host contact | Example project contribution |
+| --- | --- | --- | --- |
+| Native game module | Starting BlueWake enters translated title and gameplay routines. | The host loads the library, validates its descriptor, and dispatches guest addresses into native functions. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the explicit module ABI and shared runtime. |
+| `main.dol` | Fresh startup initializes the always-loaded game and its global data. | The host copies DOL sections into MEM1, clears BSS, and starts at the module entry point. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated module-owned guest memory and the shared boot path. |
+| Supported disc image | Scene transitions, cutscenes, music, models, and other asset requests read original disc content. | The disc service resolves FST paths or offsets and transfers requested bytes into guest memory. | [PR #142](https://github.com/chrissotraidis/bluewake/pull/142) changes when asynchronous disc work completes to preserve an intro music transition. |
+| DSP data | Selecting LLE audio runs the console DSP program and coefficient data rather than the default HLE path. | The host validates support files and connects them to the DSP adapter. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the DSP adapter and cross-platform audio integration. |
+| Memory card and SRAM | Loading or saving a game changes the card; console-like settings persist through SRAM. | Host adapters expose guest transactions while storing durable player data outside the application. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrates card validation, locking, backups, atomic writes, and SRAM storage. |
+| Settings | Changing controls, display, renderer, or gameplay options affects later play and can survive relaunch. | Platform code loads writable settings before host initialization and saves accepted preferences. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221) adds the optional controller-zoom preference to the Controls settings. |
+| Logs | A reproduced gameplay fault records native and guest context for diagnosis without becoming guest state. | Platform and host code write diagnostics to the selected player-data location. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) uses a reproducible unmapped-PC failure and guest return state to diagnose callback corruption. |
+| Save states | A player requests a snapshot or resumes one, restoring execution, memory, devices, DSP, and GX coherently. | The host serializes or restores supported authoritative state only at a safe boundary. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) imported and hardened the shared save-state implementation and graphics-worker synchronization. |
 
 ## Shutdown
 

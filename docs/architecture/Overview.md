@@ -124,6 +124,9 @@ All supported platforms share the same broad pipeline:
 | Compile | Prepared game source, BlueWake host, and runtime sources | Native game module and platform application |
 | Package | Native outputs and required support files | Linux, Windows, macOS, iOS/iPadOS, or tvOS deliverable |
 
+Concrete player-visible uses and the PRs that contributed to these outputs are
+listed in [build artifact-to-game examples](Build.md#artifact-to-game-examples).
+
 Android support is in progress in
 [PR #93](https://github.com/chrissotraidis/bluewake/pull/93), so it is not yet
 shown as a current platform branch.
@@ -145,6 +148,13 @@ The packaged application runs these cooperating parts in one native process:
 | Game module | Executes translated game instructions against shared guest state. |
 | Guest state | Preserves GameCube registers, memory, addresses, and time across execution boundaries. |
 | Compatibility services and graphics | Provide guest-visible devices and GX behavior through native input, audio, storage, and GPU APIs. |
+
+The detailed runtime chapters connect each owned artifact to an in-game action
+and a concrete contributing PR: [host data](Host.md#artifact-to-game-examples),
+[game-module artifacts](GameModule.md#artifact-to-game-examples),
+[guest state](GuestState.md#game-perspective-examples),
+[service data](Services.md#artifact-to-game-examples), and
+[graphics data](Graphics.md#artifact-to-game-examples).
 
 For the complete component map, interaction boundaries, and links to each
 entity's internals, continue to [Runtime](Runtime.md).

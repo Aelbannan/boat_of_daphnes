@@ -6,6 +6,7 @@
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
   - [Guest-visible GX state](#guest-visible-gx-state)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
   - [Guest resource resolution](#guest-resource-resolution)
 - [GX command path](#gx-command-path)
   - [Gather-pipe transport](#gather-pipe-transport)
@@ -83,6 +84,18 @@ separate from native GPU objects that Aurora and Dawn create to implement it.
 | Raster and pixel engine | BP, TEV, blend, depth, token, and finish state | Controls pixels and completion events |
 | Textures and TLUTs | Image descriptors, palettes, invalidation, source ranges | Connects guest image data to sampled resources |
 | Copy state | EFB copy parameters and destinations | Publishes rendered results to memory or presentation |
+
+### Artifact-to-game examples
+
+| Graphics artifact or data | In-game action | Runtime contact | Example project contribution |
+| --- | --- | --- | --- |
+| FIFO and command-processor state | Drawing Link, an actor, the HUD, or a room sends ordered GX commands and array configuration. | Translated stores enter the gather pipe; GXRuntime updates FIFO and CP state before decoding draws. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the direct and batched gather-pipe paths used by the native module. |
+| Vertex descriptions and guest arrays | A model draw selects positions, normals, colors, and texture coordinates from guest memory. | VCD/VAT and CP array state tell GXRuntime how to resolve and decode the draw's guest-backed vertices. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated the guest resolver and renderer paths used by translated model draws. |
+| Transform state | The camera moves or an actor animates, changing matrices, viewport, projection, or lights. | XF commands update front-end state that Aurora consumes when producing native render work. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221) extends camera control through guest camera data while leaving translated transform and rendering code in use. |
+| Raster, TEV, depth, and blend state | Water, fog, transparency, lighting, particles, and interface elements combine into the frame. | BP commands configure pixel processing; GXRuntime normalizes that state for Aurora. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) brought the current GXRuntime/Aurora rendering integration into BlueWake. |
+| Textures and TLUTs | A scene, character, or HD replacement samples image and palette data. | GXRuntime resolves guest texture/TLUT ranges; Aurora creates or updates native resources. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated texture-pack and renderer-resource integration. |
+| EFB and copy state | The game copies a rendered result for presentation or reads current EFB content for a gameplay check. | Copy parameters select the destination and synchronization point; the host preserves guest-visible completion. | [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) pins the matching runtime so Picto Box subject recognition reads the current EFB. |
+| Dawn surface and presentation resources | Resizing the game window recreates or reconfigures native presentation while play continues. | Aurora and Dawn retain GX work while the platform surface changes; VI timing still services presentation. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) adopts the runtime fix that keeps a resized Vulkan window drawing. |
 
 ### Guest resource resolution
 

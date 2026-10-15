@@ -4,6 +4,7 @@
 
 - [Responsibility](#responsibility)
 - [Module contents](#module-contents)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
 - [Module loading and ABI](#module-loading-and-abi)
 - [Translated-code dispatch](#translated-code-dispatch)
 
@@ -23,6 +24,16 @@ new high-level game API.
 | Dispatch tables | Map a guest program counter or function pointer to the corresponding native function. | [`generate_composite.py`](../../scripts/generate_composite.py#L562-L707) |
 | DOL and REL metadata | Describe code ranges, data images, BSS, aliases, and the initial entry point. | [`generate_composite.py`](../../scripts/generate_composite.py#L799) |
 | Module descriptor | Publishes the ABI contract, callbacks, metadata, and optional shared CPU and memory storage. | `staticrecomp_get_module` export |
+
+### Artifact-to-game examples
+
+| Module artifact | In-game action | Runtime contact | Example project contribution |
+| --- | --- | --- | --- |
+| Translated DOL functions | Always-loaded systems run the title flow, main loop, OS support, and shared game logic. | Dispatch maps a DOL guest `pc` to its native translated function. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the native module, dispatch chassis, and host integration. |
+| Translated REL functions | Entering a scene or using a system implemented by a relocatable module executes its original code. | Dispatch resolves the REL's linked guest code range while guest data remains at linked addresses. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) added the combined DOL/REL composite and shared REL storage. |
+| Dispatch tables | A call, return, callback, or interrupt resumes at the guest address selected by game state. | Generated range tables select the matching native function without rewriting the guest `pc`. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) fixes a DVD callback that could corrupt the paused function's return path. |
+| DOL and REL metadata | Boot loads initialized data; scene modules see relocated data and zeroed BSS. | The host consumes code ranges, data images, BSS descriptions, aliases, and the entry point. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) contributed the generated metadata and module-owned guest storage contract. |
+| Module descriptor and shared storage | Launch binds the host to the exact module ABI before the title sequence begins. | The host validates versions and sizes, then adopts compatible `CPUState` and MEM1 exports. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) introduced the explicit descriptor, CPU contract, and shared-storage exports. |
 
 ## Module loading and ABI
 

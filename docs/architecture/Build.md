@@ -5,6 +5,7 @@
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
   - [Concepts](#concepts)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
 - [1. Coordinate](#1-coordinate)
   - [`bluewake.sh` game profile](#bluewakesh-game-profile)
   - [Linux builder](#linux-builder)
@@ -96,6 +97,25 @@ checkout and prefixes shared dependency caches that intentionally live outside
 | Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
 | Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile | `OUT/pgo-local/composite.profdata` or `OUT/composite.profdata` |
 | Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application | [Platform artifact paths](#7-compile-and-package) |
+
+### Artifact-to-game examples
+
+Build artifacts are not guest objects that gameplay modifies directly. This
+table instead shows which player-visible behavior each artifact enables once
+it is consumed by a later build stage or loaded at runtime. The cited PR is a
+concrete BlueWake contribution that created, validated, or exercised that
+artifact; it need not be the artifact's historical origin.
+
+| Artifact | Player-visible use | How it reaches the game | Example project contribution |
+| --- | --- | --- | --- |
+| Build logs and provenance | A developer can reproduce and diagnose the exact build that a player tested. | Builders record selected inputs, stages, tool output, and native artifacts under `OUT`. | [PR #254](https://github.com/chrissotraidis/bluewake/pull/254) makes the Linux build environment reproducible and shared with CI. |
+| Pinned RecompCore and DolRecomp checkout | Every translated action and compatibility service uses the selected translator/runtime behavior. | DolRecomp generates the game code; RecompCore supplies guest CPU, services, graphics, DSP, and host interfaces. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) advances the runtime pin so a resized Vulkan window keeps drawing. |
+| Extracted `main.dol` and RELs | The title flow, Link's actions, scenes, actors, and other original routines remain available for translation. | Extraction supplies the executable and 415 relocatable modules without changing the player's disc. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the shared extraction and build pipeline used by the current module. |
+| DolRecomp-generated C | Original PowerPC routines execute as compiled native functions. | The compiler turns mechanically translated DOL and REL functions into the game module. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated the translated module and its cross-platform host contract. |
+| Composite source and metadata | Calls, returns, callbacks, and scene-module transitions resolve across DOL and REL code. | Composite generation joins translated units with dispatch, data-image, alias, and ABI metadata. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) exercises this boundary by preserving the correct translated return path around a DVD callback. |
+| PGO profile | Frequently exercised training routes can be optimized without changing guest-visible behavior. | Clang consumes merged execution counts while compiling the final translated module. | [PR #243](https://github.com/chrissotraidis/bluewake/pull/243) preserves the existing profile when a host-only change rebuilds the app. |
+| Native game module and platform host | Starting BlueWake loads translated gameplay and connects it to windows, input, audio, files, and graphics. | The host dynamically loads the module and coordinates its shared guest state. | [PR #254](https://github.com/chrissotraidis/bluewake/pull/254) validates this Linux build in the same container used by CI. |
+| Packaged Linux AppImage | A Linux or SteamOS player launches the assembled host, module, and support files as one application. | AppImage packaging arranges the already-built runtime without including private game data in CI. | [PR #217](https://github.com/chrissotraidis/bluewake/pull/217) adds SteamOS-compatible AppImage packaging validation. |
 
 ## 1. Coordinate
 

@@ -93,7 +93,10 @@ function call between every pair of entities.
 | Guest machine state | Preserves the GameCube-visible CPU, memory, address, timing, and exception model across host/module transitions; DOL and REL layouts still supply runtime data and addresses. | `CPUState`, MEM1, guest aliases, program counter, cycle counters, and exception state | [Guest machine state](GuestState.md) |
 | Compatibility services | Preserve guest-visible hardware and operating-system semantics while adapters connect device work to native facilities. | MMIO devices, timing, callbacks, interrupts, disc, card, input, audio, and DSP state | [Compatibility services](Services.md) |
 | Graphics stack | Accepts GX FIFO and display-list work; GXRuntime interprets it, Aurora creates renderer work, Dawn reaches the platform GPU API, and the host coordinates retrace and presentation. | GX state, renderer resources, command submission, synchronization, and presentation | [Graphics stack](Graphics.md) |
-| Runtime data | Keeps read-only original game content separate from mutable player data and from translated code. | Disc image and DOL; memory card, SRAM, settings, logs, and save states in platform-managed storage | [Runtime inputs and persistence](Host.md#runtime-inputs-and-persistence) and [disc and storage services](Services.md#disc-and-storage) |
+| Runtime data | Keeps read-only original game content separate from mutable player data and from translated code. | Disc image and DOL; memory card, SRAM, settings, logs, and save states in platform-managed storage | [Runtime inputs and persistence](Host.md#runtime-inputs-and-persistence) and [disc and storage services](Services.md#disc-and-persistent-storage) |
+
+For concrete in-game uses and contribution history, follow the artifact-example
+section in each entity's linked chapter.
 
 ## Interaction boundaries
 
@@ -103,7 +106,7 @@ function call between every pair of entities.
 | Host ↔ game module | `StaticRecompModuleDesc`, callbacks, dispatch, and shared-storage exports | Allows the host and translated code to be compiled separately | [Module loading and ABI](GameModule.md#module-loading-and-abi) |
 | Host ↔ guest state | Access to shared CPU state and guest memory through runtime interfaces and guest-memory helpers | Supports execution control, event delivery, and game-specific integrations | [Host lifecycle](Host.md#host-lifecycle), [ownership and address model](GuestState.md#ownership-and-address-model) |
 | Module ↔ guest state | Shared `CPUState`, memory access, guest PC, and address aliases | Preserves the machine model expected by translated PowerPC code | [Ownership and address model](GuestState.md#ownership-and-address-model) |
-| Guest execution ↔ services | MMIO, HLE calls, deadlines, callbacks, and interrupts | Turns guest-visible hardware operations into host-managed work | [Service boundary](Services.md#service-boundary) |
+| Guest execution ↔ services | MMIO, HLE calls, deadlines, callbacks, and interrupts | Turns guest-visible hardware operations into host-managed work | [MMIO dispatch](Services.md#mmio-dispatch) |
 | Game module → graphics | GX gather-pipe data and display lists | Preserves the original graphics command model while using a native renderer | [GX command path](Graphics.md#gx-command-path) |
 | Host ↔ persistent data | Platform storage paths and durable file formats | Keeps mutable player data outside the application and game module | [Runtime inputs and persistence](Host.md#runtime-inputs-and-persistence) |
 
