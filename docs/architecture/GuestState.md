@@ -448,46 +448,18 @@ the labeled MEM1 boundaries, their sizes and positions are not to scale.
 
 ```mermaid
 flowchart TB
-    High["`High address
-0x82000000 — exclusive`"]
-
-    subgraph Backing["MEM1 native backing — 32 MiB"]
+    subgraph MEM1["MEM1 native backing — 32 MiB · high 0x82000000 · low 0x80000000"]
         direction TB
         Extension["`BlueWake extension — 8 MiB
-0x81800000–0x81FFFFFF
-linked or raw REL storage`"]
+0x81800000–0x81FFFFFF`"]
+        Stack["Guest stack"]
+        Arena["Arenas and heaps"]
+        BSS["DOL uninitialized data — BSS"]
+        Data["DOL initialized data"]
+        OS["OS low memory, boot state and globals"]
 
-        subgraph Retail["Retail MEM1 — 24 MiB · 0x80000000–0x817FFFFF"]
-            direction TB
-            Stack["`Guest stack
-title and boot selected`"]
-            Arena["`Arenas and heaps
-title managed`"]
-            BSS["`DOL uninitialized data
-BSS cleared at load`"]
-            Data["`DOL initialized data
-copied from the image`"]
-            OS["`OS low memory
-boot state and globals`"]
-
-            Stack --- Arena --- BSS --- Data --- OS
-        end
+        Extension ~~~ Stack ~~~ Arena ~~~ BSS ~~~ Data ~~~ OS
     end
-
-    Low["`Low address
-0x80000000`"]
-    Mirror["`Uncached guest view
-0xC0000000–0xC1FFFFFF
-same backing bytes`"]
-    Aliases["`Registered REL aliases
-can override contiguous resolution`"]
-
-    High --- Extension
-    Extension --- Stack
-    OS --- Low
-    Mirror -.-> Extension
-    Mirror -.-> Retail
-    Aliases -.-> Extension
 ```
 
 The diagram labels the cached guest view. Clearing the mirror bit maps the
