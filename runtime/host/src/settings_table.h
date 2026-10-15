@@ -82,7 +82,7 @@ inline constexpr Setting kSettings[] = {
      .label = "Widescreen", .tab = Tab::Mods, .control = Control::Custom, .next_launch = Os::All},
     {.key = "BLUEWAKE_HD_LOOK", .old_windows = "hd_look", .kind = Kind::Bool, .label = "Wind Waker HD look   (F2)",
      .control = Control::Switch,
-     .note = "The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom. Off by default."},
+     .note = "The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, cloud shadows and edge light outdoors, torch light, a soft distance and bloom. Off by default."},
     // Custom: the button that goes fullscreen now is drawn above the switch.
     {.key = "DOL_AURORA_FULLSCREEN", .old_windows = "fullscreen", .kind = Kind::Bool,
      .label = "Start in fullscreen", .control = Control::Custom, .next_launch = Os::All},
@@ -200,6 +200,10 @@ inline constexpr Setting kSettings[] = {
      .label = "Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)", .tab = Tab::Controls},
     {.key = "DOL_AURORA_ASPECT_FIT", .old_windows = "keep_aspect", .kind = Kind::Bool, .on = Os::Windows,
      .label = "Keep the picture's shape (black bars rather than stretching)", .control = Control::Custom,
+     .next_launch = Os::All},
+    // Picto Box photos under widescreen keep their 4:3 shape (#338). Only in the
+    // settings file while it is off by default: no menu entry.
+    {.key = "BLUEWAKE_PICTO_CROP", .old_windows = "picto_crop", .kind = Kind::Bool, .tab = Tab::Mods,
      .next_launch = Os::All},
     {.key = "BLUEWAKE_PAUSE_UNFOCUSED", .old_windows = "pause_unfocused", .kind = Kind::Bool,
      .label = "Pause while the window is in the background", .control = Control::Switch},

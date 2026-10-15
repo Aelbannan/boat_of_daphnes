@@ -48,7 +48,8 @@ int main() {
         "texture_pack=D:\\Packs\\WWHD\nhaptics=classic\nhaptics_strength=35\nhaptics_triggers=0\naspect=21:9\n"
         "keep_aspect=0\nbetterww=1\nhd_textures=1\nlle_audio=1\noption.swift_sail=1\noption.instant_text=0\n"
         "movement_extras=1\nsprint_speed=1.84\nfast_transitions=1\nquick_doors=1\nstage_select=1\n"
-        "picto_crop=1\n";
+        "picto_crop=1\n"
+        "unheard_of=1\n";
     OldLines player = lines_of(old_file);
     assert(bw_settings::convert_old_windows(player, pack));
     const auto v = values_of(player);
@@ -73,7 +74,7 @@ int main() {
         {"BLUEWAKE_DSP_MODE", "lle"}, {"BLUEWAKE_OPTIONS", "-instant_text,swift_sail"},
         {"BLUEWAKE_JUMP_BUTTON", "1"}, {"BLUEWAKE_SPRINT_SPEED", "1.84"}, {"BLUEWAKE_SPRINT_CHOICE", "1.84"},
         {"BLUEWAKE_FAST_FORWARD", "1"}, {"BLUEWAKE_FADE_FRAMES", "6"}, {"BLUEWAKE_QUICK_DOORS", "1"},
-        {"BLUEWAKE_STAGE_SELECT_TOGGLE", "1"}, {"picto_crop", "1"}};
+        {"BLUEWAKE_STAGE_SELECT_TOGGLE", "1"}, {"BLUEWAKE_PICTO_CROP", "1"}, {"unheard_of", "1"}};
     for (const auto& [key, value] : expected) {
         const auto found = v.find(key);
         assert(found != v.end() && found->second == value);
@@ -82,13 +83,13 @@ int main() {
     // In the table's order, then the line nobody knew.
     int last = -1;
     for (const auto& [key, value] : player) {
-        if (key == "picto_crop")
+        if (key == "unheard_of")
             break;
         const int at = static_cast<int>(bw_settings::find(key.c_str()) - bw_settings::kSettings);
         assert(at > last);
         last = at;
     }
-    assert(player.back().first == "picto_crop");
+    assert(player.back().first == "unheard_of");
 
     // HD textures off keep the folder for when they come back; on without a
     // folder of their own is the default one.
@@ -118,7 +119,7 @@ int main() {
     assert(l.at("DOL_AURORA_FRAME_INTERP_STEPS") == "3");
 
     // A file in the desktop format (with a line nobody knows) is not old.
-    OldLines current = lines_of("BLUEWAKE_ASPECT=16:9\nBLUEWAKE_OPTIONS=none,instant_text\npicto_crop=1\n");
+    OldLines current = lines_of("BLUEWAKE_ASPECT=16:9\nBLUEWAKE_OPTIONS=none,instant_text\nunheard_of=1\n");
     const OldLines before = current;
     assert(!bw_settings::convert_old_windows(current, pack));
     assert(current == before);
