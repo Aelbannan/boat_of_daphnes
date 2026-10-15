@@ -34,8 +34,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 ## Where things stand on October 15
 
 **The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
-Nothing has been released since. `main` has 86 merged pull requests on top of it: 55 change the app or its builds
-and 31 are docs. pdale-boop wrote 21 of them; cforain, jkoehler11, jslay88 and Mrlinkwii contributed too. The
+Nothing has been released since. The changes in `main` include contributions from pdale-boop, cforain,
+jkoehler11, jslay88 and Mrlinkwii. The
 [next release's draft](status/RELEASE_NEXT_DRAFT_2026-10-11.md) lists the changes with their checks. 0.8.0 waits for
 the HD work (Chris, October 12).
 
@@ -68,19 +68,21 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 
 ### Waiting on Chris
 
-- **#321:** whether the softer HD look is right; a build with it is going on Chris's iPad.
-- **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks.
+- **#321:** whether the softer HD look is right. A build with it is on Chris's iPad Pro since October 15 (sun shadows off; ambient occlusion, cloud shadows, bloom and the far blur gentler); saves unchanged.
+- **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks; #342 also needs its conflicts with `main` resolved before integration.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
 - **0.8.0:** when to freeze.
 
 ### Next, in order
 
-1. #315: a Windows import (asked of pdale-boop on October 15) and the iOS fix checked again on the simulator; then
-   merge. #347 follows #93.
+1. #315: a Windows import (asked of pdale-boop on October 15), an authentic WUD/WUX comparison, and the iOS fix
+   checked again on the simulator. Keep the draft's iPhone/iPad hardware, memory and lifecycle checks open until
+   they pass. #347 follows #93 and #315, with its own Android phone and lifecycle checks.
 2. #93: merge once LiquidAzir's `--no-tiered` check is in and CI passes.
 3. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
    While its release build runs on someone's PC, merge only docs into `main`.
-4. Speed, horizon 2: profile what is left, then one measured change per pull request.
+4. Speed, horizon 2: first the benchmark tour ([BENCHMARK_TOUR.md](BENCHMARK_TOUR.md)), so every change is measured the
+   same way; then profile what is left, one measured change per pull request.
 
 ## The plan from October 12 (Chris's decisions)
 
