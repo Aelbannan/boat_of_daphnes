@@ -10,6 +10,7 @@
   - [Game-perspective examples](#game-perspective-examples)
 - [DOL and REL roles](#dol-and-rel-roles)
 - [Ownership and address model](#ownership-and-address-model)
+  - [MEM1 layout](#mem1-layout)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
 - [Boot state](#boot-state)
 - [Guest time and exceptions](#guest-time-and-exceptions)
@@ -435,6 +436,54 @@ initializes both, and sets `CPUState.ram` to the selected MEM1 base. Dispatch,
 memory, device, and callback paths then receive the same CPU pointer and reach
 the same memory through it. No CPU or MEM1 copy is required when execution
 crosses the host/module ABI.
+
+### MEM1 layout
+
+BlueWake provides one contiguous 32 MiB MEM1 allocation. The lower 24 MiB is
+the retail GameCube range; the upper 8 MiB extends the backing used by the
+linked runtime. Within the retail range, DOL sections occupy their linked
+addresses while stack, arena, and heap placement comes from the title and the
+boot state. The blocks below are therefore a map of responsibilities, not a
+to-scale set of fixed subranges.
+
+```mermaid
+flowchart TB
+    High["`High address
+0x82000000 — exclusive`"]
+
+    subgraph Backing["MEM1 native backing — 32 MiB"]
+        direction TB
+        Extension["`BlueWake extension — 8 MiB
+0x81800000–0x81FFFFFF
+linked or raw REL storage`"]
+        Retail["`Retail MEM1 — 24 MiB
+0x80000000–0x817FFFFF
+
+title-defined stack, arenas and heaps
+DOL initialized data and BSS
+OS low memory and boot state`"]
+    end
+
+    Low["`Low address
+0x80000000`"]
+    Mirror["`Uncached guest view
+0xC0000000–0xC1FFFFFF
+same backing bytes`"]
+    Aliases["`Registered REL aliases
+can override contiguous resolution`"]
+
+    High --- Extension --- Retail --- Low
+    Mirror -.-> Backing
+    Aliases -.-> Extension
+```
+
+The diagram labels the cached guest view. Clearing the mirror bit maps the
+uncached `0xC0000000–0xC1FFFFFF` view onto the same backing bytes; it does not
+allocate a second MEM1. Registered REL aliases are checked according to the
+resolver rules below and can direct a linked range to separate shared storage.
+[Storage contract](../../cmake/composite/module_cpu_contract.h#L16-L27),
+[host allocation](../../runtime/host/src/main.c#L7688-L7696), and
+[boot layout](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c).
 
 ### Guest-to-host address resolution
 
