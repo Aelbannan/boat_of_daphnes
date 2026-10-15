@@ -22,17 +22,28 @@ exceptions, and the program counter at which translated execution resumes.
 
 ## Mechanical contents
 
-Mechanically, guest state is an authoritative `CPUState` structure plus the
-storage reachable through the guest address space. Generated code expresses
-guest-register reads and updates through that structure, while the native
-compiler may temporarily keep working values in native registers. When
-execution reaches a boundary at which the host or runtime can observe guest
-state, the updates required by the generated C program are visible in
-`CPUState`; this is not a blanket flush of every field at every boundary. A
-translated block also performs loads and stores through the runtime memory
-helpers, charges guest cycles and leaves the next guest address in `pc`. The
-host receives the same authoritative state when the block yields rather than
-reconstructing the CPU from native registers. [Generated-state optimization](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/core/cpu.h#L193-L200)
+The two main pieces are separate native allocations with different jobs:
+
+| Term | Plain meaning | Concrete representation in BlueWake |
+| --- | --- | --- |
+| `CPUState` | The current state of the guest Gekko processor: what its registers contain, which guest instruction comes next, and what timing or exception work is pending. It does **not** contain the guest's RAM bytes. | One C structure containing the guest register file, `pc`, control and exception fields, cycle accounting, a pointer to memory, and native access hooks. [Current structure](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/core/cpu.h#L129-L192) |
+| MEM1 | The guest's main-memory contents: program data, stacks, heaps, loaded DOL sections, and materialized REL data addressed by the game. It does **not** contain the CPU registers. | A 32 MiB byte array in the BlueWake process. `CPUState.ram` points to that array; the first 24 MiB corresponds to retail GameCube MEM1 and the remaining 8 MiB supports BlueWake's linked layout. [Storage contract](../../cmake/composite/module_cpu_contract.h#L16-L27), [storage selection](../../cmake/composite/module_cpu_contract.h#L58-L94) |
+
+Put another way, `CPUState` answers “what is the guest processor doing now?”,
+while MEM1 answers “what bytes are currently in guest main memory?”. Together
+they form the core guest machine state, with REL alias storage and device state
+attached through the address and service interfaces described below.
+
+Generated code expresses guest-register reads and updates through `CPUState`,
+while the native compiler may temporarily keep working values in native
+registers. When execution reaches a boundary at which the host or runtime can
+observe guest state, the updates required by the generated C program are
+visible in `CPUState`; this is not a blanket flush of every field at every
+boundary. A translated block performs loads and stores through the runtime
+memory helpers, charges guest cycles and leaves the next guest address in `pc`.
+The host receives the same authoritative state when the block yields rather
+than reconstructing the CPU from native registers. [Generated-state
+optimization](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/core/cpu.h#L193-L200)
 
 For example, if a guest register contains `0x80300000`, an ordinary MEM1 load
 with no overriding alias resolves it to backing pointer `B + 0x00300000`, where
