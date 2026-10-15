@@ -5,6 +5,7 @@
 - [Responsibility](#responsibility)
 - [Mechanical contents](#mechanical-contents)
   - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
+  - [Host work across the guest/native boundary](#host-work-across-the-guestnative-boundary)
   - [CPUState layout](#cpustate-layout)
 - [DOL and REL roles](#dol-and-rel-roles)
 - [Ownership and address model](#ownership-and-address-model)
@@ -92,6 +93,55 @@ Cached and uncached MEM1 addresses converge on the same backing bytes. REL
 aliases preserve generated linked addresses while pointing both the host and
 translated module at shared storage. Device ranges do not become host memory
 pointers; they invoke compatibility services through the access hooks.
+
+### Host work across the guest/native boundary
+
+The BlueWake host is always native code. “Guest-facing” and “native-facing”
+describe what that code operates on: guest-facing work changes or observes the
+GameCube machine model, while native-facing work calls process, file, window,
+audio, input, or GPU facilities. Dispatch is the handoff between host code and
+translated game code; it is not a switch into an emulated CPU process.
+
+```mermaid
+flowchart TD
+    Host["BlueWake host<br/>native code"]
+
+    subgraph Guest["Guest-facing operations"]
+        direction TB
+        GuestWork["Operate on the GameCube model"]
+        Initialize["Initialize CPUState and MEM1<br/>load DOL and REL data"]
+        Dispatch["Dispatch the game module<br/>at the current guest PC"]
+        Service["Read or update guest memory<br/>service MMIO and device state"]
+        Events["Advance guest time<br/>deliver callbacks and exceptions"]
+        GuestWork --> Initialize
+        GuestWork --> Dispatch
+        GuestWork --> Service
+        GuestWork --> Events
+    end
+
+    subgraph Native["Native-facing operations"]
+        direction TB
+        NativeWork["Use host platform facilities"]
+        Module["Load the native game library"]
+        Files["Read disc and resource files<br/>persist saves and settings"]
+        Platform["Poll input and lifecycle events<br/>manage windows and audio"]
+        Graphics["Submit graphics work<br/>and present through the GPU"]
+        NativeWork --> Module
+        NativeWork --> Files
+        NativeWork --> Platform
+        NativeWork --> Graphics
+    end
+
+    Host --> GuestWork
+    Host --> NativeWork
+```
+
+| Runtime phase | Guest-facing host work | Native-facing host work |
+| --- | --- | --- |
+| Startup | Selects the authoritative `CPUState` and MEM1 storage, installs access hooks, copies DOL data, establishes REL aliases, initializes guest-visible devices, and sets the entry `pc`. | Opens the native game library, resolves its ABI export, opens configured files, and creates renderer, audio, input, and platform resources. [Host initialization](../../../runtime/host/src/main.c#L7316-L8115) |
+| Guest-time turn | Sets a cycle budget, calls `mod->dispatch(&cpu, cpu.pc)`, then examines the returned PC, cycle charge, exception, and stop state. | Checks platform quit state and performs host scheduling around the native module call. [Main loop](Host.md#main-loop-execution) |
+| I/O and services | Resolves guest addresses, models MMIO registers, advances device deadlines, writes DMA or callback results into guest memory, and publishes interrupts. | Reads disc and player-data files, samples controllers, sends audio to the platform queue, and passes graphics work toward the GPU. [Compatibility services](Services.md) and [graphics stack](Graphics.md) |
+| Persistence and shutdown | Serializes or restores CPU, MEM1, alias, and device state only at a safe host boundary. | Writes save-state, card, SRAM, settings, and log files and releases native resources. [Runtime inputs and persistence](Host.md#runtime-inputs-and-persistence) and [shutdown](Host.md#shutdown) |
 
 ### CPUState layout
 
