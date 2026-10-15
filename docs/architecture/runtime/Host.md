@@ -6,7 +6,8 @@
 - [Platform entry layers](#platform-entry-layers)
   - [Linux entry](#linux-entry)
   - [Windows entry](#windows-entry)
-  - [Apple entry](#apple-entry)
+  - [Apple mobile entry](#apple-mobile-entry)
+  - [macOS shared host entry](#macos-shared-host-entry)
   - [Shared host handoff](#shared-host-handoff)
 - [Host lifecycle](#host-lifecycle)
   - [Main loop execution](#main-loop-execution)
@@ -16,54 +17,63 @@
 ## Responsibility
 
 The platform application and shared BlueWake host form the handwritten native
-side of the running process. Platform entry code resolves OS-specific
-resources and events; the host owns the common lifecycle, loads the translated
-module, and coordinates guest execution with compatibility and graphics
-services.
+side of the running process. Linux, Windows, and Apple mobile entry code
+resolve OS-specific resources and events before calling the shared entry;
+macOS enters the shared host directly. The host owns the common lifecycle,
+loads the translated module, and coordinates guest execution with
+compatibility and graphics services.
 
 ```mermaid
 flowchart TD
     Package["Packaged app"]
-    Entry["`Platform
-entry`"]
+    Startup["`Platform
+startup`"]
     Paths["`Resources +
 data paths`"]
-    Host["`bluewake_
-host_main`"]
+    Host["`Shared host
+entry`"]
     Module["Game module"]
     Runtime["`State +
 services
 + graphics`"]
 
-    Package --> Entry --> Paths --> Host
+    Package --> Startup --> Host
+    Paths -->|"`resolved by
+wrapper or host`"| Host
     Host --> Module
     Host --> Runtime
 ```
 
 ## Platform entry layers
 
-Platform-specific entry code resolves resources and writable storage, prepares
-configuration, and hands control to the shared host. These diagrams show
-conceptual responsibilities and data flow rather than exact call order.
+Linux, Windows, and Apple mobile wrappers resolve resources and writable
+storage, prepare configuration, and hand control to the shared host entry.
+macOS begins at that shared entry and resolves its package there. These
+diagrams show conceptual responsibilities and data flow rather than exact call
+order.
 
 ```mermaid
 flowchart TD
     Linux["Linux entry"]
     Windows["Windows entry"]
-    Apple["Apple entry"]
-    Host["Shared BlueWake host"]
+    Mobile["`iOS, iPadOS,
+and tvOS entry`"]
+    Mac["macOS app"]
+    Host["`Shared host
+entry`"]
 
     Linux -->|"paths and configuration"| Host
     Windows -->|"paths and configuration"| Host
-    Apple -->|"paths and configuration"| Host
+    Mobile -->|"paths and configuration"| Host
+    Mac -->|"enters directly"| Host
 ```
 
 | Component | What it does |
 | --- | --- |
 | Linux entry | Resolves executable-relative resources, Linux player-data paths, portable mode, and launch options before calling the shared host. [Source](../../../linux/src/linux_entry.c#L361-L566) |
 | Windows entry | Resolves executable-relative resources and Windows player data, then prepares Windows process services around the shared host. [Source](../../../windows/src/win_entry.c#L563-L747) |
-| Apple mobile entry | Integrates with UIKit and SDL, resolves app-container and bundle paths, and starts the shared host on iOS, iPadOS, and tvOS. [Source](../../../apple/ios/src/ios_entry.m#L276-L474) |
-| macOS packaged host | Enters through the shared host executable and lets it resolve the macOS `.app` bundle directly. [Source](../../../runtime/host/src/main.c#L6332-L6381) |
+| Apple mobile entry | Integrates with UIKit and SDL, resolves app-container and bundle paths, and calls the renamed shared host entry on iOS, iPadOS, and tvOS. [Source](../../../apple/ios/src/ios_entry.m#L276-L474) |
+| macOS shared host entry | Compiles and enters the shared host's `main` directly, then lets it resolve the macOS `.app` bundle. [Entry](../../../runtime/host/src/main.c#L7248), [bundle resolution](../../../runtime/host/src/main.c#L6332-L6381) |
 
 ### Linux entry
 
@@ -131,7 +141,7 @@ SDL metadata, and the settings hotkey before entering the shared host.
 | Native process preparation | Installs crash handling, raises timer resolution and optional process priority, identifies the app to SDL, and installs the settings key hook. [Source](../../../windows/src/win_entry.c#L716-L738) |
 | Host handoff | Creates the launch-recovery marker and calls `bluewake_host_main` with the selected module path. [Source](../../../windows/src/win_entry.c#L739-L749) |
 
-### Apple entry
+### Apple mobile entry
 
 ```mermaid
 flowchart TD
@@ -139,7 +149,8 @@ flowchart TD
     Entry["Apple entry layer"]
     Bundle["App bundle<br/>packaged resources"]
     Storage["Writable application storage"]
-    Host["Shared host"]
+    Host["`Shared host entry
+bluewake_host_main`"]
 
     Start --> Entry
     Bundle -->|"resolve resource paths"| Entry
@@ -159,12 +170,6 @@ the card with its cache data and omits touch controls. After the host returns,
 the UIKit process exits or presents an error rather than leaving an inactive
 application alive.
 
-macOS does not use this UIKit entry shim. Its `BlueWake.app` contains the shared
-host executable, which enters `runtime/host/src/main.c` directly. The shared
-host recognizes the packaged bundle through its provenance marker, loads the
-module from `Contents/Frameworks`, and resolves the DOL, RELs, disc, and optional
-DSP files from `Contents/Resources`.
-
 | Component | What it does |
 | --- | --- |
 | UIKit and SDL entry | Runs after SDL has established the iOS, iPadOS, or tvOS application lifecycle and owns the mobile `main`. [Source](../../../apple/ios/src/ios_entry.m#L1-L45), [mobile target wiring](../../../apple/ios/CMakeLists.txt#L90-L121) |
@@ -172,7 +177,35 @@ DSP files from `Contents/Resources`.
 | Bundle and game resources | Reads packaged optimization metadata, selects the module from `Frameworks` or writable storage, and resolves imported DOL, REL, disc, and optional DSP files. [Source](../../../apple/ios/src/ios_entry.m#L312-L356), [imported paths](../../../apple/ios/src/ios_entry.m#L424-L438) |
 | Platform-specific player data | Uses Application Support for the iOS/iPadOS card with non-destructive migration, while tvOS keeps the card in its cache data; touch controls are excluded from tvOS. [Source](../../../apple/ios/src/ios_entry.m#L439-L473) |
 | Mobile host handoff | Builds the host argument vector, calls `bluewake_host_main`, and integrates host termination and errors with UIKit. [Source](../../../apple/ios/src/ios_entry.m#L457-L496) |
-| macOS bundle resolver | Detects the packaged `.app`, resolves its Frameworks and Resources contents, and applies bundle-selected runtime defaults before normal host startup. [Source](../../../runtime/host/src/main.c#L6332-L6381), [macOS bundle assembly](../../../runtime/host/CMakeLists.txt#L82-L115) |
+
+### macOS shared host entry
+
+```mermaid
+flowchart TD
+    Start["BlueWake.app startup"]
+    Host["`Shared host entry
+main`"]
+    Bundle["`App bundle
+Frameworks and
+Resources`"]
+    Storage["`Writable
+player data`"]
+
+    Start -->|"enters directly"| Host
+    Bundle -->|"resolve packaged inputs"| Host
+    Storage <-->|"settings, saves, and logs"| Host
+```
+
+macOS does not use the UIKit entry shim or rename the shared entry point. Its
+`BlueWake.app` contains the shared host executable compiled with
+`runtime/host/src/main.c` as `main`. That entry recognizes the packaged bundle,
+loads the module from `Contents/Frameworks`, and resolves the DOL, RELs, disc,
+and optional DSP files from `Contents/Resources`.
+
+| Component | What it does |
+| --- | --- |
+| Direct process entry | Starts in the shared host's `main` without an additional platform entry wrapper. [Source](../../../runtime/host/src/main.c#L7248) |
+| macOS bundle resolver | Detects the packaged `.app`, resolves its Frameworks and Resources contents, and applies bundle-selected runtime defaults. [Source](../../../runtime/host/src/main.c#L6332-L6381), [bundle assembly](../../../runtime/host/CMakeLists.txt#L82-L115) |
 
 ### Shared host handoff
 
@@ -186,13 +219,15 @@ flowchart TD
     Input --> Parse --> Validate --> Init
 ```
 
-The entry layers normalize platform choices into a module argument and
-environment variables before calling the shared host. The host loads saved
-settings, applies packaged or developer defaults where needed, and then checks
-each input at the point that consumes it. The native module must load and
-expose a compatible descriptor; the DOL path must be present and the DOL loader
-must accept its contents. The disc becomes present only when its image opens
-successfully. The memory-card path must open through the card runtime.
+The Linux, Windows, and Apple mobile entry layers normalize platform choices
+into a module argument and environment variables before calling the shared
+host entry. macOS starts at that shared entry directly and resolves its bundle
+there. The host loads saved settings, applies packaged or developer defaults
+where needed, and then checks each input at the point that consumes it. The
+native module must load and expose a compatible descriptor; the DOL path must
+be present and the DOL loader must accept its contents. The disc becomes
+present only when its image opens successfully. The memory-card path must open
+through the card runtime.
 
 DSP means **Digital Signal Processor**. The default high-level audio path does
 not require DSP support files. When the low-level DSP path is selected,
