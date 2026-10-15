@@ -22,12 +22,23 @@ exceptions, and the program counter at which translated execution resumes.
 ## Mechanical contents
 
 Mechanically, guest state is an authoritative `CPUState` structure plus the
-storage reachable through the guest address space. A translated block reads
-its input registers from `CPUState`, performs loads and stores through the
-runtime memory helpers, writes its results back to the same structure and
-memory, charges guest cycles, and leaves the next guest address in `pc`. The
-host receives that same state when the block yields; it does not reconstruct
-the CPU from native registers.
+storage reachable through the guest address space. Generated code expresses
+guest-register reads and updates through that structure, while the native
+compiler may temporarily keep working values in native registers. When
+execution reaches a boundary at which the host or runtime can observe guest
+state, the updates required by the generated C program are visible in
+`CPUState`; this is not a blanket flush of every field at every boundary. A
+translated block also performs loads and stores through the runtime memory
+helpers, charges guest cycles and leaves the next guest address in `pc`. The
+host receives the same authoritative state when the block yields rather than
+reconstructing the CPU from native registers. [Generated-state optimization](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L185-L196)
+
+For example, if a guest register contains `0x80300000`, an ordinary MEM1 load
+with no overriding alias resolves it to backing pointer `B + 0x00300000`, where
+`B` is the native address of MEM1. The memory helper reads the bytes using the
+guest's byte order, and the loaded value becomes the destination guest
+register's value. The original register still contains a 32-bit guest address;
+resolution does not replace it with a native pointer.
 
 ### CPU, memory space, and I/O
 
@@ -378,6 +389,13 @@ pointer inside the BlueWake process on each access. Consequently, the host
 virtual address can change between launches because the module loader and OS
 choose where native allocations and code reside.
 
+The diagram shows the logical resolution rules rather than the literal order
+of every access. The pinned `get_ram_ptr()` first tries a direct MEM1 fast path
+when no aliases overlap MEM1 and the address passes its range checks. It can
+therefore skip alias lookup when doing so preserves the same result; ordinary
+guest-memory accesses do not necessarily search the alias table. [Pinned
+resolver](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L197-L239)
+
 ```mermaid
 flowchart TD
     Address["`32-bit guest
@@ -425,6 +443,13 @@ store`"| Alias
 
 Address intervals below are half-open: the first address is included and the
 end address is excluded.
+
+Address resolution locates the native bytes; interpreting those bytes is a
+separate step. Multi-byte guest values use PowerPC big-endian representation,
+so the memory helpers use `read_be16`/`32`/`64` and
+`write_be16`/`32`/`64` when reading or writing native backing storage. A
+one-byte access needs no byte-order conversion. [Byte-order helpers](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/types.h#L58-L90),
+[memory accessors](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L271-L363)
 
 | Guest range or address kind | Resolution | Host representation |
 | --- | --- | --- |
