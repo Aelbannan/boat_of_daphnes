@@ -5,6 +5,7 @@
 - [Introduction](#introduction)
 - [High-level view](#high-level-view)
 - [Build toolchain](#build-toolchain)
+- [Runtime](#runtime)
 
 ## Introduction
 
@@ -133,3 +134,17 @@ backend, signing, and packaging requirements.
 
 For the complete pipeline, component references, output paths, and per-platform
 branches, continue to [Build](Build.md).
+
+## Runtime
+
+The packaged application runs these cooperating parts in one native process:
+
+| Part | Responsibility |
+| --- | --- |
+| Platform application and host | Enter the process, load the game module, coordinate execution, and connect native facilities. |
+| Game module | Executes translated game instructions against shared guest state. |
+| Guest state | Preserves GameCube registers, memory, addresses, and time across execution boundaries. |
+| Compatibility services and graphics | Provide guest-visible devices and GX behavior through native input, audio, storage, and GPU APIs. |
+
+For the complete component map, interaction boundaries, and links to each
+entity's internals, continue to [Runtime](Runtime.md).
