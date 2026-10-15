@@ -19,7 +19,9 @@ many textures the chosen pack has, and a way to add a pack:
 
 Making the pack from your Wind Waker HD disc still uses the importer below,
 on a Mac, Linux or Windows computer. An importer built into the app, so the
-same section can make the pack on every build, is in progress.
+same section can make the pack on every build, is in progress in
+[#315](https://github.com/chrissotraidis/bluewake/pull/315) (Android:
+[#347](https://github.com/chrissotraidis/bluewake/pull/347)).
 
 ## Set up the importer
 

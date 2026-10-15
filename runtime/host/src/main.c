@@ -235,13 +235,17 @@ static DolAudioDma g_audio_dma;
 static BluewakeAudioCapture g_audio_capture;
 // SRAM on EXI channel 0 (ipl_sram.h); off unless BLUEWAKE_SRAM is set.
 static BluewakeIplSram g_ipl_sram;
-// EFB depth peeks (GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2)) answered
+// EFB peeks. GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2) and is answered
 // from Aurora's asynchronous depth snapshot. Wind Waker's sun counts as visible
 // only where the peeked depth is far (0xFFFFFF); every peek used to read 0, so
 // the sun was always hidden and its glare and lens flare never drew. On with
 // the Aurora renderer (BLUEWAKE_EFB_PEEK=0 turns it off); Dolphin with EFB
 // access on, its setting for this game, draws the same glare (CURRENT.md,
 // 2026-09-24). The headless renderer, which the certified route uses, keeps 0.
+// GXPeekARGB reads 0xC8000000 + (y << 12) + (x << 2). The Picto Box paints each
+// actor's slot into that alpha and reads it back in the same frame; a read of 0
+// credits every pixel to whoever was registered first, so Lenzo is handed the
+// wrong person. The first peek of a frame drains the FIFO and copies the EFB.
 static bool g_efb_peek_enabled;
 static unsigned g_efb_peek_reports;
 static bool g_audio_capture_failure_reported;
@@ -3588,6 +3592,18 @@ static u64 host_mmio_read(CPUState* ctx, u32 address, u8 size) {
     if (bluewake_ipl_sram_contains(&g_ipl_sram, address) && size == 4u)
         return bluewake_ipl_sram_read(&g_ipl_sram, address);
     if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
+        (address & 0x00C00000u) == 0u) {
+        const u16 x = (u16)((address >> 2) & 0x3FFu);
+        const u16 y = (u16)((address >> 12) & 0x3FFu);
+        // The id pass is still in the FIFO until this drain. One copy serves
+        // the rest of the viewfinder.
+        if (!aurora_color_peek_ready())
+            dol_platform_gx_flush();
+        u32 argb = 0u;
+        (void)aurora_peek_argb(x, y, &argb);
+        return argb;
+    }
+    if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
         (address & 0x00C00000u) == 0x00400000u) {
         const u16 x = (u16)((address >> 2) & 0x3FFu);
         const u16 y = (u16)((address >> 12) & 0x3FFu);
@@ -6431,7 +6447,7 @@ static void host_apply_aspect(void) {
 //       save at the first clean point at or after that retrace (see below);
 //   BLUEWAKE_LOAD_STATE=path
 //       restore right after boot, before the first guest instruction runs;
-//   F5 / F9 (the window; fn-F5 / fn-F9 on a Mac keyboard), or the options
+//   F5 / F8 (the window; fn-F5 / fn-F8 on a Mac keyboard), or the options
 //   menu's Save state / Load latest state
 //       save to BLUEWAKE_STATE_DIR (default: the working directory; the Mac
 //       app's is its data folder's states/) as quick-<retrace>.bwstate / load
@@ -6439,7 +6455,7 @@ static void host_apply_aspect(void) {
 //       in that directory (after a relaunch).
 //   BLUEWAKE_LOAD_STATE_FORCE=1 loads a state made by another translation of
 //       the game (a different composite), which is otherwise refused.
-//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F9 at that retrace.
+//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F8 at that retrace.
 //
 // Checked (headless, the Outset save walked by a pad script): a state saved
 // at retrace 1000 and loaded at boot, or mid-run at 900 or 1300, reaches
@@ -6474,9 +6490,9 @@ static void host_apply_aspect(void) {
 // When. A save waits for a clean point: the top of a turn whose pc is
 // GXSetDrawDone's return (0x80322BC8) - the frame's GX commands are complete,
 // so after a load the next frame is drawn whole - with no exception pending,
-// no REL prolog half done, no HLE card callback queued or running, no scene
-// change (overlap) or quick door under way. A request that has not met a
-// draw-done point within 120 retraces takes the next clean retrace boundary
+// no REL prolog half done or loose REL wait, no HLE card callback queued or
+// running, no scene change (overlap) or quick door under way. A request that
+// has not met a draw-done point within 120 retraces takes the next clean retrace boundary
 // instead (the GX front end carries any partial command either way).
 #define HOST_STATE_DRAW_DONE_PC 0x80322BC8u
 #define HOST_STATE_MAX_REQUESTS 8u
@@ -7026,7 +7042,7 @@ static const char* host_state_dir(void) {
     return ".";
 }
 
-// The newest .bwstate in the state directory: what F9 loads when this run has
+// The newest .bwstate in the state directory: what F8 loads when this run has
 // neither saved nor loaded one (after a relaunch).
 static bool host_state_latest(char* out, size_t size) {
     DIR* dir = opendir(host_state_dir());
@@ -7053,7 +7069,7 @@ static bool host_state_latest(char* out, size_t size) {
     return found;
 }
 
-// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F9 at that retrace, once.
+// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F8 at that retrace, once.
 static u64 g_state_test_load_retrace;
 static bool g_state_test_load_done;
 
@@ -7142,6 +7158,11 @@ static const char* host_state_unsafe_reason(const CPUState* cpu,
         return "REL prolog in progress";
     if (!dol_hle_callback_idle())
         return "memory card callback in flight";
+    // A parked guest thread needs its host-only object and return address.
+    // Keep the slot until that thread resumes, even if its deadline has passed.
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i)
+        if (g_loose_rel_waits[i].stack != 0u)
+            return "loose REL load in progress";
     if (bluewake_quick_doors_busy())
         return "quick door in progress";
     if (mem_read32((CPUState*)cpu, 0x803F6160u) >= 0x80000000u)

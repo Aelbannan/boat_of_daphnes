@@ -14,8 +14,9 @@ a target aspect A it is interpolated between the game's own 4:3 value and the
 The 4:3 values are the game's (read from main.dol for the constants, from the
 decompiled tuning constructors for the runtime structures). A constant load can
 only reach the existing pool around r2, so it takes the nearest constant there;
-the choices for 16:10 are within about a pixel except one picture width (+6),
-and those for 21:9 (t = 2.25, beyond the 16:9 code) within half a pixel.
+the choices for 16:10 are within about a pixel, and those for 21:9 (t = 2.25,
+beyond the 16:9 code) within half a pixel. The Picto Box gallery's picture
+viewport is computed instead (picture_viewport) and written into pool padding.
 
     widescreen_aspect.py 16:10 > mods/widescreen/GZLE01-16x10.gecko
     widescreen_aspect.py 21:9 > mods/widescreen/GZLE01-21x9.gecko
@@ -68,8 +69,8 @@ LIS_FLOAT = (0x800037E4, -9.0)
 R2 = 0x803FFD00
 # Loads that the 16:9 code points at pool constants: the 16:9 constant's r2
 # offset -> {aspect: r2 offset of the constant to use}. 114 is the HUD shift
-# (0 at 4:3), 206 the rupee counter x (320 at 4:3), 79 and 480 a picture's x
-# and width (0 and 640 at 4:3), 1.3333 the boomerang sight's x scale (1 at 4:3).
+# (0 at 4:3), 206 the rupee counter x (320 at 4:3), 1.3333 the boomerang
+# sight's x scale (1 at 4:3).
 # -130 and 130 are the x and width of the black bars the added code draws over
 # the side margins (the telescope's mask): 130 covers 16:10 and 16:9, so only
 # 21:9 (margins of 265.5 and 272.6) needs larger ones; the bars only overlap.
@@ -78,10 +79,33 @@ POOL_SWAPS = {
     -18768: {"21:9": -29036},  # 130.0  -> 292.5  (needs >= 288 and 272.6)
     -27188: {"16:10": -21536, "21:9": -19536},  # 114.0  -> 68.0, 257.0 (wants 68.4, 256.5)
     -28500: {"16:10": -19520, "21:9": -24296},  # 206.0  -> 250.5, 63.0 (wants 251.6, 63.5)
-    -17768: {"16:10": -23268, "21:9": -21412},  # 79.0   -> 47.0, 178.0 (wants 47.4, 177.75)
-    -17640: {"16:10": -31580, "21:9": -22912},  # 480.0  -> 550.0, 280.0 (wants 544, 280)
     -30556: {"16:10": -32212, "21:9": -32576},  # 1.3333 -> 1.2, 1.75 (wants 1.2, 1.75)
 }
+# The Picto Box gallery draws a photo in its own 2D projection, -9 to 650
+# across (the C_MTXOrtho at 0x80227BB8), squeezed into a viewport whose x and
+# width the 16:9 code loads (0x80227A18, 0x80227A20), while the photo's frame
+# is drawn on the screen's 2D layout, which the widescreen code widens
+# (0x803F7D68, 0x803F7D6C). The two match when the viewport spans -9 to 650 of
+# the screen's layout (picture_viewport): x 82.0 and width 473.9 at 16:9, 139.3
+# and 357.8 at 21:9. Nearby values (Dolphin's 79 and 480, the pool's 367 at
+# 21:9) let the photos either side of the middle one drift out of their frames,
+# so the 16:9 code loads the two from alignment padding in .sdata2 (a word
+# between a single and the double after it, which no load in main.dol or any
+# REL reads), and each variant writes its own values there.
+PICTURE_SLOTS = (0x803F7D14, 0x803F7D34)  # x, width
+PICTURE_ORTHO = (-9.0, 650.0)     # the gallery's projection for a picture, left and right
+SCREEN_2D = ((-9.0, 650.0), (-123.0, 767.0))  # the 2D screen's left and right at 4:3 and 16:9
+
+
+def picture_viewport(lerp):
+    """The picture viewport's x and width that put -9 to 650 of the picture's
+    projection on -9 to 650 of the screen's widened 2D layout."""
+    left = lerp(SCREEN_2D[0][0], SCREEN_2D[1][0])
+    right = lerp(SCREEN_2D[0][1], SCREEN_2D[1][1])
+    scale = 640.0 / (right - left)
+    return (PICTURE_ORTHO[0] - left) * scale, (PICTURE_ORTHO[1] - PICTURE_ORTHO[0]) * scale
+
+
 ASPECTS = {"16:9": ASPECT_169, "16:10": 16.0 / 10.0, "21:9": 21.0 / 9.0}
 
 
@@ -133,6 +157,8 @@ def main():
 
 
 def patch_word(addr, w, lerp, name):
+    if addr in PICTURE_SLOTS:
+        return f32_bits(picture_viewport(lerp)[PICTURE_SLOTS.index(addr)])
     if addr in FLOAT_WRITES:
         if addr == 0x803FA998:
             return f32_bits(ASPECTS[name])

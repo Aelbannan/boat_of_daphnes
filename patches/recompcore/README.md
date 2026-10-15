@@ -46,9 +46,9 @@ Patches 0131-0135 reconcile the optional global-memory and interpolation work,
 including span and extended-alias safeguards. Patch 0136 directly imports
 Elliott Tate's dual-texture post-transform correction. Patch 0137 preserves those
 matrices in a versioned frontend save-state extension, accepts legacy states,
-and tests direct/indexed FIFO capture and malformed-state rejection. The current
-build pin is `18ba3b642588a33b9e8eac4aba7f713bb8d3d778`; the profile and dependency
-lock are authoritative. New post-texture save states require this or a newer
+and tests direct/indexed FIFO capture and malformed-state rejection. They first
+shipped in pin `18ba3b642588a33b9e8eac4aba7f713bb8d3d778`; the current pin is in the profile and dependency
+lock. New post-texture save states require this or a newer
 runtime; regular memory-card saves are unchanged. BlueWake lava-scene acceptance
 is still required; donor scene results are not transferred.
 
@@ -130,3 +130,14 @@ draws became 0.87 million, and on four E-cores Forest Haven went from 30.6 to 40
 profiler (`DOL_AURORA_GPU_PROF=1`). Fusion is on for Windows, where he tested it, and for Linux, played on a Steam Deck
 (#215); the host turns it off on the Mac, iPhone and Android (`DOL_GX_FUSE=1` turns it on). His later commits (the compact vertex layout and the
 upload changes) conflict with patch 0157 and are not here yet.
+
+Patch 0177 is jslay88's RecompCore #36: the Picto Box reads its actor ids from the current EFB instead of
+receiving zero for every pixel. It needs BlueWake's host MMIO handler from #334. Cold-cache alpha-only
+pipeline compilation remains a separate follow-up (RecompCore#39), not part of this pin.
+Mac recognition and remaining checks: [Picto validation](../../docs/status/PICTO_RECOGNITION_2026-10-15.md).
+
+Patch 0178 is pdale-boop's RecompCore #38, for BlueWake #325: on Vulkan, a resized window keeps its surface and keeps
+drawing. A lost surface is configured again (up to 30 times in a row) instead of released at once, which on Linux
+made the replacement surface fail with `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`; between the game's frames the surface
+follows the window's size, so the picture no longer trails behind a window being dragged. The size following is
+Vulkan only. On every backend a suboptimal texture is now drawn and the surface configured again after it.

@@ -81,6 +81,9 @@ def main():
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
                         help="set for every run, for example BLUEWAKE_LOOSE_REL_RETRACES=12 (repeatable)")
     args = parser.parse_args()
+    for item in args.env:
+        if "=" not in item or item.startswith("="):
+            parser.error(f"--env takes NAME=VALUE, not {item!r}")
     extra = dict(item.split("=", 1) for item in args.env)
     todo = places()
     if args.only:

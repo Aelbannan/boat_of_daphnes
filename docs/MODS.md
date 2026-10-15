@@ -16,7 +16,8 @@ On the iPad, `Documents/BlueWake` is **On My iPad › BlueWake › BlueWake** in
 
 ## Installing
 
-**Widescreen:** turn on *Widescreen 16:9* or *Widescreen 16:10* (turning one on turns the other off) and
+**Widescreen:** on iPhone and iPad, turn on *Widescreen 16:9* or *Widescreen 16:10* (turning one on turns
+the other off); on Mac, Windows and Linux, pick 16:10, 16:9 or 21:9 in **F1 › Mods › Widescreen**. Then
 restart BlueWake. The 16:10 code is generated from the 16:9 one by `scripts/mods/widescreen_aspect.py`:
 each value it changes (the camera aspect, which also widens the game's view culling, the 2D bounds, HUD
 and map positions, a few instruction immediates) is interpolated between the game's 4:3 value and the

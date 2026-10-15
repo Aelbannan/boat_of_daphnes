@@ -107,6 +107,7 @@ bw_texture_pack::Counter g_pack_count; // textures in g_texture_pack, counted on
 bool g_restart_pending = false;
 bool g_restart_requested = false;  // Restart now: linux_entry.c starts the game again
 bool g_safe_mode = false;          // this launch is in safe mode (BLUEWAKE_SAFE_MODE)
+bool g_safe_backed_up = false;     // and the settings file was copied aside first
 Uint64 g_safe_mode_since = 0;
 // BLUEWAKE_SETTINGS_TEST_OPEN=at:for (seconds after the menu is installed;
 // testing only): opens the menu, and closes it after `for` seconds.
@@ -323,9 +324,13 @@ void draw_safe_mode_note(Uint64 now) {
         // A fixed wrap width: in an auto-resizing window, wrapping to the
         // window's own width collapses it to a narrow column.
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.f);
-        ImGui::TextUnformatted("BlueWake didn't finish starting last time, so this time it starts with Fast sound, "
-                               "4:3, in a window and with the mods off. Your earlier settings were saved beside "
-                               "settings.ini. You can turn things back on in the settings (F1).");
+        ImGui::TextUnformatted(g_safe_backed_up
+                                   ? "BlueWake didn't finish starting last time, so this time it starts with Fast "
+                                     "sound, 4:3, in a window and with the mods off. Your earlier settings were saved "
+                                     "beside settings.ini. You can turn things back on in the settings (F1)."
+                                   : "BlueWake didn't finish starting last time, so this time it starts with Fast "
+                                     "sound, 4:3, in a window and with the mods off, for this session only: your "
+                                     "settings come back at the next launch.");
         ImGui::PopTextWrapPos();
     }
     ImGui::End();
@@ -569,15 +574,18 @@ void hd_textures_section() {
         }
     }
     restart_note();
-    if (g_texture_pack[0] != '\0') {
+    {
         const size_t textures = g_pack_count.get(g_texture_pack);
-        if (textures > 0)
-            ImGui::TextDisabled("%zu textures in %s", textures, g_texture_pack);
+        const bw_texture_pack::PackState state =
+            bw_texture_pack::state_of(textures, g_texture_pack[0] != '\0');
+        std::string line;
+        if (g_texture_pack[0] == '\0')
+            line = "Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the game's textures.";
+        else if (textures == 0)
+            line = "No .png or .dds textures found in the chosen folder.";
         else
-            ImGui::TextDisabled("No .png or .dds textures in %s", g_texture_pack);
-    } else {
-        ImGui::TextDisabled("Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the "
-                            "game's textures.");
+            line = std::to_string(textures) + " textures in the chosen folder";
+        ImGui::TextColored(bw_texture_pack::state_color(state), "%s", line.c_str());
     }
     if (ImGui::Button("Choose texture pack folder..."))
         bw_texture_pack::choose_folder(game_window(), g_texture_pack);
@@ -1313,7 +1321,7 @@ void draw(void*) {
 // Safe mode (BLUEWAKE_SAFE_MODE: --safe-mode, or a launch that never got to a
 // clean exit, from linux_entry.c), as on Windows: the settings file is copied
 // aside, then this session and the file get the safe choices: Fast sound,
-// 4:3, in a window, no mods, options or texture pack, and the gameplay extras
+// 4:3, in a window, no HD look, mods, options or texture pack, and the gameplay extras
 // off. If the copy fails the file is left alone and only this session is safe.
 void apply_safe_mode() {
     const char* asked = std::getenv("BLUEWAKE_SAFE_MODE");
@@ -1321,8 +1329,10 @@ void apply_safe_mode() {
         return;
     g_safe_mode = true;
     const bool backed_up = !g_path.empty() && bw_launch_backup(g_path.c_str());
+    g_safe_backed_up = backed_up;
     if (!backed_up)
-        std::fprintf(stderr, "[safe-mode] settings backup failed; only this session is reset\n");
+        std::fprintf(stderr, g_path.empty() ? "[safe-mode] no settings file; only this session is reset\n"
+                                            : "[safe-mode] settings backup failed; only this session is reset\n");
     static const char* const kSafe[][2] = {
         {"BLUEWAKE_DSP_MODE", "hle"},        {"BLUEWAKE_MODS", "none"},
         {"BLUEWAKE_OPTIONS", "none"},        {"BLUEWAKE_ASPECT", "4:3"},
@@ -1331,10 +1341,20 @@ void apply_safe_mode() {
         {"BLUEWAKE_SPRINT_SPEED", "1"},      {"BLUEWAKE_FAST_FORWARD", "0"},
         {"BLUEWAKE_FADE_FRAMES", "0"},       {"BLUEWAKE_QUICK_DOORS", "0"},
         {"BLUEWAKE_STAGE_SELECT_TOGGLE", "0"},
+        {"BLUEWAKE_HD_LOOK", "0"},
+        // Clear overrides so the HD switch can enable every effect again later.
+        {"BLUEWAKE_HD_DISTANT_ISLANDS", ""}, {"BLUEWAKE_HD_BLOOM", ""},
+        {"BLUEWAKE_HD_FAR_BLUR", ""},        {"BLUEWAKE_HD_AO", ""},
+        {"BLUEWAKE_HD_CLOUD_SHADOWS", ""},   {"BLUEWAKE_HD_SUN_SHADOWS", ""},
+        {"BLUEWAKE_HD_EDGE_LIGHT", ""},      {"BLUEWAKE_HD_TORCH_LIGHT", ""},
     };
-    for (const auto& pair : kSafe)
+    for (const auto& pair : kSafe) {
         setenv(pair[0], pair[1], 1);
-    std::fprintf(stderr, "[safe-mode] Fast sound, 4:3, a window, no mods or options%s\n",
+        // Per-effect overrides are otherwise kept verbatim as unmanaged keys.
+        if (backed_up)
+            g_other.erase(pair[0]);
+    }
+    std::fprintf(stderr, "[safe-mode] Fast sound, 4:3, a window, no HD look, mods or options%s\n",
                  backed_up ? "; the earlier settings were copied beside settings.ini" : "");
     if (backed_up) {
         g_dirty = true;
@@ -1346,11 +1366,17 @@ void apply_safe_mode() {
 
 extern "C" void bluewake_settings_load(void) {
     const char* chosen = std::getenv("BLUEWAKE_SETTINGS");
-    if (chosen != nullptr && std::strcmp(chosen, "none") == 0)
+    // No settings file (BLUEWAKE_SETTINGS=none, or no home folder): safe mode
+    // still applies, to this session only.
+    if (chosen != nullptr && std::strcmp(chosen, "none") == 0) {
+        apply_safe_mode();
         return;
+    }
     g_path = chosen != nullptr && chosen[0] != '\0' ? chosen : default_path();
-    if (g_path.empty())
+    if (g_path.empty()) {
+        apply_safe_mode();
         return;
+    }
     // Jump and sprint start off, as on the iPad and Windows (#71); a saved choice
     // or an explicit environment value wins.
     setenv("BLUEWAKE_JUMP_BUTTON", "0", 0);
@@ -1446,6 +1472,12 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
         }
         if (event->key.scancode == SDL_SCANCODE_F11 ||
             (event->key.scancode == SDL_SCANCODE_RETURN && (event->key.mod & SDL_KMOD_ALT) != 0)) {
+            // Return is the keyboard's START, and the pad reads the keyboard
+            // itself: Alt+Enter also paused or unpaused the game. Held from
+            // the game until it is let go, as the press that closes the menu
+            // is (Windows's keyboard hook keeps Alt+Return from SDL instead).
+            if (event->key.scancode == SDL_SCANCODE_RETURN)
+                bluewake_pad_hold_until_released();
             const bool on = !is_fullscreen();
             set_fullscreen(on);
             bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");

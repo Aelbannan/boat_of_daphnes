@@ -38,4 +38,4 @@ were not independently reproduced in this repository and do not replace the
 | ExpansionPak/ModernGekko | `884c20505d7179160f8bb01d9db0f723c53b09cb` | Newer runtime snapshot examined by reassessment |
 | ExpansionPak/RecompCore | `e13ab348f13cd67879f6db6e9d7185410f8f62c6` | REL metadata and runtime address-remapping implementation reported |
 
-See `../FEASIBILITY_REASSESSMENT_2026-08-13.md` for scope and evidence limits.
+See `../archive/FEASIBILITY_REASSESSMENT_2026-08-13.md` for scope and evidence limits.

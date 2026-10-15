@@ -1,7 +1,13 @@
 # Making BlueWake faster
 
 How BlueWake gets faster, in three steps of growing size, and how to prove each step. [GOAL_LOOP.md](GOAL_LOOP.md)
-says which step is being done on which day. Owner: Chris. Updated October 9, 2026; add every result to "Results".
+says which step is being done on which day. Owner: Chris. Updated October 15, 2026; add every result to "Results".
+
+**Current defaults:** #335 is merged with Chris's approval: new Windows/Linux builds use behaviour timing;
+`--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
+The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
+comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
+opt-out; its merge status is in [PRIORITIES.md](PRIORITIES.md). Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -15,8 +21,8 @@ biggest cut first, and to measure every change the same way.
 
 | Horizon | When | Change | Expected | Gate |
 | --- | --- | --- | --- | --- |
-| **1. Lean what we have** | 0.6.1 and 0.7.0, days | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; Android gets it too; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
-| **2. Behavior, not cycles** | 0.8, weeks | Charge cycles per block and deliver interrupts at block or function boundaries. Natives for the loops that cross chunks most (collision, J3D drawing, particles). Cache converted static display lists. The graphics thread on four-core CPUs. | Not measured yet; one native that removed round trips saved 21.9% in a heavy view | The benchmark, and plays the same; off by default until tested |
+| **1. Lean what we have** | 0.7.0 and the next two weeks | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; slower on Android in #93, so it needs separate defaults; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
+| **2. Behavior, not cycles** | 0.8, weeks | First timing step in `main`: prepaid blocks, with the budget checked at loops and calls. Further work: natives for loops that cross chunks most (collision, J3D drawing, particles), cached static display lists and the graphics thread on four-core CPUs. | Timing: 7–9% on Mac, 7–11% on Intel desktops, 9% on Deck; results and play evidence below | Timing default on Windows/Linux (#335); other platforms and further changes keep their own measurement and play gates |
 | **3. Follow the decompilation** | Months | Drawing at the GX/J3D API level through Aurora, then matched scenes ported from source | The largest; the HD project's draw batching alone was worth 47 to 53% | Each piece checked against the recompilation |
 
 **Elliott's work since October 3 comes first.** Elliott Tate kept optimizing Wind Waker Recomp's `windows-release`
@@ -26,8 +32,8 @@ four E-cores, the slow-CPU stand-in. It is the cheapest speed BlueWake can get, 
 
 | Change | Where | His result | In BlueWake |
 | --- | --- | --- | --- |
-| Draw fusion: a display list's strips as one draw | RecompCore `d687c69` | 8.8 M draws to 0.87 M over Outset; Forest Haven 30.6 → 40.5 game FPS, the Earth Temple's boss 40.6 → 59.1, Hyrule 45.7 → 59.8 (the game thread stopped waiting for the GX worker) | Pinned in #225 (patch 0166): on for Windows; Mac and Linux once played |
-| Faster single loads (`lfs`), early return dispatch, fifth natives round (the GX SDK's FIFO writers) | builder `7aca42a`, `56dcd70`, `5edeacc` | Game thread 4.5 to 7% faster at six places | `lfs` in #228; the rest to port |
+| Draw fusion: a display list's strips as one draw | RecompCore `d687c69` | 8.8 M draws to 0.87 M over Outset; Forest Haven 30.6 → 40.5 game FPS, the Earth Temple's boss 40.6 → 59.1, Hyrule 45.7 → 59.8 (the game thread stopped waiting for the GX worker) | Pinned in #225 (patch 0166): on for Windows and Linux (#247); Mac remains off pending play checks |
+| Faster single loads (`lfs`), early return dispatch, fifth natives round (the GX SDK's FIFO writers) | builder `7aca42a`, `56dcd70`, `5edeacc` | Game thread 4.5 to 7% faster at six places | `lfs` in #228; early return dispatch and watch-list fix in #234/#235; fifth natives round still to port |
 | Fourth natives round (animation, collision setup, colour) | builder, October 4 | 1 to 3%, 6% in Hyrule Castle's room | Not yet: port |
 | Seventh natives round (libm, collision blocks, rotations, geometry, JASystem) and `cache_ops.py` | builder `95f1db7`, `a5ecd96` | About 3.8 points of the game thread at Forest Haven | Not yet: port |
 | Sixth natives round (particle draws, the sea's waves) | builder `a8bda26` | About 5% at the sea, but he took it back out of the default | Skip for now |
@@ -73,6 +79,8 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | `--no-cold` or a longer training tour | **Decided by the numbers, October 8: neither.** `--no-cold` is slower; the tour stays. | |
 | `--lean-blocks` on by default for Windows and Linux (and Android, which uses the Windows defaults) | **Accepted by Chris, October 10,** on #208's numbers: 5 to 8% on fast cores, 8 to 12% on slow and four-core CPUs, played the same. `--no-lean-blocks` builds the conservative copies. | Chris |
 | Draw fusion (RecompCore patch 0166) on by default | **On for Windows** (Elliott tested it there) **and Linux** (jkoehler11 on a Steam Deck, #215: a tenth of the draws, the GX worker from 45% to 24%, nothing missing on screen; the Deck's frame rate is set by the game thread, so it stays about 27); off on Mac and iPhone until played on each, and on Android, where it halves the draws but not the game thread's work (#93). `DOL_GX_FUSE` overrides it. | Chris, October 10; Linux October 11 |
+| Lean memory, lean deadlines and the lazy overlap watch | **Defaults since #277** in the Windows/Linux builders and host. #297 is merged: training keeps the full watch only until opening player control, then profiles the lazy path. Apple preparations remain opt-in. | Chris, October 12 |
+| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes. | Chris, October 15 (JST) |
 
 ## Results
 
@@ -109,9 +117,19 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | Oct 12 | `--lean-memory --lean-deadlines` with training, against `--lean-blocks` with training ([record](status/SPEED_PROFILE_2026-10-11.md#s2-fix-1-lean-memory-october-12)); training at `-O1` so the module links | M3 Max, macOS, `--combined-optimizations` | Outset / Dragon Roost Cavern, headless, 2,400 retraces, three runs each | 22.33 / 14.15 s | 20.93 / 13.11 s (6.3% / 7.4% faster); module +4% | Yes: same blocks, memory and cycles |
 | Oct 12 | `BLUEWAKE_LAZY_OVERLAP=1`: the overlap watch out of the per-call checks, and the module's inline answer ([record](status/SPEED_PROFILE_2026-10-11.md#s2-fix-3-the-lazy-overlap-watch-october-12)) | M3 Max, macOS, lean memory and lean deadlines, no training profile | Outset / Dragon Roost Cavern, headless, 2,400 retraces, three runs each | 22.92 / 13.94 s | 22.02 / 13.29 s (3.9% / 4.7% faster) | Yes: identical checkpoints, also across four scene handovers; 708 M inline answers all agree with the host |
 | Oct 12 | All of October 12's steps together: lean memory, lean deadlines, `BLUEWAKE_LAZY_OVERLAP=1` and the alias resolver's last hit, against lean blocks ([record](status/SPEED_PROFILE_2026-10-11.md#everything-together-october-12)) | M3 Max, macOS, no training profile on either | Outset / Dragon Roost Cavern, headless, 2,400 retraces, three runs each | 25.06 / 15.64 s | 21.76 / 13.06 s (13.2% / 16.5% less time; 15% / 20% more retraces a second) | Yes: same blocks, memory and cycles |
-| Oct 12 | The guest-alias resolver tries its last hit first (RecompCore, not pinned yet; [record](status/SPEED_PROFILE_2026-10-11.md)) | M3 Max, macOS, lean memory, lean deadlines and the lazy overlap watch | Same | 21.89 / 13.20 s | 21.79 / 13.03 s (0.5% / 1.2% faster) | Yes: identical checkpoints |
+| Oct 12 | The guest-alias resolver tries its last hit first (initial result; RecompCore#34 later closed unpinned after inconsistent gains on `ee99bbc`; [record](status/SPEED_PROFILE_2026-10-11.md)) | M3 Max, macOS, lean memory, lean deadlines and the lazy overlap watch | Same | 21.89 / 13.20 s | 21.79 / 13.03 s (0.5% / 1.2% faster) | Yes: identical checkpoints |
 | Oct 12 | The floating-point helpers forced inline (not proposed) | Same | Same | 22.66 / 13.86 s | 22.94 / 14.20 s (1.2% / 2.4% slower); module +11.5% | Yes |
 | Oct 12 | The host's per-call checks answered in the module (local branch, no pull request; [record](status/SPEED_PROFILE_2026-10-11.md#s2-the-hosts-per-call-checks-read-inline-october-12-no-gain)) | M3 Max, macOS | Same | 23.94 / 14.90 s | 23.90 / 14.96 s (no change) | Yes: every one of 708 M answers matched the host's |
+| Oct 13 | Behaviour timing, [jkoehler11's benchmark](https://github.com/chrissotraidis/bluewake/issues/215#issuecomment-6150367473) | Steam Deck, SteamOS 3.8.28, VanGogh 4c/8t | Same Outset sea state; both builds trained from one commit, headless, three interleaved rounds | 63.3 / 63.6 / 63.6 retraces/s; module 518 MB | 69.3 / 69.4 / 69.6 retraces/s; module 444 MB (about 9% faster, 14% smaller) | Contributor played a cutscene with music and sailed; nothing looked or sounded different ([play check](https://github.com/chrissotraidis/bluewake/issues/215#issuecomment-6152922191)) |
+| Oct 13 | Behaviour timing, [LiquidAzir's measurement](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6137137751) | Galaxy Z Fold 7 | Outset pier; baseline cool, timing run warm at 36 °C | 134.5 M instructions / 34.9 M cycles per retrace; module 383 MB; compile 43 min | 128.6 M / 31.5 M (4% / 10% less); module 342 MB; compile 34 min | Speed is **not comparable** across temperatures. Latest cool baseline 90.4%; alternating cool-start timing runs unfinished |
+| Oct 13 | Hidden direct-call globals, [LiquidAzir's test](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6135037258) | Galaxy Z Fold 7 | Same `main`, Outset pier, cool starts | 134.5 M instructions / 34.9 M cycles per retrace; 91% speed | 134.3 M / 35.4 M; 91% (no gain) | Not committed; no performance case for integration |
+| Oct 14 | Behaviour timing, [LiquidAzir's alternating cool-start runs](https://github.com/chrissotraidis/bluewake/pull/93#issuecomment-6176898869) | Galaxy Z Fold 7, Snapdragon 8 Elite | Outset pier; four 60-second counts, each starting at 33.9 °C/full clocks, all ending at 2.0 GHz | 89.9% / 90.8%; 136.3 M / 135.8 M instructions, 35.8 M / 35.4 M cycles per retrace | 100.0% / 100.0%; 128.5 M / 129.0 M instructions, 32.0 M cycles per retrace | Contributor-reported, same earlier builds based on `42610f2`, installed alternately with increasing version numbers. Clears the Outset gate on this phone; no other-phone or sustained-gameplay claim |
+
+Windows gameplay with behaviour timing was also checked by pdale-boop on October 13 (Windows 11, i5-12600KF,
+RTX 5070 Ti): menus, stage/spawn sweeps with the test card unchanged, all three Lenzo photos using the unmerged
+Picto fix, Windfall and the Wind Temple. No differences reported ([evidence on #335](https://github.com/chrissotraidis/bluewake/pull/335#issuecomment-6159363773)).
+That supports the timing default. Picto recognition was subsequently checked separately and pinned in #341;
+the later cold-cache follow-up remains draft #342.
 
 The `--lean-blocks` rows: both builds from `acfaf32` with the parallel training (#202), each in a fresh `--out`
 folder, built and measured from the desktop session. Unpaced, Smooth Motion off, medians of three runs, builds
@@ -139,6 +157,9 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Before you start
 
+- For Android measurements from a card save, leave `BLUEWAKE_PLAYER_PROBE` off unless diagnosing the probe itself.
+  It keeps the full overlap watch waiting for opening player control, which a loaded save never reaches. LiquidAzir
+  measured 144.8 M instead of 134.5 M instructions/retrace with it on; #93's `measure.py` now requires `--probe`.
 - Read [AGENTS.md](../AGENTS.md), then [GOAL_LOOP.md](GOAL_LOOP.md) and this file. Check open pull requests and
   new replies on #59, #93, #137, #159 and #179: a contributor may already have answered a question below.
 - **Rules that bind every phase.** Branches and pull requests only. Runtime (RecompCore) changes go to
@@ -156,6 +177,8 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
   needs a build you can't run: post the exact commands, move to the next phase, and come back.
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
+
+**Not written yet** (October 15): the script below is a plan. The handoff for doing it is [BENCHMARK_TOUR.md](BENCHMARK_TOUR.md).
 
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.
@@ -199,14 +222,15 @@ with the real stop list. About a day.
 
 One pull request each. They don't recompile the game module, so each is minutes to build.
 
-**2a. Say when the renderer falls back** (lever 4). After Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
+**2a. Say when the renderer falls back** (lever 4). **Done in 0.7.0** (RecompCore patch 0163): the log names the renderer on every desktop build, and on Linux a notice says so on screen for the first 20 seconds when Aurora falls back to OpenGL. The plan was: after Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
 `aurora_initialize` returns in RecompCore's `dol_aurora_initialize` (`GXRuntime/backends/aurora/aurora_backend.cpp`),
 which needs a small getter there, for example `dol_aurora_backend()`. `aurora_get_backend()` is not it: it returns the
 requested backend (usually `BACKEND_AUTO`). On Linux, if it isn't Vulkan, and on Windows, if it isn't D3D12 or Vulkan, write
 `[renderer] fell back to NAME: ...` to the log and show a notice once on screen that names what to install
 (Linux: the Vulkan loader, `libvulkan1` / `vulkan-loader`). The getter goes to RecompCore; the message is host code (`runtime/host/src`, `linux/src`). *Check:* Linux CI; ask fehnomenal or jkoehler11 to confirm with Vulkan missing (#107).
 
-**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). In RecompCore
+**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). **Half done in 0.7.0** (patch 0164):
+with 8 threads or more, a slow game keeps its in-between frames; the quicker return after a drop is still to do. In RecompCore
 `GXRuntime/graphics/aurora/lib/gfx/frame_interp.cpp`, `slow_game` and `pace_steps` drop in-between frames
 whenever the game runs slow, and after a slow drop wait 3 s, then double up to `kCalmMostSlow` (2 minutes). Change
 two things. With `std::thread::hardware_concurrency() >= 8`, a slow game alone no longer drops in-between frames;
