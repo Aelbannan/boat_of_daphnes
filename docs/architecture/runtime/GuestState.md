@@ -4,6 +4,7 @@
 
 - [Responsibility](#responsibility)
 - [Mechanical contents](#mechanical-contents)
+  - [CPUState layout](#cpustate-layout)
   - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
 - [Ownership and address model](#ownership-and-address-model)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
@@ -26,6 +27,80 @@ runtime memory helpers, writes its results back to the same structure and
 memory, charges guest cycles, and leaves the next guest address in `pc`. The
 host receives that same state when the block yields; it does not reconstruct
 the CPU from native registers.
+
+### CPUState layout
+
+This is an inventory of the `CPUState` used by the current BlueWake build, not
+a general specification of every register in a GameCube emulator. BlueWake
+pins RecompCore at `ee99bbc13c948351f6974c745cad2593a25eacbf`; the groups
+below come directly from that revision's structure. `CPUState` combines the
+architectural fields used by translated PowerPC instructions with the runtime
+fields that connect them to BlueWake's scheduler, memory, and services.
+
+```mermaid
+flowchart TD
+    State["Authoritative CPUState"]
+
+    subgraph Architectural["Guest-visible Gekko state"]
+        direction TB
+        Arch["Architectural register file"]
+        Integer["`Integer and branch<br/>gpr[32], lr, ctr, cr, xer`"]
+        Floating["`Floating point and paired single<br/>fpr[32], ps1[32], fpscr, gqr[8]`"]
+        Control["`Execution control<br/>pc, msr, sr[16], ear, hid2`"]
+        Exception["`Exception context<br/>srr0, srr1, dar, dsisr,<br/>exception, program_exception`"]
+        Atomic["`Reservation and locked cache<br/>reserve address/valid,<br/>tags and valid bits`"]
+        Arch --> Integer
+        Arch --> Floating
+        Arch --> Control
+        Arch --> Exception
+        Arch --> Atomic
+    end
+
+    subgraph Execution["Native execution bookkeeping"]
+        direction TB
+        Exec["Dispatch and access bookkeeping"]
+        Timing["`Guest time<br/>timebase, downcount, cycle budget,<br/>observation and deadline fields`"]
+        Lookup["`Address-lookup cache<br/>last virtual page, index,<br/>invalidation generation`"]
+        External["`External-access bookkeeping<br/>address, value, region ID,<br/>read/write counts`"]
+        Exec --> Timing
+        Exec --> Lookup
+        Exec --> External
+    end
+
+    subgraph Bridge["Runtime connections"]
+        direction TB
+        Runtime["Host bindings"]
+        Memory["`Memory bindings<br/>ram/size, optional exram/size`"]
+        Callbacks["`Native callbacks<br/>external memory, fallback,<br/>host call, SPR and cache control`"]
+        Runtime --> Memory
+        Runtime --> Callbacks
+    end
+
+    State --> Arch
+    State --> Exec
+    State --> Runtime
+```
+
+| Register or field group | Concrete layout | Mechanical role |
+| --- | --- | --- |
+| Integer and branch state | `gpr[32]`, `lr`, `ctr`, `cr`, and `xer` are 32-bit fields | Holds integer operands and results, branch targets, condition bits, and fixed-point status. |
+| Floating-point and paired-single state | `fpr[32]` and `ps1[32]` hold the two 64-bit lanes; `fpscr` records floating-point status and `gqr[8]` controls paired-single quantization | Preserves the Gekko floating-point and paired-single register file used by translated instructions. |
+| Program and machine control | `pc`, `msr`, `sr[16]`, `ear`, and `hid2` | Selects the next guest instruction and retains processor mode, segment, external-access, and Gekko-specific control state. |
+| Exception context | `srr0`, `srr1`, `dar`, `dsisr`, `exception`, and `program_exception` | Records the interrupted PC and machine state, fault address and cause, and the exception awaiting delivery. |
+| Reservation and locked cache | Reservation address/valid flag plus 512 locked-cache tags and validity bits | Preserves `lwarx`/`stwcx.` semantics and the Gekko locked-cache model across translated blocks. |
+| Guest time | `timebase`, `downcount`, `cycle_budget`, `cycle_observation_suffix`, `cycle_deadline_active`, and `cycle_deadline_budget` | Charges translated work and forces a yield before a device, callback, or interrupt deadline. |
+| Address and external-access bookkeeping | Cached translation-lookup fields plus the last external address, value, region ID, and access counts | Avoids repeated address work and carries special-access state between generated code and the runtime. |
+| Memory and runtime bindings | RAM/EXRAM pointers and sizes plus function pointers for external memory, instruction fallback, host calls, SPR access, and cache control | Connects the guest CPU context to process memory and compatibility services without storing native pointers in guest registers. |
+
+The field order and widths form the generated-code ABI. The host rejects a
+module when its CPU ABI version or `sizeof(CPUState)` does not match, preventing
+translated code from interpreting a different layout. BlueWake's diagnostic
+checkpoint independently enumerates the same fields, which also keeps this
+documentation grounded in the state the current host observes. [Pinned
+revision](../../../scripts/builder/profiles/bluewake.sh#L37-L44), [CPU
+layout](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L127-L183),
+[ABI validation](../../../cmake/composite/module_cpu_contract.h#L35-L79), and
+[checkpoint field list](../../../runtime/host/src/guest_checkpoint.h#L9-L38).
 
 ### CPU, memory space, and I/O
 
@@ -91,15 +166,6 @@ Cached and uncached MEM1 addresses converge on the same backing bytes. REL
 aliases preserve generated linked addresses while pointing both the host and
 translated module at shared storage. Device ranges do not become host memory
 pointers; they invoke compatibility services through the access hooks.
-
-| Part | What it contains mechanically | How it is used |
-| --- | --- | --- |
-| Integer and floating-point context | 32 general-purpose registers, 32 floating-point registers, paired-single lanes, condition and status registers, link and count registers, and quantization registers | Translated instructions read and write these fields as the emulated Gekko register file. [CPU layout](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L127-L145) |
-| Execution and exception context | `pc`, machine-state register, save/restore registers, data-address and status registers, pending exception bits, reservation state, and locked-cache metadata | Identifies the next translated block and preserves the architectural information needed to take or resume from an exception. [CPU layout](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L127-L174) |
-| Guest-time accounting | Time base, accumulated cycle charge, per-turn cycle budget, and deadline-observation fields | Lets translated work advance GameCube time and return to the host before a device or interrupt deadline. [CPU layout](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L145-L183) |
-| MEM1 backing | A byte array reached through `CPUState.ram`; BlueWake provides 32 MiB so deterministic linked REL storage can extend beyond the retail 24 MiB range | Guest loads and stores resolve cached and uncached MEM1 addresses to this storage and preserve big-endian PowerPC byte order. [Storage contract](../../../cmake/composite/module_cpu_contract.h#L23-L79), [memory access](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L197-L294) |
-| REL alias storage | Address-to-storage mappings for relocated REL data and BSS whose linked guest addresses must remain stable | Memory helpers consult the alias registry before falling through to ordinary MEM1 or external access. The host and module register the same backing storage. [Alias setup](../../../runtime/host/src/main.c#L7968-L8101) |
-| Native access hooks | Function pointers for external reads and writes, special-purpose registers, cache control, instruction fallback, and host calls | Unmapped or hardware addresses leave ordinary RAM resolution through these hooks and reach the appropriate compatibility service. [CPU hooks](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/include/core/cpu.h#L106-L125), [host setup](../../../runtime/host/src/main.c#L7943-L7948) |
 
 The translated native instructions themselves are not guest state, and the
 original DOL and REL files are inputs rather than live state. Compatibility
