@@ -4,6 +4,10 @@
 
 - [Responsibility](#responsibility)
 - [Platform entry layers](#platform-entry-layers)
+  - [Linux entry](#linux-entry)
+  - [Windows entry](#windows-entry)
+  - [Apple entry](#apple-entry)
+  - [Shared host handoff](#shared-host-handoff)
 - [Host lifecycle](#host-lifecycle)
 - [Runtime inputs and persistence](#runtime-inputs-and-persistence)
 - [Shutdown](#shutdown)
@@ -37,16 +41,173 @@ services
 
 ## Platform entry layers
 
-Each target uses a small native wrapper around the shared host. It understands
-the platform's executable or bundle layout, writable data location, and event
-model, then invokes `bluewake_host_main` with normalized inputs.
+Platform-specific entry code resolves resources and writable storage, prepares
+configuration, and hands control to the shared host. These diagrams show
+conceptual responsibilities and data flow rather than exact call order.
 
-| Platform | Technical steps | Runtime result | Code reference |
-| --- | --- | --- | --- |
-| Linux | Resolves the application directory, portable mode, settings path, module, disc, and DSP files. | Host argument vector and Linux runtime paths | [Linux entry](../../../linux/src/linux_entry.c#L361-L566) |
-| Windows | Resolves the executable directory and Windows player-data paths and prepares the native process. | Host argument vector and Windows runtime paths | [Windows entry](../../../windows/src/win_entry.c#L563-L747) |
-| Apple | Resolves read-only resources from the app bundle and writable data from the app container. | Bundle resources and Apple data paths | [Apple entry](../../../apple/ios/src/ios_entry.m#L276-L474) |
-| Shared host | Parses runtime options and validates the normalized module, DOL, disc, DSP, and data paths. | Platform-independent runtime configuration | [Host startup](../../../runtime/host/src/main.c#L7248-L7314) |
+```mermaid
+flowchart TD
+    Linux["Linux entry"]
+    Windows["Windows entry"]
+    Apple["Apple entry"]
+    Host["Shared BlueWake host"]
+
+    Linux -->|"paths and configuration"| Host
+    Windows -->|"paths and configuration"| Host
+    Apple -->|"paths and configuration"| Host
+```
+
+| Component | What it does |
+| --- | --- |
+| Linux entry | Resolves executable-relative resources, Linux player-data paths, portable mode, and launch options before calling the shared host. [Source](../../../linux/src/linux_entry.c#L361-L566) |
+| Windows entry | Resolves executable-relative resources and Windows player data, then prepares Windows process services around the shared host. [Source](../../../windows/src/win_entry.c#L563-L747) |
+| Apple mobile entry | Integrates with UIKit and SDL, resolves app-container and bundle paths, and starts the shared host on iOS, iPadOS, and tvOS. [Source](../../../apple/ios/src/ios_entry.m#L276-L474) |
+| macOS packaged host | Enters through the shared host executable and lets it resolve the macOS `.app` bundle directly. [Source](../../../runtime/host/src/main.c#L6332-L6381) |
+
+### Linux entry
+
+```mermaid
+flowchart TD
+    Start["Linux process startup"]
+    Entry["Linux entry layer"]
+    Resources["Application resources<br/>module, disc, DSP files"]
+    Data["Writable player data<br/>settings, saves, logs"]
+    Host["Shared host"]
+
+    Start --> Entry
+    Resources -->|"resolve paths"| Entry
+    Data <-->|"select paths and read settings"| Entry
+    Entry -->|"prepared arguments"| Host
+```
+
+Linux discovers the application directory through `/proc/self/exe`, falling
+back to the current directory when that lookup fails. It selects writable data
+from `BLUEWAKE_DATA_DIR`, an executable-adjacent `user/` directory when
+`portable.txt` is present, `$XDG_DATA_HOME/BlueWake`, or
+`~/.local/share/BlueWake`, in that order. Portable mode also moves the settings
+file and Aurora user data beside the application. The entry layer converts
+command-line choices into runtime configuration, resolves packaged resources,
+checks the module, DOL, REL directory, and disc, installs logging and launch
+recovery, and passes the module path to `bluewake_host_main`.
+
+| Component | What it does |
+| --- | --- |
+| Directory resolver | Finds the executable directory and selects or creates the player-data, log, and save-state directories. [Source](../../../linux/src/linux_entry.c#L137-L179) |
+| Portable mode | Detects `portable.txt`, uses the executable-adjacent `user/` directory, and keeps settings and Aurora files there. [Source](../../../linux/src/linux_entry.c#L149-L179), [Aurora migration](../../../linux/src/linux_entry.c#L77-L116) |
+| Launch configuration | Parses disc, module, graphics, mod, safe-mode, and audio options and applies product defaults without replacing explicit environment values. [Source](../../../linux/src/linux_entry.c#L361-L480) |
+| Resource resolver | Selects the translated module and executable-relative DOL, REL, disc, and optional DSP paths, then reports missing required game inputs before host startup. [Source](../../../linux/src/linux_entry.c#L497-L543) |
+| Host handoff | Installs crash and launch-recovery handling, gives the settings system its data directory, and calls `bluewake_host_main` with the module path. [Source](../../../linux/src/linux_entry.c#L545-L568) |
+
+### Windows entry
+
+```mermaid
+flowchart TD
+    Start["Windows process startup"]
+    Entry["Windows entry layer"]
+    Resources["Executable-relative resources"]
+    Data["Windows player-data paths"]
+    Host["Shared host"]
+
+    Start --> Entry
+    Resources -->|"resolve paths"| Entry
+    Data -->|"resolve writable locations"| Entry
+    Entry -->|"prepared arguments"| Host
+```
+
+Windows obtains the executable path with `GetModuleFileNameW` and normally
+places mutable data under `%APPDATA%\BlueWake`. `BLUEWAKE_DATA_DIR` overrides
+that location, while `portable.txt` selects an executable-adjacent `user\`
+directory. The entry layer loads saved settings after command-line choices,
+resolves and checks the DLL and game resources, and prepares native process
+facilities such as logging, crash handling, timer resolution, process priority,
+SDL metadata, and the settings hotkey before entering the shared host.
+
+| Component | What it does |
+| --- | --- |
+| Directory resolver | Converts the executable's wide-character path to UTF-8 and selects `BLUEWAKE_DATA_DIR`, portable storage, or `%APPDATA%\BlueWake`. [Source](../../../windows/src/win_entry.c#L163-L188) |
+| Settings and options | Converts command-line options into runtime configuration, then loads saved settings for choices the command line did not supply. [Source](../../../windows/src/win_entry.c#L563-L638) |
+| Resource resolver | Selects `gGZLE01_recomp.dll`, sets executable-relative DOL, REL, disc, and optional DSP defaults, and reports missing required game inputs. [Source](../../../windows/src/win_entry.c#L667-L714) |
+| Native process preparation | Installs crash handling, raises timer resolution and optional process priority, identifies the app to SDL, and installs the settings key hook. [Source](../../../windows/src/win_entry.c#L716-L738) |
+| Host handoff | Creates the launch-recovery marker and calls `bluewake_host_main` with the selected module path. [Source](../../../windows/src/win_entry.c#L739-L749) |
+
+### Apple entry
+
+```mermaid
+flowchart TD
+    Start["Apple application startup"]
+    Entry["Apple entry layer"]
+    Bundle["App bundle<br/>packaged resources"]
+    Storage["Writable application storage"]
+    Host["Shared host"]
+
+    Start --> Entry
+    Bundle -->|"resolve resource paths"| Entry
+    Storage -->|"resolve player-data paths"| Entry
+    Entry -->|"configured host startup"| Host
+```
+
+On iOS and iPadOS, SDL starts `UIApplicationMain` before the Objective-C entry
+shim runs on UIKit's application lifecycle. The shim uses
+`Documents/BlueWake` for imported game data, logs, and other writable runtime
+data; tvOS uses `Library/Caches/BlueWake` because the target cannot write the
+same locations. It finds the translated module in the app's `Frameworks`
+directory or mobile data directory, runs the first-use import flow when
+required, and sets paths only for files that exist. iOS and iPadOS keep the
+memory card under Application Support and install touch controls; tvOS keeps
+the card with its cache data and omits touch controls. After the host returns,
+the UIKit process exits or presents an error rather than leaving an inactive
+application alive.
+
+macOS does not use this UIKit entry shim. Its `BlueWake.app` contains the shared
+host executable, which enters `runtime/host/src/main.c` directly. The shared
+host recognizes the packaged bundle through its provenance marker, loads the
+module from `Contents/Frameworks`, and resolves the DOL, RELs, disc, and optional
+DSP files from `Contents/Resources`.
+
+| Component | What it does |
+| --- | --- |
+| UIKit and SDL entry | Runs after SDL has established the iOS, iPadOS, or tvOS application lifecycle and owns the mobile `main`. [Source](../../../apple/ios/src/ios_entry.m#L1-L45), [mobile target wiring](../../../apple/ios/CMakeLists.txt#L90-L121) |
+| Writable storage | Uses Documents on iOS/iPadOS and Library/Caches on tvOS, creates the BlueWake directory, and starts the session log. [Source](../../../apple/ios/src/ios_entry.m#L276-L300) |
+| Bundle and game resources | Reads packaged optimization metadata, selects the module from `Frameworks` or writable storage, and resolves imported DOL, REL, disc, and optional DSP files. [Source](../../../apple/ios/src/ios_entry.m#L312-L356), [imported paths](../../../apple/ios/src/ios_entry.m#L424-L438) |
+| Platform-specific player data | Uses Application Support for the iOS/iPadOS card with non-destructive migration, while tvOS keeps the card in its cache data; touch controls are excluded from tvOS. [Source](../../../apple/ios/src/ios_entry.m#L439-L473) |
+| Mobile host handoff | Builds the host argument vector, calls `bluewake_host_main`, and integrates host termination and errors with UIKit. [Source](../../../apple/ios/src/ios_entry.m#L457-L496) |
+| macOS bundle resolver | Detects the packaged `.app`, resolves its Frameworks and Resources contents, and applies bundle-selected runtime defaults before normal host startup. [Source](../../../runtime/host/src/main.c#L6332-L6381), [macOS bundle assembly](../../../runtime/host/CMakeLists.txt#L82-L115) |
+
+### Shared host handoff
+
+```mermaid
+flowchart TD
+    Input["Platform-provided configuration"]
+    Parse["Parse arguments and options"]
+    Validate["Validate required inputs"]
+    Init["Continue into host initialization"]
+
+    Input --> Parse --> Validate --> Init
+```
+
+The entry layers normalize platform choices into a module argument and
+environment variables before calling the shared host. The host loads saved
+settings, applies packaged or developer defaults where needed, and then checks
+each input at the point that consumes it. The native module must load and
+expose a compatible descriptor; the DOL path must be present and the DOL loader
+must accept its contents. The disc becomes present only when its image opens
+successfully. The memory-card path must open through the card runtime.
+
+DSP means **Digital Signal Processor**. The default high-level audio path does
+not require DSP support files. When the low-level DSP path is selected,
+`BLUEWAKE_DSP_IROM` and `BLUEWAKE_DSP_COEF` identify the DSP instruction ROM
+and coefficient files; adapter initialization validates that pair. Save-state,
+SRAM, settings, cache, and log paths are consumed by their respective host or
+platform subsystems rather than copied into one central path object.
+
+| Component | What it does |
+| --- | --- |
+| Configuration input | Receives the selected module as `argv[1]` and the DOL, disc, DSP, memory-card, and other player-data paths through normalized environment settings. [Source](../../../runtime/host/src/main.c#L7248-L7289) |
+| Module validation | Opens the native library, requires `staticrecomp_get_module`, and validates module and CPU storage compatibility. [Source](../../../runtime/host/src/main.c#L7316-L7343) |
+| DOL and disc validation | Requires a DOL path, loads and validates the DOL image, and marks the disc present only when the configured image opens. [DOL selection](../../../runtime/host/src/main.c#L7289-L7314), [DOL load](../../../runtime/host/src/main.c#L7957-L7960), [disc open](../../../runtime/host/src/main.c#L7819-L7826) |
+| DSP validation | Uses HLE without support files by default; for LLE, opens the configured Digital Signal Processor ROM and coefficient files through the DSP adapter and stops if adapter initialization fails. [Source](../../../runtime/host/src/main.c#L5590-L5626), [startup check](../../../runtime/host/src/main.c#L7961-L7965) |
+| Player-data validation | Opens the configured memory-card path before guest boot; platform layers separately establish writable settings, SRAM, save-state, cache, and log locations. [Source](../../../runtime/host/src/main.c#L7630-L7636) |
+| Lifecycle continuation | Proceeds from validated configuration into module, renderer, device, guest-state, and execution setup described below. [Host lifecycle](#host-lifecycle) |
 
 ## Host lifecycle
 
