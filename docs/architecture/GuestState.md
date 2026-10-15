@@ -17,8 +17,10 @@
 ## Responsibility
 
 Guest state is the GameCube-visible machine model shared by the host and the
-translated module. It holds CPU registers, memory, addresses, timing counters,
-exceptions, and the program counter at which translated execution resumes.
+translated module. Its core pieces are `CPUState`, which records the current
+guest processor context, and MEM1, which holds the guest main-memory bytes.
+REL aliases, timing, exceptions, and device state complete the model used to
+resume translated execution.
 
 ## Mechanical contents
 
@@ -184,8 +186,10 @@ native code`"]
         GuestWork["`Operate on
 the GameCube
 model`"]
-        Initialize["`Initialize
-CPUState and
+        CPUInit["`Select and
+initialize
+CPUState`"]
+        MemoryInit["`Select and clear
 MEM1
 load DOL and
 REL data`"]
@@ -203,7 +207,8 @@ guest time
 deliver
 callbacks and
 exceptions`"]
-        GuestWork --> Initialize
+        GuestWork --> CPUInit
+        GuestWork --> MemoryInit
         GuestWork --> Dispatch
         GuestWork --> Service
         GuestWork --> Events
@@ -358,7 +363,7 @@ control`"]
 | Reservation and locked cache | Reservation address/valid flag plus 512 locked-cache tags and validity bits | Preserves `lwarx`/`stwcx.` semantics and the Gekko locked-cache model across translated blocks. |
 | Guest time | `timebase`, `downcount`, `cycle_budget`, `cycle_observation_suffix`, `cycle_deadline_active`, and `cycle_deadline_budget` | Charges translated work and forces a yield before a device, callback, or interrupt deadline. |
 | Address and external-access bookkeeping | Cached translation-lookup fields plus the last external address, value, region ID, and access counts | Avoids repeated address work and carries special-access state between generated code and the runtime. |
-| Memory and runtime bindings | RAM/EXRAM pointers and sizes plus function pointers for external memory, instruction fallback, host calls, SPR access, and cache control | Connects the guest CPU context to process memory and compatibility services without storing native pointers in guest registers. |
+| Memory and runtime bindings | `ram` and `ram_size` identify the separate MEM1 allocation; optional EXRAM fields and function pointers cover external memory, instruction fallback, host calls, SPR access, and cache control | Connects the guest CPU context to MEM1 and compatibility services without storing native pointers in guest registers. |
 
 ### Game-perspective examples
 
@@ -424,10 +429,12 @@ addresses.
 
 ## Ownership and address model
 
-The module can export aligned `CPUState` and MEM1 storage. The host selects
-those exports when present, initializes them, and passes the same CPU pointer
-through dispatch, memory, device, and callback paths. No state copy is required
-when execution crosses the host/module ABI.
+The module can export two aligned, non-overlapping allocations: one `CPUState`
+structure and one MEM1 byte array. The host selects those exports when present,
+initializes both, and sets `CPUState.ram` to the selected MEM1 base. Dispatch,
+memory, device, and callback paths then receive the same CPU pointer and reach
+the same memory through it. No CPU or MEM1 copy is required when execution
+crosses the host/module ABI.
 
 ### Guest-to-host address resolution
 
@@ -470,8 +477,9 @@ address`"]
     RAM{"`Inside
 allocated
 MEM1?`"}
-    RAMPointer["`CPUState.ram
-+ MEM1 offset`"]
+    RAMPointer["`MEM1 native backing
+CPUState.ram
++ guest offset`"]
     Callback["`Call external
 read or
 write hook`"]
@@ -515,7 +523,7 @@ structures, resolving a pointer only when they access the referenced bytes.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
-| Select module-exported or compatibility storage | One authoritative `CPUState` and MEM1 allocation | [Storage selection](../../runtime/host/src/main.c#L7329-L7343) |
+| Select module-exported or compatibility storage | One authoritative `CPUState` structure and one separate MEM1 allocation, connected by `CPUState.ram` | [Storage selection](../../runtime/host/src/main.c#L7329-L7343) |
 | Install memory and MMIO accessors | Ordinary addresses reach RAM; hardware ranges reach compatibility services | [MMIO callback setup](../../runtime/host/src/main.c#L7943-L7948) |
 | Establish REL aliases | Relocated data uses linked guest addresses while code addresses remain valid for dispatch and guest function pointers | [REL alias setup](../../runtime/host/src/main.c#L7968-L8101) |
 
@@ -544,23 +552,35 @@ and data
 images`"]
     Loader["`Image
 loader`"]
-    Memory["`MEM1 +
-aliases`"]
+    CPU["`CPUState
+register and
+control context`"]
+    MEM1["`MEM1
+main-memory
+bytes`"]
+    Aliases["`REL alias
+storage`"]
     OS["`OS
-globals`"]
+globals, stack
+and arenas`"]
     Devices["`Device
 state`"]
-    PC["`Entry
-PC`"]
+    Ready["`CPUState.pc set
+to entry PC`"]
 
-    DOL --> Loader --> Memory
-    REL --> Memory
-    Memory --> OS --> PC
-    Devices --> PC
+    DOL --> Loader --> MEM1
+    REL --> Aliases
+    CPU -->|"`ram points to`"| MEM1
+    MEM1 --> OS
+    CPU --> Ready
+    OS --> Ready
+    Aliases --> Ready
+    Devices --> Ready
 ```
 
 | Step | Runtime result | In-game consequence | Example contribution and code |
 | --- | --- | --- | --- |
+| Select guest storage | Chooses one `CPUState` and one separate MEM1 allocation, initializes them, and connects them through `CPUState.ram` | Every later register access and memory access observes the same guest machine state. | [Module storage contract](../../cmake/composite/module_cpu_contract.h#L29-L104), [host selection](../../runtime/host/src/main.c#L7329-L7343) |
 | Initialize devices | Reset video, disc, controller, interrupt, audio, DSP, ARAM, SRAM, and card state | The opening program sees console-like devices in a coherent reset state before it polls input, starts audio, or requests assets. | [PR #222](https://github.com/chrissotraidis/bluewake/pull/222) extends the launch-time controller handoff; [host initialization](../../runtime/host/src/main.c#L7550-L7686) initializes the complete device set. |
 | Load DOL sections | Initialized data is copied into MEM1 and BSS is cleared | The game's always-loaded globals contain their linked initial values instead of uninitialized host memory. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated shared module-owned guest RAM. [Host DOL load](../../runtime/host/src/main.c#L7978-L7981), [RecompCore loader](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/loader.c) |
 | Create GameCube OS state | Low memory, arenas, stack, clocks, and machine-state registers satisfy guest startup assumptions | Startup code can allocate memory, use its stack, read clocks, and enter callbacks or exceptions under expected OS conventions. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) corrects one such guest stack convention for callbacks. [Host boot call](../../runtime/host/src/main.c#L8123-L8133), [RecompCore boot](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c) |
