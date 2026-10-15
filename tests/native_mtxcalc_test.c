@@ -30,8 +30,9 @@
  * stores on words addresses are loaded from, FP off, quantised pairs, an
  * exception pending, a write journal, aliases over MEM1, the budget or the
  * deadline inside the function, and the host not quiet, the edge filter off
- * or a boundary watched. Every byte of the CPU state (the cycle suffix
- * included) and of RAM must match - or, where the native declines, nothing
+ * or a boundary watched. The guest CPU fields the checkpoint hash copies
+ * (host pointers only as present or absent; the cycle suffix included) and
+ * RAM must match - or, where the native declines, nothing
  * may have changed. RAM outside the test area and J3DSys's page is
  * read-only in both images.
  *
@@ -47,6 +48,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include "cpu_state_compare.h"
 
 /* direct_calls.c, linked in for the edge filter's state, names these. */
 BwChunkFn bw_find_chunk(u32 address) {
@@ -357,9 +359,7 @@ static void make_trouble(unsigned which, unsigned kind, CPUState* c) {
 }
 
 static void report_cpu(const CPUState* got, const CPUState* want) {
-    for (unsigned b = 0; b < sizeof *got; ++b)
-        if (((const u8*)got)[b] != ((const u8*)want)[b])
-            fprintf(stderr, "  CPU byte %u: got %02X want %02X\n", b, ((const u8*)got)[b], ((const u8*)want)[b]);
+    bluewake_report_cpu_state(got, want);
 }
 
 static int report_ram(const u8* got, const u8* want, u32 at, u32 bytes) {
@@ -462,7 +462,7 @@ int main(int argc, char** argv) {
             g_ppc_guest_aliases_overlap_mem1 = false;
             if (!accepted) {
                 declined++;
-                if (memcmp(&native, &untouched, sizeof native) != 0 || !same_regions(before, native_ram)) {
+                if (bluewake_cpu_state_compare(&native, &untouched) != 0 || !same_regions(before, native_ram)) {
                     fprintf(stderr, "case %u (%s): declined but changed state\n", i, NAMES[which]);
                     report_cpu(&native, &untouched);
                     return 1;
@@ -494,7 +494,7 @@ int main(int argc, char** argv) {
             if (which == 2 && reference.downcount < k.cpu.downcount - 250)
                 compensated++;
             if (s_unexpected_service != 0u || (reference.pc & ~3u) != RETURN_ADDRESS ||
-                memcmp(&native, &reference, sizeof native) != 0 || !same_regions(native_ram, reference_ram)) {
+                bluewake_cpu_state_compare(&native, &reference) != 0 || !same_regions(native_ram, reference_ram)) {
                 fprintf(stderr, "case %u (%s, seed %08X): mismatch (service asked %u times, last at %08X; pc %08X)\n",
                         i, NAMES[which], seed, s_unexpected_service, s_unexpected_at, reference.pc);
                 report_cpu(&native, &reference);
