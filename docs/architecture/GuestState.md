@@ -7,6 +7,7 @@
   - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
   - [Host work across the guest/native boundary](#host-work-across-the-guestnative-boundary)
   - [CPUState layout](#cpustate-layout)
+  - [Game-perspective examples](#game-perspective-examples)
 - [DOL and REL roles](#dol-and-rel-roles)
 - [Ownership and address model](#ownership-and-address-model)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
@@ -344,6 +345,36 @@ control`"]
 | Address and external-access bookkeeping | Cached translation-lookup fields plus the last external address, value, region ID, and access counts | Avoids repeated address work and carries special-access state between generated code and the runtime. |
 | Memory and runtime bindings | RAM/EXRAM pointers and sizes plus function pointers for external memory, instruction fallback, host calls, SPR access, and cache control | Connects the guest CPU context to process memory and compatibility services without storing native pointers in guest registers. |
 
+### Game-perspective examples
+
+The following examples start with behavior the game needs and identify the
+guest state involved. They are representative mechanical paths, not verified
+instruction-by-instruction traces of one specific frame.
+
+| Guest-state area | Example from the game's perspective | What touches it |
+| --- | --- | --- |
+| Integer and branch state | A gameplay routine reads flags, chooses a branch, updates an actor field, and calls another routine. | Translated integer instructions use `gpr`, condition operations update `cr`, direct calls place a return address in `lr`, and indirect calls or jump tables can use `ctr`. |
+| Floating point and paired single | Link, the camera, an animation, or a model transform updates positions, angles, matrices, or vertex-related values. | Translated floating-point and paired-single instructions use `fpr`, `ps1`, `fpscr`, and the quantization modes in `gqr`; resulting values can then be stored in guest memory or submitted through GX. |
+| Program and machine control | Execution moves from the current gameplay block to another DOL or REL routine. | A translated branch changes the guest `pc`, `lr`, or `ctr`; the generated dispatcher maps that guest code address to a native translated function. `msr` and related control state continue to describe the guest CPU mode. |
+| Exception context | A video retrace or another enabled device event interrupts gameplay and enters the guest handler. | The service model publishes an interrupt; delivery saves the interrupted guest address and machine state in `srr0` and `srr1`, records pending exception state, and changes `pc` to the guest exception vector. |
+| Reservation and locked cache | Guest OS or synchronization code performs an atomic update while gameplay systems share state. | Translated `lwarx`/`stwcx.` operations use the reservation fields; Gekko locked-cache operations use the modeled tags and validity bits. These mechanisms support the game but do not correspond to a single player-facing feature. |
+| Guest time | A gameplay update runs until the next video, audio, DSP, callback, decrementer, or interrupt boundary. | Translated blocks charge `downcount`; the host uses the cycle budget, time base, observations, and deadlines to decide when the module must yield. |
+| Address and external-access bookkeeping | The game reads an actor or asset in RAM, follows a REL-linked address, or touches a controller, disc, audio, or graphics register. | Memory helpers cache ordinary address resolution and record accesses that cross into the host MMIO router. The address held by the game remains a guest address. |
+| Memory and runtime bindings | The same translated load reaches MEM1, while a hardware-address load reaches a compatibility service. | `CPUState` RAM bindings provide ordinary backing bytes; callback bindings route non-RAM accesses to BlueWake without placing native pointers in the guest register file. |
+
+Two short end-to-end examples show how these areas combine:
+
+1. **Moving Link:** the platform input snapshot becomes a GameCube pad sample
+   through SI. Guest PAD code reads that result into MEM1; translated gameplay
+   instructions use integer and floating-point state to update actor and camera
+   data; later GX work reads the resulting guest data to render the frame.
+   [Input path](Services.md#input) and [graphics resource resolution](Graphics.md#guest-resource-resolution)
+2. **Completing an asynchronous disc read:** the game programs DI registers
+   with a guest destination. The host copies disc bytes into that guest range,
+   advances the completion on guest time, then exposes status, an interrupt, or
+   a guest callback. Gameplay resumes with the loaded data still addressed in
+   the GameCube memory model. [Disc completion](Services.md#disc-commands-and-asynchronous-completion)
+
 The field order and widths form the generated-code ABI. The host rejects a
 module when its CPU ABI version or `sizeof(CPUState)` does not match, preventing
 translated code from interpreting a different layout. BlueWake's diagnostic
@@ -471,6 +502,20 @@ structures, resolving a pointer only when they access the referenced bytes.
 | Establish REL aliases | Relocated data uses linked guest addresses while code addresses remain valid for dispatch and guest function pointers | [REL alias setup](../../runtime/host/src/main.c#L7968-L8101) |
 
 ## Boot state
+
+This state is constructed when BlueWake starts a fresh guest session, after the
+host has loaded the native game module and created its platform resources but
+before the first translated instruction is dispatched. It is not a firmware or
+BIOS boot: the host directly prepares the memory, processor, OS, and device
+conditions that the translated game expects at its entry point.
+
+The sequence runs once for that fresh runtime initialization. Normal gameplay
+then mutates the resulting state through translated execution and host
+services. Loading a BlueWake save state instead restores a previously captured
+guest-machine snapshot at a safe host boundary rather than treating the
+freshly initialized entry state as the point from which play resumes.
+[Host initialization](../../runtime/host/src/main.c#L7316-L8115) and
+[save-state boundary](Host.md#runtime-inputs-and-persistence)
 
 ```mermaid
 flowchart TD
