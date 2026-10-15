@@ -208,6 +208,18 @@ static void reset_host(void) {
     bw_host_pi_mask = &s_pi_mask;
 }
 
+/* v1 returns 0 on this pin, which leaves direct calls off. Approve a skip only
+ * while the host is quiet, so a call inside the function runs. A busy host
+ * refuses, and the translation stops at the edge service. */
+static bool test_can_skip(void* user, const CPUState* cpu, u32 address) {
+    (void)user; (void)address;
+    if (s_sources_dirty)
+        return false;
+    if ((cpu->msr & PPC_MSR_EE) == 0u)
+        return true;
+    return !s_decrementer_pending && (s_pi_cause & s_pi_mask) == 0u;
+}
+
 static int harness_load(Harness* h, const char* path, bool module_natives, const Region* regions,
                         unsigned region_count) {
     REGIONS = regions;
@@ -223,9 +235,9 @@ static int harness_load(Harness* h, const char* path, bool module_natives, const
     h->guest_cpu = (CPUState * (*)(void))(void*)GetProcAddress(h->lib, "bluewake_composite_guest_cpu");
     void (*set_edge)(int (*)(void*, CPUState*, u32), void*) =
         (void (*)(int (*)(void*, CPUState*, u32), void*))(void*)GetProcAddress(h->lib, "bluewake_set_edge_service");
-    int (*direct)(bool, const bool*, const bool*, const u32*, const u32*) =
-        (int (*)(bool, const bool*, const bool*, const u32*, const u32*))(void*)GetProcAddress(
-            h->lib, "bluewake_composite_direct_calls");
+    int (*direct)(bool, const bool*, const bool*, const u32*, const u32*, bool (*)(void*, const CPUState*, u32), void*) =
+        (int (*)(bool, const bool*, const bool*, const u32*, const u32*, bool (*)(void*, const CPUState*, u32), void*))(void*)GetProcAddress(
+            h->lib, "bluewake_composite_direct_calls_v2");
     int (*filter)(bool) = (int (*)(bool))(void*)GetProcAddress(h->lib, "bluewake_composite_edge_filter");
     if (get == NULL || h->guest_cpu == NULL || set_edge == NULL || direct == NULL || filter == NULL) {
         fprintf(stderr, "not a BlueWake Windows module\n");
@@ -241,7 +253,7 @@ static int harness_load(Harness* h, const char* path, bool module_natives, const
      * service at every boundary it crosses, and a native that ran there fails
      * the comparison. */
     h->filter = filter;
-    if (!direct(true, &s_sources_dirty, &s_decrementer_pending, &s_pi_cause, &s_pi_mask) || !filter(true)) {
+    if (!direct(true, &s_sources_dirty, &s_decrementer_pending, &s_pi_cause, &s_pi_mask, test_can_skip, NULL) || !filter(true)) {
         fprintf(stderr, "the module's direct calls or edge filter are unavailable\n");
         return 0;
     }
