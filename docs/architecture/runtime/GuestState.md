@@ -4,12 +4,12 @@
 
 - [Responsibility](#responsibility)
 - [Mechanical contents](#mechanical-contents)
-  - [CPUState layout](#cpustate-layout)
   - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
+  - [CPUState layout](#cpustate-layout)
+- [DOL and REL roles](#dol-and-rel-roles)
 - [Ownership and address model](#ownership-and-address-model)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
 - [Boot state](#boot-state)
-- [DOL and REL roles](#dol-and-rel-roles)
 - [Guest time and exceptions](#guest-time-and-exceptions)
 
 ## Responsibility
@@ -27,6 +27,71 @@ runtime memory helpers, writes its results back to the same structure and
 memory, charges guest cycles, and leaves the next guest address in `pc`. The
 host receives that same state when the block yields; it does not reconstruct
 the CPU from native registers.
+
+### CPU, memory space, and I/O
+
+The CPU context carries guest-visible registers and execution control. Memory
+instructions keep their 32-bit guest addresses until the access helpers route
+them to native backing storage or an I/O callback.
+
+```mermaid
+flowchart TD
+    Code["Translated DOL or REL code"]
+    Host["BlueWake host"]
+
+    subgraph CPU["Guest CPU — CPUState"]
+        direction TB
+        State["One authoritative CPU context"]
+        Registers["`GPR, FPR, paired-single,<br/>CR, LR, CTR, XER`"]
+        Control["`PC, MSR, exceptions,<br/>reservation and cache state`"]
+        Time["`time base, cycle charge,<br/>budget and deadlines`"]
+        Hooks["`memory, SPR, cache and<br/>host-call hooks`"]
+        State --- Registers
+        State --- Control
+        State --- Time
+        State --- Hooks
+    end
+
+    Access{"Guest load or store"}
+
+    subgraph Space["Guest address space"]
+        direction TB
+        Retail["`0x80000000–0x817FFFFF<br/>retail cached MEM1`"]
+        Extended["`0x81800000–0x81FFFFFF<br/>BlueWake MEM1 extension`"]
+        Mirror["`0xC0000000–0xC1FFFFFF<br/>uncached MEM1 mirror`"]
+        REL["Generated linked REL ranges"]
+        MMIO["`Device and graphics ranges<br/>including 0xCC00xxxx and 0xC800xxxx`"]
+    end
+
+    subgraph Native["Native process storage and services"]
+        direction TB
+        RAM["32 MiB MEM1 backing array"]
+        Alias["Shared REL alias storage"]
+        Devices["Compatibility services<br/>VI, PI, DI, SI, audio, DSP, GX"]
+    end
+
+    Host -->|"dispatch"| Code
+    Code -->|"yield"| Host
+    Code <-->|"read and update"| State
+    Host <-->|"service at boundaries"| State
+    Code --> Access
+    Access --> Retail
+    Access --> Extended
+    Access --> Mirror
+    Access --> REL
+    Access --> MMIO
+    Retail -->|"base + offset"| RAM
+    Extended -->|"base + offset"| RAM
+    Mirror -->|"clear mirror bit"| RAM
+    REL -->|"range lookup"| Alias
+    MMIO -->|"external read/write"| Hooks
+    Hooks -->|"native callback"| Devices
+```
+
+Cached and uncached MEM1 addresses converge on the same backing bytes. REL
+aliases preserve generated linked addresses while pointing both the host and
+translated module at shared storage. Device ranges do not become host memory
+pointers; they invoke compatibility services through the access hooks.
 
 ### CPUState layout
 
@@ -102,76 +167,24 @@ layout](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c
 [ABI validation](../../../cmake/composite/module_cpu_contract.h#L35-L79), and
 [checkpoint field list](../../../runtime/host/src/guest_checkpoint.h#L9-L38).
 
-### CPU, memory space, and I/O
-
-The CPU context carries guest-visible registers and execution control. Memory
-instructions keep their 32-bit guest addresses until the access helpers route
-them to native backing storage or an I/O callback.
-
-```mermaid
-flowchart TD
-    Code["Translated DOL or REL code"]
-    Host["BlueWake host"]
-
-    subgraph CPU["Guest CPU — CPUState"]
-        direction TB
-        State["One authoritative CPU context"]
-        Registers["`GPR, FPR, paired-single,<br/>CR, LR, CTR, XER`"]
-        Control["`PC, MSR, exceptions,<br/>reservation and cache state`"]
-        Time["`time base, cycle charge,<br/>budget and deadlines`"]
-        Hooks["`memory, SPR, cache and<br/>host-call hooks`"]
-        State --- Registers
-        State --- Control
-        State --- Time
-        State --- Hooks
-    end
-
-    Access{"Guest load or store"}
-
-    subgraph Space["Guest address space"]
-        direction TB
-        Retail["`0x80000000–0x817FFFFF<br/>retail cached MEM1`"]
-        Extended["`0x81800000–0x81FFFFFF<br/>BlueWake MEM1 extension`"]
-        Mirror["`0xC0000000–0xC1FFFFFF<br/>uncached MEM1 mirror`"]
-        REL["Generated linked REL ranges"]
-        MMIO["`Device and graphics ranges<br/>including 0xCC00xxxx and 0xC800xxxx`"]
-    end
-
-    subgraph Native["Native process storage and services"]
-        direction TB
-        RAM["32 MiB MEM1 backing array"]
-        Alias["Shared REL alias storage"]
-        Devices["Compatibility services<br/>VI, PI, DI, SI, audio, DSP, GX"]
-    end
-
-    Host -->|"dispatch"| Code
-    Code -->|"yield"| Host
-    Code <-->|"read and update"| State
-    Host <-->|"service at boundaries"| State
-    Code --> Access
-    Access --> Retail
-    Access --> Extended
-    Access --> Mirror
-    Access --> REL
-    Access --> MMIO
-    Retail -->|"base + offset"| RAM
-    Extended -->|"base + offset"| RAM
-    Mirror -->|"clear mirror bit"| RAM
-    REL -->|"range lookup"| Alias
-    MMIO -->|"external read/write"| Hooks
-    Hooks -->|"native callback"| Devices
-```
-
-Cached and uncached MEM1 addresses converge on the same backing bytes. REL
-aliases preserve generated linked addresses while pointing both the host and
-translated module at shared storage. Device ranges do not become host memory
-pointers; they invoke compatibility services through the access hooks.
-
 The translated native instructions themselves are not guest state, and the
 original DOL and REL files are inputs rather than live state. Compatibility
 services also retain their own device-specific state. Their guest-visible
 effects enter this machine state through MMIO results, memory writes, timing
 updates, callbacks, and pending exceptions.
+
+## DOL and REL roles
+
+Ahead-of-time translation replaces executable instructions with native
+functions, but the original executable formats still define runtime data and
+addresses.
+
+- **DOL** — provides the initial section layout and initialized data copied into
+  guest memory. Its translated functions live in the native game module.
+- **REL** — provides relocatable module layout, data, BSS, and linked guest
+  addresses. Its translated functions also live in the native game module.
+- **Dispatch metadata** — maps DOL and REL guest code addresses to their native
+  translations. See [composite generation](../../../scripts/generate_composite.py#L562-L707).
 
 ## Ownership and address model
 
@@ -261,19 +274,6 @@ aliases`"]
 | Load DOL sections | Initialized data is copied into MEM1 and BSS is cleared | [Host DOL load](../../../runtime/host/src/main.c#L7957-L7960), [RecompCore loader](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/src/loader.c) |
 | Create GameCube OS state | Low memory, arenas, stack, clocks, and machine-state registers satisfy guest startup assumptions | [Host boot call](../../../runtime/host/src/main.c#L8102-L8115), [RecompCore boot](https://github.com/chrissotraidis/RecompCore/blob/ee99bbc13c948351f6974c745cad2593a25eacbf/GXRuntime/src/boot.c) |
 | Select the entry point | `cpu.pc` is set to the module descriptor's entry address | [Execution start](../../../runtime/host/src/main.c#L8112-L8115) |
-
-## DOL and REL roles
-
-Ahead-of-time translation replaces executable instructions with native
-functions, but the original executable formats still define runtime data and
-addresses.
-
-- **DOL** — provides the initial section layout and initialized data copied into
-  guest memory. Its translated functions live in the native game module.
-- **REL** — provides relocatable module layout, data, BSS, and linked guest
-  addresses. Its translated functions also live in the native game module.
-- **Dispatch metadata** — maps DOL and REL guest code addresses to their native
-  translations. See [composite generation](../../../scripts/generate_composite.py#L562-L707).
 
 ## Guest time and exceptions
 
