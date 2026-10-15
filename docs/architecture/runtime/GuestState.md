@@ -37,44 +37,85 @@ them to native backing storage or an I/O callback.
 
 ```mermaid
 flowchart TD
-    Code["Translated DOL or REL code"]
-    Host["BlueWake host"]
+    Code["`Translated
+DOL or REL
+code`"]
+    Host["`BlueWake
+host`"]
 
     subgraph CPU["Guest CPU — CPUState"]
         direction TB
-        State["One authoritative CPU context"]
-        Registers["`GPR, FPR, paired-single,<br/>CR, LR, CTR, XER`"]
-        Control["`PC, MSR, exceptions,<br/>reservation and cache state`"]
-        Time["`time base, cycle charge,<br/>budget and deadlines`"]
-        Hooks["`memory, SPR, cache and<br/>host-call hooks`"]
+        State["`One
+authoritative
+CPU context`"]
+        Registers["`GPR, FPR,
+paired-single,
+CR, LR,
+CTR, XER`"]
+        Control["`PC, MSR,
+exceptions,
+reservation and
+cache state`"]
+        Time["`time base,
+cycle charge,
+budget and
+deadlines`"]
+        Hooks["`memory, SPR,
+cache and
+host-call
+hooks`"]
         State --- Registers
         State --- Control
         State --- Time
         State --- Hooks
     end
 
-    Access{"Guest load or store"}
+    Access{"`Guest load
+or store`"}
 
     subgraph Space["Guest address space"]
         direction TB
-        Retail["`0x80000000–0x817FFFFF<br/>retail cached MEM1`"]
-        Extended["`0x81800000–0x81FFFFFF<br/>BlueWake MEM1 extension`"]
-        Mirror["`0xC0000000–0xC1FFFFFF<br/>uncached MEM1 mirror`"]
-        REL["Generated linked REL ranges"]
-        MMIO["`Device and graphics ranges<br/>including 0xCC00xxxx and 0xC800xxxx`"]
+        Retail["`0x80000000–
+0x817FFFFF
+retail cached
+MEM1`"]
+        Extended["`0x81800000–
+0x81FFFFFF
+BlueWake MEM1
+extension`"]
+        Mirror["`0xC0000000–
+0xC1FFFFFF
+uncached MEM1
+mirror`"]
+        REL["`Generated
+linked REL
+ranges`"]
+        MMIO["`Device and
+graphics ranges
+including
+0xCC00xxxx and
+0xC800xxxx`"]
     end
 
     subgraph Native["Native process storage and services"]
         direction TB
-        RAM["32 MiB MEM1 backing array"]
-        Alias["Shared REL alias storage"]
-        Devices["Compatibility services<br/>VI, PI, DI, SI, audio, DSP, GX"]
+        RAM["`32 MiB MEM1
+backing array`"]
+        Alias["`Shared REL
+alias storage`"]
+        Devices["`Compatibility
+services
+VI, PI, DI,
+SI, audio,
+DSP, GX`"]
     end
 
     Host -->|"dispatch"| Code
     Code -->|"yield"| Host
-    Code <-->|"read and update"| State
-    Host <-->|"service at boundaries"| State
+    Code <-->|"`read and
+update`"| State
+    Host <-->|"`service at
+boundaries`"| State
     Code --> Access
     Access --> Retail
     Access --> Extended
@@ -83,10 +124,13 @@ flowchart TD
     Access --> MMIO
     Retail -->|"base + offset"| RAM
     Extended -->|"base + offset"| RAM
-    Mirror -->|"clear mirror bit"| RAM
+    Mirror -->|"`clear
+mirror bit`"| RAM
     REL -->|"range lookup"| Alias
-    MMIO -->|"external read/write"| Hooks
-    Hooks -->|"native callback"| Devices
+    MMIO -->|"`external
+read/write`"| Hooks
+    Hooks -->|"`native
+callback`"| Devices
 ```
 
 Cached and uncached MEM1 addresses converge on the same backing bytes. REL
@@ -104,15 +148,34 @@ translated game code; it is not a switch into an emulated CPU process.
 
 ```mermaid
 flowchart TD
-    Host["BlueWake host<br/>native code"]
+    Host["`BlueWake
+host
+native code`"]
 
     subgraph Guest["Guest-facing operations"]
         direction TB
-        GuestWork["Operate on the GameCube model"]
-        Initialize["Initialize CPUState and MEM1<br/>load DOL and REL data"]
-        Dispatch["Dispatch the game module<br/>at the current guest PC"]
-        Service["Read or update guest memory<br/>service MMIO and device state"]
-        Events["Advance guest time<br/>deliver callbacks and exceptions"]
+        GuestWork["`Operate on
+the GameCube
+model`"]
+        Initialize["`Initialize
+CPUState and
+MEM1
+load DOL and
+REL data`"]
+        Dispatch["`Dispatch the
+game module
+at the current
+guest PC`"]
+        Service["`Read or update
+guest memory
+service MMIO
+and device
+state`"]
+        Events["`Advance
+guest time
+deliver
+callbacks and
+exceptions`"]
         GuestWork --> Initialize
         GuestWork --> Dispatch
         GuestWork --> Service
@@ -121,11 +184,25 @@ flowchart TD
 
     subgraph Native["Native-facing operations"]
         direction TB
-        NativeWork["Use host platform facilities"]
-        Module["Load the native game library"]
-        Files["Read disc and resource files<br/>persist saves and settings"]
-        Platform["Poll input and lifecycle events<br/>manage windows and audio"]
-        Graphics["Submit graphics work<br/>and present through the GPU"]
+        NativeWork["`Use host
+platform
+facilities`"]
+        Module["`Load the
+native game
+library`"]
+        Files["`Read disc and
+resource files
+persist saves
+and settings`"]
+        Platform["`Poll input and
+lifecycle
+events
+manage windows
+and audio`"]
+        Graphics["`Submit
+graphics work
+and present
+through the GPU`"]
         NativeWork --> Module
         NativeWork --> Files
         NativeWork --> Platform
@@ -154,16 +231,38 @@ fields that connect them to BlueWake's scheduler, memory, and services.
 
 ```mermaid
 flowchart TD
-    State["Authoritative CPUState"]
+    State["`Authoritative
+CPUState`"]
 
     subgraph Architectural["Guest-visible Gekko state"]
         direction TB
-        Arch["Architectural register file"]
-        Integer["`Integer and branch<br/>gpr[32], lr, ctr, cr, xer`"]
-        Floating["`Floating point and paired single<br/>fpr[32], ps1[32], fpscr, gqr[8]`"]
-        Control["`Execution control<br/>pc, msr, sr[16], ear, hid2`"]
-        Exception["`Exception context<br/>srr0, srr1, dar, dsisr,<br/>exception, program_exception`"]
-        Atomic["`Reservation and locked cache<br/>reserve address/valid,<br/>tags and valid bits`"]
+        Arch["`Architectural
+register file`"]
+        Integer["`Integer and
+branch
+gpr[32], lr,
+ctr, cr, xer`"]
+        Floating["`Floating point
+and paired
+single
+fpr[32], ps1[32],
+fpscr, gqr[8]`"]
+        Control["`Execution
+control
+pc, msr, sr[16],
+ear, hid2`"]
+        Exception["`Exception
+context
+srr0, srr1,
+dar, dsisr,
+exception,
+program_exception`"]
+        Atomic["`Reservation and
+locked cache
+reserve address/
+valid,
+tags and
+valid bits`"]
         Arch --> Integer
         Arch --> Floating
         Arch --> Control
@@ -173,10 +272,27 @@ flowchart TD
 
     subgraph Execution["Native execution bookkeeping"]
         direction TB
-        Exec["Dispatch and access bookkeeping"]
-        Timing["`Guest time<br/>timebase, downcount, cycle budget,<br/>observation and deadline fields`"]
-        Lookup["`Address-lookup cache<br/>last virtual page, index,<br/>invalidation generation`"]
-        External["`External-access bookkeeping<br/>address, value, region ID,<br/>read/write counts`"]
+        Exec["`Dispatch and
+access
+bookkeeping`"]
+        Timing["`Guest time
+timebase,
+downcount,
+cycle budget,
+observation and
+deadline fields`"]
+        Lookup["`Address-lookup
+cache
+last virtual
+page, index,
+invalidation
+generation`"]
+        External["`External-access
+bookkeeping
+address, value,
+region ID,
+read/write
+counts`"]
         Exec --> Timing
         Exec --> Lookup
         Exec --> External
@@ -185,8 +301,18 @@ flowchart TD
     subgraph Bridge["Runtime connections"]
         direction TB
         Runtime["Host bindings"]
-        Memory["`Memory bindings<br/>ram/size, optional exram/size`"]
-        Callbacks["`Native callbacks<br/>external memory, fallback,<br/>host call, SPR and cache control`"]
+        Memory["`Memory
+bindings
+ram/size,
+optional
+exram/size`"]
+        Callbacks["`Native
+callbacks
+external memory,
+fallback,
+host call, SPR
+and cache
+control`"]
         Runtime --> Memory
         Runtime --> Callbacks
     end
@@ -254,21 +380,43 @@ choose where native allocations and code reside.
 
 ```mermaid
 flowchart TD
-    Address["32-bit guest address"]
+    Address["`32-bit guest
+address`"]
     Use{"How is it used?"}
-    Dispatch["Look up guest PC<br/>in dispatch tables"]
-    Native["Call native translated<br/>function"]
-    Alias{"Registered REL<br/>alias match?"}
-    AliasPointer["Alias backing pointer<br/>+ range offset"]
-    Mirror["Canonicalize cached or<br/>uncached MEM1 address"]
-    RAM{"Inside allocated<br/>MEM1?"}
-    RAMPointer["`CPUState.ram<br/>+ MEM1 offset`"]
-    Callback["Call external read or<br/>write hook"]
-    Service["MMIO or other<br/>compatibility service"]
+    Dispatch["`Look up
+guest PC
+in dispatch
+tables`"]
+    Native["`Call native
+translated
+function`"]
+    Alias{"`Registered
+REL alias
+match?`"}
+    AliasPointer["`Alias backing
+pointer
++ range offset`"]
+    Mirror["`Canonicalize
+cached or
+uncached MEM1
+address`"]
+    RAM{"`Inside
+allocated
+MEM1?`"}
+    RAMPointer["`CPUState.ram
++ MEM1 offset`"]
+    Callback["`Call external
+read or
+write hook`"]
+    Service["`MMIO or other
+compatibility
+service`"]
 
     Address --> Use
-    Use -->|"program counter"| Dispatch --> Native
-    Use -->|"load or store"| Alias
+    Use -->|"`program
+counter`"| Dispatch --> Native
+    Use -->|"`load or
+store`"| Alias
     Alias -->|"yes"| AliasPointer
     Alias -->|"no"| Mirror --> RAM
     RAM -->|"yes"| RAMPointer
