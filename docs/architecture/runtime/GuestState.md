@@ -4,6 +4,7 @@
 
 - [Responsibility](#responsibility)
 - [Mechanical contents](#mechanical-contents)
+  - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
 - [Ownership and address model](#ownership-and-address-model)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
 - [Boot state](#boot-state)
@@ -26,25 +27,70 @@ memory, charges guest cycles, and leaves the next guest address in `pc`. The
 host receives that same state when the block yields; it does not reconstruct
 the CPU from native registers.
 
+### CPU, memory space, and I/O
+
+The CPU context carries guest-visible registers and execution control. Memory
+instructions keep their 32-bit guest addresses until the access helpers route
+them to native backing storage or an I/O callback.
+
 ```mermaid
 flowchart TD
+    Code["Translated DOL or REL code"]
     Host["BlueWake host"]
-    Block["Translated DOL or REL block"]
-    CPU["`CPUState<br/>registers, PC, timing,<br/>exceptions, access hooks`"]
-    Resolve{"Guest address<br/>resolution"}
-    MEM1["`MEM1 backing<br/>guest RAM bytes`"]
-    Alias["`REL aliases<br/>linked data and BSS`"]
-    Services["`Compatibility services<br/>MMIO and special accesses`"]
 
-    Host -->|"dispatch"| Block
-    Block -->|"yield"| Host
-    Host <-->|"service at boundaries"| CPU
-    Block <-->|"read and update"| CPU
-    CPU -->|"load or store"| Resolve
-    Resolve <-->|"ordinary RAM"| MEM1
-    Resolve <-->|"linked REL range"| Alias
-    Resolve <-->|"callback"| Services
+    subgraph CPU["Guest CPU — CPUState"]
+        direction TB
+        State["One authoritative CPU context"]
+        Registers["`GPR, FPR, paired-single,<br/>CR, LR, CTR, XER`"]
+        Control["`PC, MSR, exceptions,<br/>reservation and cache state`"]
+        Time["`time base, cycle charge,<br/>budget and deadlines`"]
+        Hooks["`memory, SPR, cache and<br/>host-call hooks`"]
+        State --- Registers
+        State --- Control
+        State --- Time
+        State --- Hooks
+    end
+
+    Access{"Guest load or store"}
+
+    subgraph Space["Guest address space"]
+        direction TB
+        Retail["`0x80000000–0x817FFFFF<br/>retail cached MEM1`"]
+        Extended["`0x81800000–0x81FFFFFF<br/>BlueWake MEM1 extension`"]
+        Mirror["`0xC0000000–0xC1FFFFFF<br/>uncached MEM1 mirror`"]
+        REL["Generated linked REL ranges"]
+        MMIO["`Device and graphics ranges<br/>including 0xCC00xxxx and 0xC800xxxx`"]
+    end
+
+    subgraph Native["Native process storage and services"]
+        direction TB
+        RAM["32 MiB MEM1 backing array"]
+        Alias["Shared REL alias storage"]
+        Devices["Compatibility services<br/>VI, PI, DI, SI, audio, DSP, GX"]
+    end
+
+    Host -->|"dispatch"| Code
+    Code -->|"yield"| Host
+    Code <-->|"read and update"| State
+    Host <-->|"service at boundaries"| State
+    Code --> Access
+    Access --> Retail
+    Access --> Extended
+    Access --> Mirror
+    Access --> REL
+    Access --> MMIO
+    Retail -->|"base + offset"| RAM
+    Extended -->|"base + offset"| RAM
+    Mirror -->|"clear mirror bit"| RAM
+    REL -->|"range lookup"| Alias
+    MMIO -->|"external read/write"| Hooks
+    Hooks -->|"native callback"| Devices
 ```
+
+Cached and uncached MEM1 addresses converge on the same backing bytes. REL
+aliases preserve generated linked addresses while pointing both the host and
+translated module at shared storage. Device ranges do not become host memory
+pointers; they invoke compatibility services through the access hooks.
 
 | Part | What it contains mechanically | How it is used |
 | --- | --- | --- |
