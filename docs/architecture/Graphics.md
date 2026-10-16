@@ -3,26 +3,74 @@
 ## Contents
 
 - [Responsibility](#responsibility)
+- [Concepts](#concepts)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
   - [Guest-visible GX state](#guest-visible-gx-state)
   - [Artifact-to-game examples](#artifact-to-game-examples)
   - [Guest resource resolution](#guest-resource-resolution)
+- [Representative model draw: a tree](#representative-model-draw-a-tree)
+  - [End-to-end flow](#end-to-end-flow)
+  - [What changes the image](#what-changes-the-image)
 - [GX command path](#gx-command-path)
   - [Gather-pipe transport](#gather-pipe-transport)
   - [FIFO and display-list parsing](#fifo-and-display-list-parsing)
+  - [From GX state to a native draw](#from-gx-state-to-a-native-draw)
+- [Textures, frame buffers, and presentation](#textures-frame-buffers-and-presentation)
+  - [Textures and palettes](#textures-and-palettes)
+  - [EFB, copies, and VI presentation](#efb-copies-and-vi-presentation)
 - [Synchronization and completion](#synchronization-and-completion)
-- [Rendering and presentation](#rendering-and-presentation)
+- [Contribution case studies](#contribution-case-studies)
 - [State, fallback, and shutdown](#state-fallback-and-shutdown)
 
 ## Responsibility
 
 The graphics stack preserves the game's GX-facing command model while
-producing native GPU work. Translated code supplies the original FIFO and
-display-list data; GXRuntime interprets it, Aurora builds renderer work, and
-Dawn connects that work to the platform graphics API. Guest addresses remain
-guest addresses throughout this path; the host resolves bounded native views
-only when a graphics operation needs their backing bytes.
+producing native GPU work. Translated code still performs the original scene
+traversal and issues the original GX command stream. GXRuntime reconstructs
+the GameCube graphics state represented by that stream; Aurora converts the
+result into native renderer work; Dawn connects that work to Vulkan, Metal,
+Direct3D, or another enabled platform API.
+
+This is neither high-level replacement of Wind Waker's renderer nor direct
+execution of GameCube GPU instructions by the host GPU. Guest addresses remain
+guest addresses. The host exposes a bounded native view only while a graphics
+consumer needs the backing bytes.
+
+## Concepts
+
+- **GX** — the GameCube graphics API and hardware-facing command model used by
+  the game. BlueWake preserves its retail FIFO, register, memory, and
+  synchronization semantics. See the [GXRuntime front-end contract](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/ARCHITECTURE.md).
+- **Gather pipe and FIFO** — the game writes an ordered byte stream to the
+  gather-pipe address `0xCC008000`. The FIFO assembles those bytes into
+  register writes, display-list calls, and draws.
+- **Display list** — a command sequence stored in guest memory and invoked from
+  the FIFO. It reuses model commands without turning the guest address into a
+  persistent native pointer.
+- **CP, VCD, and VAT** — command-processor state describes where vertex arrays
+  live and how each draw encodes positions, normals, colors, texture
+  coordinates, and matrix indices. VCD selects direct or indexed attributes;
+  VAT defines their formats and sizes.
+- **XF** — transform-unit state: position and normal matrices, projection,
+  viewport, lights, material channels, and texture-coordinate generation.
+- **BP, PE, and TEV** — BP commands configure rasterization and the pixel
+  pipeline. The Pixel Engine (PE) owns depth, blending, tokens, finish state,
+  EFB access, and copies. The Texture Environment (TEV) combines sampled
+  textures, vertex colors, lighting, and constants into output pixels.
+- **Texture, TLUT, and TMEM** — texture descriptors refer to guest image data.
+  A Texture Lookup Table (TLUT) supplies palette entries for indexed formats;
+  TMEM is the console-visible texture-memory model reconstructed by the front
+  end.
+- **EFB, XFB, and VI** — the Embedded Frame Buffer (EFB) is the render target.
+  The game can copy or read it. On original hardware, display copies feed an
+  External Frame Buffer (XFB) consumed by the Video Interface (VI). Aurora
+  preserves the logical copy and presentation boundaries without requiring
+  every implementation step to be a literal hardware framebuffer.
+- **Aurora and Dawn** — Aurora maps normalized GX state to shaders, pipelines,
+  textures, render passes, copies, and presentation. Dawn supplies the
+  platform-neutral WebGPU implementation used to reach native graphics APIs.
+  Aurora is the renderer; it is not the authority for retail GX meaning.
 
 ## Mechanical contents
 
@@ -30,28 +78,27 @@ only when a graphics operation needs their backing bytes.
 
 ```mermaid
 flowchart TD
-    Game["`Translated
-game code`"]
-    FIFO["`GX gather
-pipe and
-display lists`"]
-    GX["`GXRuntime
-command
-model`"]
-    Aurora["`Aurora
-renderer`"]
+    Game["`Translated game code
+scene and draw logic`"]
+    FIFO["`Gather pipe, FIFO
+and display lists`"]
+    GX["`GXRuntime front end
+GX semantic state`"]
+    Packets["`Normalized state,
+resource and draw packets`"]
+    Aurora["`Aurora renderer
+pipelines and passes`"]
     Dawn["`Dawn
-GPU layer`"]
+native API bridge`"]
     GPU["`Native GPU
 and display`"]
-    Host["`BlueWake
-host
-retrace +
-present`"]
+    Host["`BlueWake host
+memory, timing
+and barriers`"]
 
-    Game --> FIFO --> GX --> Aurora --> Dawn --> GPU
-    Host --> GX
-    Host --> Aurora
+    Game --> FIFO --> GX --> Packets --> Aurora --> Dawn --> GPU
+    Host -->|"guest ranges"| GX
+    Host -->|"retrace and completion"| Aurora
     GPU -->|"presented frame"| Host
 ```
 
@@ -61,12 +108,12 @@ barriers determine when their effects must become observable.
 
 | Entity | Owns | Produces | Code reference |
 | --- | --- | --- | --- |
-| Translated game | Original GX control flow, command writes, and guest addresses | FIFO bytes and display-list calls | [Runtime entities](Runtime.md#runtime-entities) |
-| Gather-pipe bridge | Ordered module-to-host transport | GX byte stream | [Bridge ABI](../../runtime/host/src/gather_pipe_bridge.h), [writer](../../cmake/composite/gather_pipe.h) |
-| GXRuntime | FIFO, CP, XF, BP, PE, texture, and copy state | Normalized draws, resources, copies, and completion state | [GX front end](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h) |
-| Aurora | Renderer resources, translation, and frame work | Native render passes and resources | [Aurora integration](https://github.com/chrissotraidis/RecompCore/tree/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora) |
-| Dawn | API-neutral device, queue, shader, and surface interfaces | Work for an enabled native GPU API | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/aurora_backend.h) |
-| BlueWake host | Initialization, address resolution, barriers, retrace, and shutdown order | Resolved ranges, flushes, PE events, and presents | [Renderer setup](../../runtime/host/src/main.c#L7550-L7628) |
+| Translated game | Original scene traversal, GX control flow, command writes, and guest addresses | FIFO bytes and display-list calls | [Runtime entities](Runtime.md#runtime-entities) |
+| Gather-pipe bridge | Ordered module-to-host transport | GX byte stream | [Bridge selection](../../runtime/host/src/gather_pipe_bridge.h), [translated writer](../../cmake/composite/gather_pipe.h) |
+| GXRuntime front end | FIFO decoding and CP, XF, BP, PE, texture, copy, and VI semantics | Normalized state, resource, draw, copy, and completion events | [Front-end contract](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/ARCHITECTURE.md), [state model](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L120-L278) |
+| Aurora | GX-to-renderer mapping, shaders, pipelines, resource conversion, render passes, copies, and interpolation | Native GPU command work | [Aurora graphics](https://github.com/chrissotraidis/RecompCore/tree/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora) |
+| Dawn | Device, queue, shader, resource, surface, and API-neutral submission interfaces | Work for an enabled native GPU API | [Aurora backend integration](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/backends/aurora/aurora_graphics.cpp) |
+| BlueWake host | Renderer lifecycle, guest-address resolution, FIFO connection, barriers, retrace, and shutdown order | Resolved ranges, flushes, PE events, and presents | [Renderer setup](../../runtime/host/src/main.c#L7571-L7640), [resolver installation](../../runtime/host/src/main.c#L7709-L7718) |
 
 BlueWake does not replace the game's draw logic. It supplies the environment in
 which translated GX writes retain their ordering and meaning.
@@ -76,25 +123,25 @@ which translated GX writes retain their ordering and meaning.
 GXRuntime converts command bytes into explicit front-end state. That state is
 separate from native GPU objects that Aurora and Dawn create to implement it.
 
-| State family | Examples | Guest-visible purpose |
-| --- | --- | --- |
-| FIFO and command processor | Cursors, command stream, array bases and strides | Orders commands and locates vertex data |
-| Vertex description | VCD/VAT formats, indexed attributes, vertex layout | Defines draw-payload decoding |
-| Transform unit | Matrices, viewport, projection, lights, XF registers | Supplies geometry and lighting inputs |
-| Raster and pixel engine | BP, TEV, blend, depth, token, and finish state | Controls pixels and completion events |
-| Textures and TLUTs | Image descriptors, palettes, invalidation, source ranges | Connects guest image data to sampled resources |
-| Copy state | EFB copy parameters and destinations | Publishes rendered results to memory or presentation |
+| State family | Examples | Guest-visible purpose | Code reference |
+| --- | --- | --- | --- |
+| FIFO and command processor | Buffered bytes, array bases and strides | Orders commands and locates vertex data | [FIFO and CP state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L120-L137) |
+| Vertex description | VCD/VAT formats, indexed attributes, vertex layouts | Defines how each draw payload becomes vertex inputs | [Vertex layout](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L157-L175) |
+| Transform unit | Matrices, viewport, projection, lights, texture matrices | Supplies geometry, camera, lighting, and texture-coordinate inputs | [GX state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L196-L278) |
+| Raster and pixel engine | BP, TEV, blend, depth, token, and finish state | Controls pixel production and observable completion | [Event model](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L69-L87) |
+| Textures and TLUTs | Image descriptors, palettes, invalidation, source ranges | Connects guest image data to sampled resources | [Texture and TLUT records](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L138-L156) |
+| Copy state | EFB source rectangle, destination, format, scale, and clear bit | Publishes rendered results to memory or presentation | [Copy state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L177-L194) |
 
 ### Artifact-to-game examples
 
-| Graphics artifact or data | In-game action | Runtime contact | Example project contribution |
+| Graphics artifact or data | In-game action | Runtime contact | Example contribution |
 | --- | --- | --- | --- |
 | FIFO and command-processor state | Drawing Link, an actor, the HUD, or a room sends ordered GX commands and array configuration. | Translated stores enter the gather pipe; GXRuntime updates FIFO and CP state before decoding draws. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the direct and batched gather-pipe paths used by the native module. |
 | Vertex descriptions and guest arrays | A model draw selects positions, normals, colors, and texture coordinates from guest memory. | VCD/VAT and CP array state tell GXRuntime how to resolve and decode the draw's guest-backed vertices. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated the guest resolver and renderer paths used by translated model draws. |
-| Transform state | The camera moves or an actor animates, changing matrices, viewport, projection, or lights. | XF commands update front-end state that Aurora consumes when producing native render work. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221) extends camera control through guest camera data while leaving translated transform and rendering code in use. |
+| Transform state | The camera moves or an actor animates, changing matrices, viewport, projection, or lights. | XF commands update front-end state consumed by the native draw. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221) changes guest camera data; the existing translated transform and graphics path renders the result. |
 | Raster, TEV, depth, and blend state | Water, fog, transparency, lighting, particles, and interface elements combine into the frame. | BP commands configure pixel processing; GXRuntime normalizes that state for Aurora. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) brought the current GXRuntime/Aurora rendering integration into BlueWake. |
-| Textures and TLUTs | A scene, character, or HD replacement samples image and palette data. | GXRuntime resolves guest texture/TLUT ranges; Aurora creates or updates native resources. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated texture-pack and renderer-resource integration. |
-| EFB and copy state | The game copies a rendered result for presentation or reads current EFB content for a gameplay check. | Copy parameters select the destination and synchronization point; the host preserves guest-visible completion. | [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) pins the matching runtime so Picto Box subject recognition reads the current EFB. |
+| Textures and TLUTs | A scene, character, or HD replacement samples image and palette data. | GXRuntime resolves the guest image range; Aurora converts, caches, and samples a native resource. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated texture-pack and renderer-resource integration. |
+| EFB and copy state | The game copies a frame for display or reads current EFB content for a gameplay test. | Copy and synchronization state determines which rendered result is visible to the game or presenter. | [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) pins the matching runtime so Picto Box subject recognition reads the current EFB. |
 | Dawn surface and presentation resources | Resizing the game window recreates or reconfigures native presentation while play continues. | Aurora and Dawn retain GX work while the platform surface changes; VI timing still services presentation. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) adopts the runtime fix that keeps a resized Vulkan window drawing. |
 
 ### Guest resource resolution
@@ -104,7 +151,7 @@ display list, vertex array, texture, TLUT, or copy destination, GXRuntime asks
 BlueWake for a bounded native view of the corresponding bytes.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Request["`Guest address,
 size, space,
 resource kind`"]
@@ -129,43 +176,123 @@ consumer`"]
 The cache key includes address, size, address-space mode, and alias generation.
 Linked REL aliases take precedence over ordinary MEM1 backing. The result is a
 temporary native view; it does not replace the address stored in guest state.
+The resolver exists because graphics resources can live in linked REL data as
+well as ordinary MEM1—for example, its source comments identify linked
+display-list data and Molgera's texture-coordinate array.
 
-References: [BlueWake resolver](../../runtime/host/src/main.c#L5040-L5147),
+References: [BlueWake resolver](../../runtime/host/src/main.c#L5073-L5161),
 [guest-memory contract](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h),
 and [guest address resolution](GuestState.md#guest-to-host-address-resolution).
+
+## Representative model draw: a tree
+
+This example follows a representative textured tree draw through the actual
+runtime boundaries. It is not a verified instruction-by-instruction trace of a
+specific Wind Waker tree asset: the game may split bark, leaves, translucency,
+or distance variants into several draws, and may emit commands directly or
+through display lists. Those variations use the same contracts below.
+
+### End-to-end flow
+
+```mermaid
+flowchart TD
+    Scene["`Game scene traversal
+selects a tree instance`"]
+    Guest["`Guest memory
+model arrays, texture,
+palette and matrices`"]
+    Setup["`Translated GX setup
+CP, XF and BP writes`"]
+    Draw["`Draw command
+inline indices or
+display list`"]
+    Pipe["`Gather pipe
+ordered guest bytes`"]
+    Resolve["`BlueWake resolver
+bounded guest ranges`"]
+    Front["`GXRuntime front end
+decode state, vertices
+and resources`"]
+    Packet["`Immutable draw packet
+geometry, transforms,
+material and textures`"]
+    Render["`Aurora
+shader, pipeline,
+resources and draw`"]
+    Native["`Dawn and native API
+GPU submission`"]
+    EFB["`EFB result
+tree pixels and depth`"]
+    VI["`Copy and VI boundary
+presented frame`"]
+
+    Scene --> Setup --> Draw --> Pipe --> Front --> Packet --> Render --> Native --> EFB --> VI
+    Guest --> Setup
+    Guest --> Draw
+    Guest --> Resolve --> Front
+```
+
+| Step | Concrete data or action | What the runtime does | Code reference | Visible effect |
+| --- | --- | --- | --- | --- |
+| 1. Select | Scene code selects the tree model, instance transform, material, and texture. | Original translated game logic decides that the object is visible and should draw. | [Native game module](Runtime.md#runtime-entities) | Removing or changing this decision removes or relocates the tree; the host renderer does not invent it. |
+| 2. Configure vertices | CP array bases/strides and VCD/VAT describe position, normal, color, and texture-coordinate inputs. | FIFO parsing reconstructs a vertex layout and the byte spans needed from guest arrays. | [Leaf-strip decoder fixture](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/tests/gx_dl_test.cpp#L54-L84) | Wrong formats or indices deform geometry, attach the wrong colors, or make leaves disappear. |
+| 3. Configure transforms | XF receives the tree's position/normal matrix, camera projection, viewport, and relevant lighting state. | GXRuntime snapshots the active transform state for the draw. | [GX state definition](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L196-L278) | Wrong matrices move the tree, distort it, or place it outside the camera; wrong normals or lights change its shading. |
+| 4. Configure material | BP/TEV, depth, blend, cull, and texture state describe how fragments become pixels. | The front end turns register state into a renderer-facing pipeline and material description. | [Retail GX front end](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/src/retail_gx_frontend.cpp) | These choices determine opaque bark, cutout or blended leaves, fog, depth ordering, and color combination. |
+| 5. Resolve resources | Draw indices, display lists, texture images, and optional TLUTs still name guest addresses. | BlueWake resolves exact bounded ranges; GXRuntime reads the guest bytes under the active descriptors. | [Resolver](../../runtime/host/src/main.c#L5073-L5161), [resource kinds](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h) | Resolving the wrong REL or MEM1 range can corrupt geometry or substitute unrelated texture data. |
+| 6. Normalize | Active state, decoded geometry, transforms, texture views, and ordering become a draw packet. | GXRuntime freezes the inputs required by Aurora so later FIFO changes cannot rewrite an earlier draw. | [Packet adapter](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/src/retail_gx_frontend.cpp#L15-L79) | Preserves the state belonging to this tree when the next object changes GX registers. |
+| 7. Render | Aurora selects or builds a compatible shader and pipeline, converts or reuses textures, binds resources, and records the draw. | Renderer work is queued through Dawn to the native graphics API. | [Draw-plan submission](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp#L1599-L1614), [native draw](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gx/pipeline.cpp#L1-L45) | The native GPU writes the tree's color and depth into the current EFB representation. |
+| 8. Present | The completed scene reaches a display-copy and VI/retrace boundary. | The host services pending Aurora presentation according to guest VI time. | [Retrace service](../../runtime/host/src/main.c#L5397-L5419) | The tree appears as part of the completed frame rather than being presented independently. |
+
+The source tests make two parts of this example tangible. The
+[leaf-strip fixture](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/tests/gx_dl_test.cpp#L54-L84)
+decodes a four-vertex triangle strip whose tuples index position, normal,
+color, and texture coordinates. The
+[frame-interpolation fixture](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/tests/frame_interp_test.cpp#L252-L292)
+uses two distinct tree instances to verify that reordered draws match the
+nearby prior instance and that a camera cut rejects unsafe interpolation. These
+are synthetic renderer tests, not Wind Waker asset descriptions.
+
+### What changes the image
+
+| Change | Owner | How it reaches the tree |
+| --- | --- | --- |
+| Camera rotation or zoom | Guest camera state plus translated game code | New camera matrices are written through XF state; Aurora renders the same model from the changed view. [PR #221](https://github.com/chrissotraidis/bluewake/pull/221) is a concrete host-to-guest camera example. |
+| Widescreen or ultrawide framing | Game/mod state and projection/HUD adjustments | The translated renderer emits changed projection or placement; the graphics backend consumes the resulting state. [PR #279](https://github.com/chrissotraidis/bluewake/pull/279) is a game-facing example. |
+| HD tree texture | Texture replacement in Aurora | Guest texture identity selects a replacement while geometry, transforms, and GX material state remain part of the original draw path. [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated texture-pack support. |
+| Smooth Motion | Aurora frame interpolation | Matching draws can interpolate transforms between game frames; discontinuities such as camera cuts must reject interpolation. [Tree fixture](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/tests/frame_interp_test.cpp#L252-L292). |
+| Missing or corrupt geometry | GX front end, resolver, or guest data | Incorrect VCD/VAT decoding, array bounds, REL resolution, or transform state can remove or deform the model before native rasterization. [Resolver rationale](../../runtime/host/src/main.c#L5121-L5133). |
 
 ## GX command path
 
 ### Gather-pipe transport
 
-The game writes commands and data to the emulated GX FIFO. The gather-pipe
-bridge batches those writes, and GXRuntime parses FIFO commands and display
-lists. Flush and synchronization operations expose completed work to Aurora at
-the points required by guest semantics.
+The game writes commands and inline draw data to the emulated GX gather pipe.
+The bridge can send each write directly or batch consecutive bytes before they
+cross the module/host ABI. Both modes must deliver the same guest-order stream.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
-| Collect gather-pipe writes | Ordered GX byte batches cross the module/host boundary | [Gather-pipe setup](../../runtime/host/src/main.c#L8269-L8274), [bridge ABI](../../runtime/host/src/gather_pipe_bridge.h) |
-| Parse FIFO and display lists | GX registers, resources, and draw commands reflect the game's command stream | [RecompCore GX interface](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h) |
-| Flush required work | Complete render operations become available to Aurora | [Host GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
-
-The retail gather pipe is at guest address `0xCC008000`. BlueWake can use a
-direct writer, a 256-byte guest-order batch, or generic MMIO fallback.
+| Recognize `0xCC008000` | A translated hardware store is identified as a gather-pipe write rather than guest RAM | [Translated writer](../../cmake/composite/gather_pipe.h) |
+| Preserve guest byte order | 1-, 2-, 4-, or 8-byte stores become the FIFO byte sequence expected by GXRuntime | [Batch encoding](../../cmake/composite/gather_pipe.h), [batch storage](../../cmake/composite/gather_pipe_batch.h) |
+| Select direct or batched mode | The host connects module exports to the active platform backend | [Bridge selection](../../runtime/host/src/main.c#L8289-L8300) |
+| Drain at an observable boundary | Earlier bytes reach the parser before hardware access, a host boundary, or a return can observe progress | [Writer contract](../../cmake/composite/gather_pipe.h), [flush implementation](../../cmake/composite/gather_pipe.c) |
 
 | Mode | Purpose | Ordering rule | Code reference |
 | --- | --- | --- | --- |
 | Direct | Avoid generic MMIO dispatch for safe writes | Each write crosses the host ABI immediately | [Direct writer](../../cmake/composite/gather_pipe.h) |
-| Batched | Amortize crossings | Drain before reads, host calls, hardware accesses, or other observable boundaries | [Batch writer](../../cmake/composite/gather_pipe_batch.h), [implementation](../../cmake/composite/gather_pipe.c) |
+| Batched | Amortize crossings | A 256-byte guest-order batch drains before a boundary that can observe FIFO progress | [Batch writer](../../cmake/composite/gather_pipe_batch.h), [implementation](../../cmake/composite/gather_pipe.c) |
 | Generic MMIO | Compatibility and diagnostics | Follow external-memory routing | [Bridge selection](../../runtime/host/src/gather_pipe_bridge.h) |
 
 The bridge disables old writers before selecting a mode. Modules without the
 new exports retain the MMIO path, and diagnostic MMIO forces that fallback.
+This changes transport cost, not GX meaning.
 
 ### FIFO and display-list parsing
 
-GXRuntime parses the ordered bytes into command-processor, transform,
-pixel-engine, resource, and draw operations. A display-list call resolves a
-guest range, parses its nested commands, then returns to the surrounding FIFO.
+GXRuntime buffers fragmented writes until a complete command is available. It
+then mutates front-end state or emits a draw/resource event. A display-list call
+resolves another guest range and parses its nested stream before returning to
+the surrounding FIFO; not every model draw must use a display list.
 
 | Command category | Front-end effect | Downstream result |
 | --- | --- | --- |
@@ -176,48 +303,141 @@ guest range, parses its nested commands, then returns to the surrounding FIFO.
 | Draws | Decode vertices under active state | Aurora receives normalized geometry |
 | Display-list calls | Resolve and parse another guest command range | Nested commands preserve GX order |
 
-Parsing may feed renderer workers; native submission is not guaranteed to
-finish synchronously with each FIFO write.
+The parser rejects malformed or incomplete streams rather than guessing
+resource sizes. The [retail front end](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/src/retail_gx_frontend.cpp#L667-L770)
+implements FIFO and explicit display-list entry points; its recursive parser
+resolves guest display-list ranges at the point of consumption.
+
+### From GX state to a native draw
+
+```mermaid
+flowchart TD
+    State["`GX state snapshot
+CP, XF, BP and PE`"]
+    Geometry["`Decoded geometry
+and guest ranges`"]
+    Resources["`Texture and TLUT
+views`"]
+    Packet["`Normalized
+render packet`"]
+    Pipeline["`Aurora shader
+and pipeline key`"]
+    Commands["`Dawn buffers,
+bindings and draw`"]
+
+    State --> Packet
+    Geometry --> Packet
+    Resources --> Packet
+    Packet --> Pipeline --> Commands
+```
+
+The packet is the ownership boundary: GXRuntime determines what the retail GX
+stream means; Aurora determines how to render that meaning efficiently. A
+pipeline cache or converted texture may be reused, so this diagram does not
+imply shader compilation or texture upload for every draw.
+
+## Textures, frame buffers, and presentation
+
+### Textures and palettes
+
+A texture descriptor supplies dimensions, format, guest base, mipmap policy,
+and optional TLUT selection. GXRuntime derives the required guest byte range
+and resolves it when the command consumes the resource. Aurora converts the
+console layout into a native sampleable texture or reuses a coherent cached
+resource. HD texture replacement can substitute an image at this renderer
+boundary without changing the guest address held by the game.
+
+| Input | Interpretation | Failure visible in game |
+| --- | --- | --- |
+| Texture image bytes | Tiled GameCube format, dimensions, levels, and source range | Missing, scrambled, or wrongly colored surfaces |
+| TLUT bytes | Palette format and entries used by an indexed texture | Correct shapes with incorrect palette colors, or no valid sample |
+| TEV and sampler state | How samples, lighting, vertex color, filtering, and constants combine | Incorrect fog, alpha, water, highlights, or cutout edges |
+| Cache identity and coherency | Whether an existing native resource still represents current guest bytes | A stale texture after the game updates its source memory |
+
+Correctness cannot assume that every guest CPU write is intercepted. Resource
+bounds and current bytes must therefore be established when GX consumes the
+resource, using a trustworthy generation or an exact hash/snapshot strategy.
+See the [resource coherency rule](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/ARCHITECTURE.md#resource-coherency-rule).
+
+### EFB, copies, and VI presentation
+
+Rendering first changes the EFB representation. A later GX operation can copy
+color or depth to guest-visible memory, clear the EFB, expose a pixel through a
+peek, or make a completed image available for presentation. VI/retrace timing
+is a separate boundary: completing a draw does not by itself authorize an
+immediate host-window present.
+
+```mermaid
+flowchart TD
+    Draws["`Aurora draws
+color and depth`"]
+    EFB["`Current EFB
+representation`"]
+    Copy{"`Requested
+operation`"}
+    Guest["`Guest-visible copy
+or EFB read`"]
+    Frame["`Completed display
+image`"]
+    Retrace["`Guest VI
+retrace boundary`"]
+    Present["`Host services
+pending presentation`"]
+
+    Draws --> EFB --> Copy
+    Copy -->|"copy, peek or poke"| Guest
+    Copy -->|"display copy"| Frame
+    Frame --> Retrace --> Present
+```
+
+This distinction is game-visible. The Picto Box can inspect rendered EFB
+content as gameplay data, while a window resize changes the native surface but
+must not discard subsequent GX work. [PR #341](https://github.com/chrissotraidis/bluewake/pull/341)
+and [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) exercise those
+different sides of the boundary.
 
 ## Synchronization and completion
 
-Guest software observes GX progress through draw-done status, draw-sync tokens,
-PE interrupts, copies, and later reads. The runtime flushes at these semantic
-barriers so asynchronous native work cannot appear complete too early.
+Native rendering is asynchronous, but guest software observes GX progress
+through draw-done status, draw-sync tokens, PE interrupts, copies, and later
+reads. The runtime drains the necessary work at these semantic barriers so the
+guest cannot observe completion too early—or wait forever for work still held
+in a host-side batch.
 
 | Boundary | Required observation | Code reference |
 | --- | --- | --- |
-| Gather-pipe drain | Earlier batched bytes reached the FIFO parser | [Gather-pipe bridge](../../runtime/host/src/gather_pipe_bridge.h) |
-| Draw done | Earlier work completed before finish status | [GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
-| Draw-sync token | The visible token follows prior work | [GX synchronization](../../runtime/host/src/main.c#L10214-L10281) |
-| PE event | Finish or token state reaches the interrupt controller | [Interrupt delivery](Services.md#interrupt-delivery) |
+| Gather-pipe drain | Earlier batched bytes reached the FIFO parser | [Batch contract](../../cmake/composite/gather_pipe_batch.h) |
+| GX flush | Complete buffered commands were parsed before guest progress is published | [Platform contract](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/platform.h#L89-L100) |
+| Draw-sync token | The visible token follows all earlier submitted work | [Host token commit](../../runtime/host/src/main.c#L10273-L10280) |
+| Draw done | PE finish becomes visible after the FIFO reaches the required point | [Host finish commit](../../runtime/host/src/main.c#L10282-L10297) |
+| PE interrupt | Finish or token state reaches the interrupt controller and guest callback path | [Interrupt delivery](Services.md#interrupt-delivery) |
+| EFB read or copy | GPU-produced data is current before a CPU-visible result is consumed | [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) |
 | Save/load or shutdown | Front-end and worker state reaches a coherent lifecycle boundary | [Backend ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/aurora_backend.h) |
 
-These host barriers expose expected completion semantics; they do not imply
-that every hook replaces an original game routine.
+These barriers preserve expected completion semantics; they do not imply that
+every translated GX write waits for the native GPU or that every host hook
+replaces an original game routine.
 
-## Rendering and presentation
+## Contribution case studies
 
-Aurora turns parsed GX state into render passes and GPU resources. Dawn
-provides the platform-facing graphics layer. At completed video retraces, the
-host services the renderer, presents finished work, and polls the next input
-sample against the same guest-time boundary.
+| Contribution | Boundary changed | Game-visible result | What it did not replace |
+| --- | --- | --- | --- |
+| [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) | Integrated GXRuntime/Aurora, gather-pipe transport, texture packs, and Smooth Motion into BlueWake. | The translated game can render through the native graphics stack, use replacement textures, and optionally display interpolated frames. | Wind Waker's scene traversal and per-object draw decisions remain translated game code. |
+| [PR #221](https://github.com/chrissotraidis/bluewake/pull/221), carrying [PR #213](https://github.com/chrissotraidis/bluewake/pull/213) | Host controller gestures modify guest camera structures used by existing camera integration. | Holding the configured controller gesture changes zoom; the next translated camera and transform work renders the changed view. | It does not directly edit generated draw chunks or replace Nintendo's whole camera renderer. |
+| [PR #279](https://github.com/chrissotraidis/bluewake/pull/279) | Game/mod projection, camera, and HUD behavior feeds the same graphics path with ultrawide-aware state. | More world is framed at 21:9 and interface placement can be corrected. | Dawn and the native GPU do not decide the game's field of view. |
+| [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) | EFB CPU-read coherence and the matching RecompCore pin. | Picto Box subject recognition sees the current rendered image rather than stale EFB data. | The host does not replace the game's subject-recognition decision. |
+| [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) | Vulkan surface reconfiguration in the runtime renderer. | Rendering continues after a Linux window resize. | Guest GX state and the game's draw sequence do not need to change. |
 
-| Step | Runtime result | Code reference |
-| --- | --- | --- |
-| Initialize | A native graphics device and renderer state are available before guest execution | [Renderer initialization](../../runtime/host/src/main.c#L7550-L7628) |
-| Record and submit | Parsed GX state becomes GPU resources, passes, and commands | [Aurora backend](https://github.com/chrissotraidis/RecompCore/tree/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora) |
-| Present | A completed frame reaches the display with guest-timed cadence | [Retrace and presentation](../../runtime/host/src/main.c#L5381-L5453) |
-
-At each completed guest retrace, the host advances VI-visible state and services
-a pending Aurora presentation. A render worker may finish while translated code
-is idle, but guest VI time still controls when presentation is serviced.
+These examples locate a visual feature or bug at its actual contract. Camera
+and widescreen work can change data before GX; EFB correctness sits at the
+guest-visible render-result boundary; resize correctness sits after GX in the
+native surface lifecycle.
 
 ## State, fallback, and shutdown
 
 GX front-end state belongs to the guest machine model. Native caches, pipelines,
-and surfaces are implementation resources that can be rebuilt from front-end
-and guest data.
+converted textures, and surfaces are implementation resources that can be
+rebuilt from front-end and guest data.
 
 | Situation | Behavior | Reason |
 | --- | --- | --- |
