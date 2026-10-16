@@ -55,7 +55,14 @@ devices`"]
 
 ## Mechanical contents
 
+This section explains the common machinery behind the individual services:
+which layer owns each responsibility, how guest accesses reach a device model,
+and how guest time keeps their effects ordered.
+
 ### Ownership split
+
+The split keeps GameCube-visible behavior in the compatibility layer while the
+BlueWake host supplies the native resources needed to carry it out.
 
 | Layer | Owns | Does not own | Code reference |
 | --- | --- | --- | --- |
@@ -150,6 +157,9 @@ References: [cycle domain](../../runtime/host/src/cycle_domain.c),
 
 ### Artifact-to-game examples
 
+These examples connect the service models and their stored state to behavior a
+player can observe during normal gameplay.
+
 | Service artifact or data | In-game action | Runtime contact | Example project contribution |
 | --- | --- | --- | --- |
 | VI, PI, and PE state | A frame reaches retrace, the game observes graphics completion, or an enabled interrupt enters its handler. | Device models update status and causes; PI masks and CPU state determine delivery. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) exercises presentation continuity by keeping Vulkan rendering alive across a resize. |
@@ -178,6 +188,10 @@ for example, runs with the guest register and scheduler conventions expected by
 the game. [Callback delivery](../../runtime/host/src/callback_delivery.c)
 
 ## Disc and persistent storage
+
+These services give the guest its expected disc and console-storage interfaces
+while mapping immutable game assets and mutable player data to separate native
+files.
 
 ### Disc commands and asynchronous completion
 
@@ -237,6 +251,10 @@ Native buffering does not define when the guest believes DMA advanced; the
 guest-cycle domain does.
 
 ## Lifecycle and observable state
+
+Compatibility services live for the guest session. Their lifecycle keeps
+device state coherent across startup, translated execution, synchronization,
+persistence, and shutdown.
 
 | Phase | Service-layer action | Observable result |
 | --- | --- | --- |
