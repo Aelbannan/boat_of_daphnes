@@ -4,8 +4,10 @@
 
 - [Introduction](#introduction)
 - [High-level view](#high-level-view)
-- [Build toolchain](#build-toolchain)
+- [Build process](#build-process)
 - [Runtime](#runtime)
+
+Architecture path: [Index](README.md) → **Overview**
 
 ## Introduction
 
@@ -111,7 +113,7 @@ The diagram shows component and data flow, not an exact call sequence. The
 central boundary is consistent across platforms: translated game code remains
 separate from the handwritten host and compatibility runtime.
 
-## Build toolchain
+## Build process
 
 All supported platforms share the same broad pipeline:
 

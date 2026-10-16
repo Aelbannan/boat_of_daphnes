@@ -33,6 +33,8 @@
   - [Apple TV](#apple-tv-tvos-arm64-experimental)
   - [Android](#android-in-progress)
 
+Architecture path: [Overview](Overview.md) → **Build process**
+
 This chapter expands the build-time half of the
 [architecture overview](Overview.md). It follows the player's disc through
 validation, translation, preparation, native compilation, and packaging.

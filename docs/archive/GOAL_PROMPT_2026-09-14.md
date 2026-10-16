@@ -13,7 +13,7 @@ v2 was honest and it fixed the right three things: it made a build the unit of p
 
 Measured on 2026-09-14, from the tree at 0e86899:
 
-- [BlueWake.app](build/runtime-host-dsp/BlueWake.app) exists, is signed, and has a correct Info.plist. Its Contents/MacOS/BlueWake is the host binary. Launching it from Finder or with `open` runs it with an empty environment.
+- `build/runtime-host-dsp/BlueWake.app` exists, is signed, and has a correct Info.plist. Its Contents/MacOS/BlueWake is the host binary. Launching it from Finder or with `open` runs it with an empty environment.
 - main.c:3027 aborts with BLUEWAKE_DOL not set before boot. Double-click therefore fails on the first line of real work.
 - Even given the paths, main.c:3190 installs the **headless** backend unless BLUEWAKE_RENDERER=aurora. Headless means: no window (main.c:3210), no platform input (g_live_pad_enabled stays false), and no audio capture at all, because BLUEWAKE_CAPTURE_AUDIO_WAV is unset (main.c:3239).
 - The visible, audible, playable path already exists and is one environment variable away. With BLUEWAKE_RENDERER=aurora: a 960×720 vsync window, live pad input merged at SI (main.c:3206), and real sound — aurora_backend.cpp opens SDL_OpenAudioDeviceStream on the default playback device, and the DSP PCM reaches it through dol_platform_audio_push (audio_dma.c:217 → aurora_backend.cpp:180).
@@ -157,4 +157,3 @@ If you find yourself producing a long honest document explaining why a subsystem
 ## Note on scope
 
 Nothing in v3 relaxes the PRD, the legal boundary, or the evidence rules that made this project trustworthy. It changes two things: it moves the delivery step from last to first, and it makes "a human can see it" the literal definition of the first milestone. The Route B freeze and its reopening trigger are unchanged.
-

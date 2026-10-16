@@ -15,6 +15,8 @@
   - [Artifact-to-game examples](#artifact-to-game-examples)
 - [Shutdown](#shutdown)
 
+Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) → **Host and platform integration**
+
 ## Responsibility
 
 The platform application and shared BlueWake host form the handwritten native

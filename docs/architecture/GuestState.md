@@ -17,6 +17,8 @@
 - [Guest time, callbacks, and exceptions](#guest-time-callbacks-and-exceptions)
 - [Project history references](#project-history-references)
 
+Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) → **Guest machine state**
+
 ## Responsibility
 
 Guest state is the GameCube-visible machine model shared by the host and the
@@ -692,7 +694,7 @@ CPUState.pc set to entry PC`"]
 
 | Step | Runtime result | In-game consequence | Source |
 | --- | --- | --- | --- |
-| Select guest storage | Chooses one `CPUState` and one separate MEM1 allocation, initializes them, and connects them through `CPUState.ram` | Every later register access and memory access observes the same guest machine state. | [Module storage contract](../../cmake/composite/module_cpu_contract.h#L29-L104), [host selection](../../runtime/host/src/main.c#L7329-L7343) |
+| Select guest storage | Chooses one `CPUState` and one separate MEM1 allocation, initializes them, and connects them through `CPUState.ram` | Every later register access and memory access observes the same guest machine state. | [Module storage contract](../../cmake/composite/module_cpu_contract.h#L29-L101), [host selection](../../runtime/host/src/main.c#L7329-L7343) |
 | Initialize devices | Reset video, disc, controller, interrupt, audio, DSP, ARAM, SRAM, and card state | The opening program sees console-like devices in a coherent reset state before it polls input, starts audio, or requests assets. | [Host initialization](../../runtime/host/src/main.c#L7550-L7686) initializes the complete device set. |
 | Load DOL sections | Initialized data is copied into MEM1 and BSS is cleared | The game's always-loaded globals contain their linked initial values instead of uninitialized host memory. | [Host DOL load](../../runtime/host/src/main.c#L7978-L7981), [RecompCore loader](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/loader.c) |
 | Create GameCube OS state | Low memory, arenas, stack, clocks, and machine-state registers satisfy guest startup assumptions | Startup code can allocate memory, use its stack, read clocks, and enter callbacks or exceptions under expected OS conventions. | [Host boot call](../../runtime/host/src/main.c#L8123-L8133), [RecompCore boot](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c) |
@@ -716,7 +718,7 @@ different mechanisms:
 | Mechanism | Context transition | Return path |
 | --- | --- | --- |
 | CPU exception | Saves architectural return state such as the interrupted `pc` and `msr` in `srr0` and `srr1`, updates exception-related state, and selects the guest handler PC. | The guest exception path restores architectural or scheduler context and resumes through its return-from-interrupt path. [External interrupt delivery](../../runtime/host/src/main.c#L3216-L3230), [exception return handling](../../runtime/host/src/main.c#L15981-L16019) |
-| Guest callback | Saves a host-side image of the active guest registers, prepares `r3`, `r4`, `r1`, and `lr` according to the guest calling convention, and dispatches the callback address. | Reaching the callback-return sentinel restores the saved register image. This is a function call into guest code, not a CPU exception. [Callback delivery](../../runtime/host/src/callback_delivery.c#L23-L121) |
+| Guest callback | Saves a host-side image of the active guest registers, prepares `r3`, `r4`, `r1`, and `lr` according to the guest calling convention, and dispatches the callback address. | Reaching the callback-return sentinel restores the saved register image. This is a function call into guest code, not a CPU exception. [Callback delivery](../../runtime/host/src/callback_delivery.c#L23-L119) |
 
 A concrete external-interrupt example follows this path:
 

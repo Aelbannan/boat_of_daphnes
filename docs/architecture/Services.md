@@ -16,6 +16,8 @@
 - [Audio, DSP, and ARAM](#audio-dsp-and-aram)
 - [Lifecycle and observable state](#lifecycle-and-observable-state)
 
+Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) → **Compatibility services**
+
 ## Responsibility
 
 Compatibility services preserve the GameCube-facing device interfaces expected

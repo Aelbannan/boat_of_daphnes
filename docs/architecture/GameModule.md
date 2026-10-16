@@ -8,6 +8,8 @@
 - [Module loading and ABI](#module-loading-and-abi)
 - [Translated-code dispatch](#translated-code-dispatch)
 
+Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) → **Native game module**
+
 ## Responsibility
 
 The native game module contains the ahead-of-time translated Wind Waker code.

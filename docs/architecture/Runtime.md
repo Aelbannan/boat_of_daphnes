@@ -8,6 +8,8 @@
 - [Interaction boundaries](#interaction-boundaries)
 - [Runtime lifecycle](#runtime-lifecycle)
 
+Architecture path: [Overview](Overview.md) → **Runtime**
+
 ## Purpose
 
 This chapter maps the principal entities in a running BlueWake application and

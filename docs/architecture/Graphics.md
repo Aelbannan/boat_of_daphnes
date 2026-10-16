@@ -33,6 +33,8 @@
 - [Contribution case studies](#contribution-case-studies)
 - [State, fallback, and shutdown](#state-fallback-and-shutdown)
 
+Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) → **Graphics stack**
+
 ## Responsibility
 
 The graphics stack preserves the game's GX-facing command model while
@@ -612,7 +614,7 @@ presented frame`"]
 | 4. Configure material | BP/TEV, depth, blend, cull, and texture state describe how fragments become pixels. | The front end turns register state into a renderer-facing pipeline and material description. | [Retail GX front end](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/src/retail_gx_frontend.cpp) | These choices determine opaque bark, cutout or blended leaves, fog, depth ordering, and color combination. |
 | 5. Resolve resources | Draw indices, display lists, texture images, and optional TLUTs still name guest addresses. | BlueWake resolves exact bounded ranges; GXRuntime reads the guest bytes under the active descriptors. | [Resolver](../../runtime/host/src/main.c#L5073-L5161), [resource kinds](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h) | Resolving the wrong REL or MEM1 range can corrupt geometry or substitute unrelated texture data. |
 | 6. Normalize | Active state, decoded geometry, transforms, texture views, and ordering become a draw packet. | GXRuntime freezes the inputs required by Aurora so later FIFO changes cannot rewrite an earlier draw. | [Packet adapter](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/frontend/src/retail_gx_frontend.cpp#L15-L79) | Preserves the state belonging to this tree when the next object changes GX registers. |
-| 7. Render | Aurora selects or builds a compatible shader and pipeline, converts or reuses textures, binds resources, and records the draw. | Renderer work is queued through Dawn to the native graphics API. | [Draw-plan submission](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp#L1599-L1614), [native draw](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gx/pipeline.cpp#L1-L45) | The native GPU writes the tree's color and depth into the current EFB representation. |
+| 7. Render | Aurora selects or builds a compatible shader and pipeline, converts or reuses textures, binds resources, and records the draw. | Renderer work is queued through Dawn to the native graphics API. | [Draw-plan submission](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/gxcore_draw.cpp#L1599-L1614), [native draw](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gx/pipeline.cpp#L1-L44) | The native GPU writes the tree's color and depth into the current EFB representation. |
 | 8. Present | The completed scene reaches a display-copy and VI/retrace boundary. | The host services pending Aurora presentation according to guest VI time. | [Retrace service](../../runtime/host/src/main.c#L5397-L5419) | The tree appears as part of the completed frame rather than being presented independently. |
 
 The source tests make two parts of this example tangible. The
