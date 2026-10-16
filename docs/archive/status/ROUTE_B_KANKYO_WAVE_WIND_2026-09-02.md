@@ -40,4 +40,4 @@ admit weather movement, or compose aggregate stage creation.
 
 Follow-up: patches 0096-0097 now qualify that authentic aggregate and execute
 all reached wind branches. See
-`docs/status/ROUTE_B_KANKYO_WIND_SET_2026-09-02.md` for the successor frontier.
+`docs/archive/status/ROUTE_B_KANKYO_WIND_SET_2026-09-02.md` for the successor frontier.

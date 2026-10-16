@@ -2353,7 +2353,7 @@ product acceptance.
 State: **PAUSED_BY_USER after checkpoint verification and merge**. The user
 requested documentation, pushing/merging to main and stopping for today. This
 supersedes automatic continuation instructions; the full PRD remains unfinished.
-See [the session handoff](../archive/status/SESSION_HANDOFF_2026-09-09.md).
+See [the session handoff](SESSION_HANDOFF_2026-09-09.md).
 
 The private `logo-scheduler` experiment replaces manual LOGO Create calls with
 original `fapGm_Create`/`fapGm_Execute`, complete `f_pc_manager`, original graphics

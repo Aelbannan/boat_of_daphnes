@@ -7,7 +7,7 @@ extern "C" {
 // menu, touch settings and the layout editor.
 //
 // Adapted from SunPad's apple/ios/SunPadGameOverlay.mm (GPL-3.0, commit
-// e43f0ea6b797e5110787171957c9dc3c6213269c); see docs/SUNPAD_TRANSFER.md for
+// e43f0ea6b797e5110787171957c9dc3c6213269c); see docs/archive/SUNPAD_TRANSFER.md for
 // what was kept and what was left out. It keeps SunPad's controls, colors,
 // layout defaults, sparse per-control persistence, grouped D-pad editing and
 // controller/touch coexistence. It drops Sunshine's FLUDD analog R trigger,

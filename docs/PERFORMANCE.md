@@ -440,7 +440,7 @@ BlueWake emulates the GameCube's cycle timing (each block charges cycles, stores
 converts the game's raw GX command stream on the CPU. On the one function measured on September 22
 (`J3DSys::reinitTevStages`), the translation is 5.8 emitted statements per guest instruction: 21% are pc stores
 and 9% cycle bookkeeping. Compiled from the decompilation's source, the same function is 0.91 host instructions
-per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.md), September 22).
+per guest instruction, six to thirty times cheaper ([CURRENT.md](archive/status/CURRENT.md), September 22).
 
 ### Where the decompilation is
 
@@ -450,12 +450,12 @@ per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.
 | October 9 | 79.1% | 87.1% of code, 95.8% of functions | 73.1% | 32,848 of 39,324 (83.5%) |
 
 From [decomp.dev](https://decomp.dev/zeldaret/tww). Add a row each month. The August figure is from
-[DECISIONS.md](status/DECISIONS.md); it was measured differently.
+[DECISIONS.md](archive/status/DECISIONS.md); it was measured differently.
 
 ### Route B, the source port BlueWake already tried
 
 In August and September BlueWake built a native port from the decompilation's source alongside the recompilation
-("route B"; its records are [DECISIONS.md](status/DECISIONS.md) and `docs/status/ROUTE_B_*.md`; the code itself
+("route B"; its records are [DECISIONS.md](archive/status/DECISIONS.md) and `docs/status/ROUTE_B_*.md`; the code itself
 is not in this repository). It drew the original Nintendo logo
 through Aurora and compiled most of the process layer. It stopped on porting effort, not speed: the source assumes
 32-bit big-endian types and pointers, and Dusklight (the Twilight Princess port) needed about 1,500 `TARGET_PC`

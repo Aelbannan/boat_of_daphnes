@@ -389,7 +389,7 @@ run acceptance in a second login session.
 
 ### W7 - Stop paying the ledger's context cost on every iteration
 
-`docs/status/CURRENT.md` is 758 KB and contains literal duplicated paragraphs -
+`docs/archive/status/CURRENT.md` is 758 KB and contains literal duplicated paragraphs -
 D1's appears twice inside the DSP entry, and the same repetition is visible in the
 Route B banners. There are 25 `GOAL_PROMPT` versions. Every agent that starts work
 reads this before it can do anything, so the sprawl is paid on every iteration by

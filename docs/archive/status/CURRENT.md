@@ -6,7 +6,7 @@ iPad/Windows acceptance and release gates remain distinct. The older entries bel
 
 ## 2026-10-01 BlueWake source-fork integration
 
-See [FORK_INTEGRATION.md](../archive/FORK_INTEGRATION.md) for the current integration and validation status.
+See [FORK_INTEGRATION.md](../FORK_INTEGRATION.md) for the current integration and validation status.
 The September 28–30 entries imported below are elliotttate's engineering records and reported
 measurements, retained for provenance. They are not independent BlueWake device measurements.
 ## 2026-09-30 The Windows build's GX worker work merged (Mac-tested)
@@ -656,7 +656,7 @@ Closing the gaps in the entry below, on the iPad Pro (M2) with the merged build:
 ## 2026-09-26 (evening) Mods: widescreen, HD texture packs and Better Wind Waker, tested on the iPad
 
 The in-game ⋯ menu has a Mods section with three mods, each applied at the next launch
-([docs/MODS.md](../MODS.md)).
+([docs/MODS.md](../../MODS.md)).
 
 - **Code mods as variant chunks.** A statically recompiled game cannot take code patches at runtime, so
   a mod's patched main.dol and RELs are translated like the base, merged by generate_composite.py, and
@@ -713,7 +713,7 @@ Still open: the pier view's main thread is 82-86 percent busy at 30 FPS on the M
 The September 24 handoff assumed this Mac's `build/` and `generated/` trees and an unpublished
 RecompCore commit (3476998), and the tracked patch series could not rebuild it (it starts at 0008).
 Now `scripts/ios/build_device.sh DISC.iso` builds the signed app in a fresh checkout from published
-sources only, and [DEVICE_BUILD.md](DEVICE_BUILD.md) gives the prerequisites, signing, install and
+sources only, and [DEVICE_BUILD.md](../../status/DEVICE_BUILD.md) gives the prerequisites, signing, install and
 the optional PGO profiles.
 
 - **Published forks.** RecompCore https://github.com/chrissotraidis/RecompCore (branch `bluewake`,
@@ -1889,7 +1889,7 @@ lives in Documents/BlueWake/GZLE01.card so Files shows it. sim_run.sh gains --fr
 and --container.
 
 **The SunPad shell (FR-015).** The ImGui touch overlay is gone. apple/ios/src/BWGameOverlay.mm
-adapts SunPad's overlay (transfer record: docs/SUNPAD_TRANSFER.md): SunPad's sticks, buttons,
+adapts SunPad's overlay (transfer record: docs/archive/SUNPAD_TRANSFER.md): SunPad's sticks, buttons,
 colors and defaults, the safe-area three-dot menu, the touch settings panel and the layout editor
 with the grouped D-pad and sparse per-form-factor persistence. Opening any of them adds a reason to
 a pause set, and recompcore 0067 lets the host hold the guest at a frame boundary: the demo hook
@@ -2204,7 +2204,7 @@ belongs to the shared route.
 The user redirected the project: make the game actually work, on iPadOS, tested one simulator at a
 time, no hardware iPad yet. The dossier is
 [IPADOS_REORIENTATION_2026-09-23.md](IPADOS_REORIENTATION_2026-09-23.md) and the loop is
-[v56](../archive/GOAL_PROMPT_V56_2026-09-23.md). Route A is hosted on iPadOS now; Route B continues behind
+[v56](../GOAL_PROMPT_V56_2026-09-23.md). Route A is hosted on iPadOS now; Route B continues behind
 it as the long-term speed track.
 
 **The iPad app exists and plays the retail route.** `apple/ios` builds `BlueWake.app` for the iOS
@@ -5050,7 +5050,7 @@ with the boundary fix: one mutex held by the worker across a batch's translation
 the main thread across the present transition, which cannot deadlock because the main
 thread's only wait on the worker - the drain at the guest-visible barriers - never happens
 inside that window. The queue and the protocol are in
-[docs/archive/GOAL_PROMPT_V54_2026-09-22.md](../archive/GOAL_PROMPT_V54_2026-09-22.md).
+[docs/archive/GOAL_PROMPT_V54_2026-09-22.md](../GOAL_PROMPT_V54_2026-09-22.md).
 
 ## 2026-09-22 The rendered segfault is the GX translation worker's first draw, and the stack names it
 
@@ -5115,7 +5115,7 @@ worker thread says the mechanism is in the host's threads, not in the loop's bou
 
 The two entries below say the landing was reverted and that the revert is verified. Neither
 is true, and the check is mechanical: git show --stat on both commits reports only
-docs/status/CURRENT.md - b477b53 is 24 insertions and ebb6b81 is 20 deletions, both in the
+docs/archive/status/CURRENT.md - b477b53 is 24 insertions and ebb6b81 is 20 deletions, both in the
 ledger - while cmake/composite/dispatch_loop.h still carries BLUEWAKE_ZERO_CHARGE_RUN_MAX and
 the zero-charge accumulator at lines 70 to 73. The git revert I ran targeted HEAD, which was
 the ledger entry rather than the landing, and the commit I described as reverting the landing
@@ -7704,7 +7704,7 @@ identity are all still what they are, and the launch really did get 3.2x faster.
 
 ## 2026-09-18 the route reaches controllable gameplay unattended, and TTP-B's floor is now measured
 
-M1 of `docs/status/PLAN_2026-09-18.md` is done, and it produced the number the bar needs.
+M1 of `docs/archive/status/PLAN_2026-09-18.md` is done, and it produced the number the bar needs.
 The route is now drivable from launch to **controllable Outset gameplay** with no key window and no idle
 host. `scripts/play.sh --route-full` walks it headless or rendered; the guest's own signal reads
 
@@ -7783,7 +7783,7 @@ Three findings, all from that pair:
   emulated speed, and the only lever is to stop playing the content.
 
 The full reassessment and the ranked plan that follows from it are in
-`docs/status/PLAN_2026-09-18.md` (M1 route driver without the user's desk, M2 settle TTP-B with the
+`docs/archive/status/PLAN_2026-09-18.md` (M1 route driver without the user's desk, M2 settle TTP-B with the
 save-continue path, M3 rendered tail profile, M4 loop economics, M5 NFR-001).
 
 **A fourth measurement was taken and is reported for the record:** the same route driven to retrace

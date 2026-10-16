@@ -13,7 +13,7 @@ sequential Mac/test/audio/iOS/tvOS queue was also stopped. No module link, new 2
 result, corrected live-channel capture or latest Apple app build is claimed from that queue.
 Completed objects, known modules, private inputs and captures remain local and unchanged.
 The evidence below remains historical; references to a running queue describe the earlier
-state. See [cloud handoff](../archive/status/CLOUD_HANDOFF_2026-10-01.md) and [candidate gates](RELEASE.md).
+state. See [cloud handoff](CLOUD_HANDOFF_2026-10-01.md) and [candidate gates](RELEASE.md).
 
 ## Profiling isolation guard repaired
 

@@ -395,7 +395,7 @@ Don't delete `%APPDATA%\BlueWake` to troubleshoot: it holds your saves and setti
 - [Ian MacFarlane (@iannotian)](https://github.com/iannotian), for the Apple TV version
 
 BlueWake is developed with substantial AI assistance for code, testing, documentation and debugging.
-The [engineering log](docs/status/CURRENT.md) records what has been checked, and on what.
+The [engineering log](docs/archive/status/CURRENT.md) records what has been checked, and on what.
 
 ## License and legal
 

@@ -2,7 +2,7 @@
 
 Every open GitHub issue on October 5, 2026, plus problems players reported in the BlueWake Discord on
 October 4 and 5. Discord reports are recorded here to be fixed in the next version; they don't get replies
-or their own issues. This is a snapshot: [GOAL_LOOP.md](../GOAL_LOOP.md) has the work and its progress.
+or their own issues. This is a snapshot: [GOAL_LOOP.md](../../GOAL_LOOP.md) has the work and its progress.
 
 Every Windows player is still on Wind Waker Recomp 0.4.0, so a Windows report doesn't show whether
 `main` has the problem. Logs attached to issues were read with `scripts/triage_session_log.py` and by hand.

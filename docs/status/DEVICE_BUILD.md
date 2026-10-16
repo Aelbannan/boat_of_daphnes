@@ -91,7 +91,7 @@ proves the build but will not install on a device.
    picked up too), checks that it is GZLE01 USA revision 0 and prepares `main.dol` and `rels/` on the
    device. Saves stay in the app's container.
 
-What to check on the iPad is listed in [IPAD_STATE_2026-09-24.md](IPAD_STATE_2026-09-24.md).
+What to check on the iPad is listed in [IPAD_STATE_2026-09-24.md](../archive/status/IPAD_STATE_2026-09-24.md).
 
 ## Optimization and performance
 

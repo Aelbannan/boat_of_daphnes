@@ -89,7 +89,7 @@ inference, **[S]** = speculation.
   actor system) always return; `blr` back to a cross-chunk caller returns via
   the `return_dispatch` `default:` case (`emitter.c:2001-2013`).
 - **[O]** Per-turn economics from the matched 700-retrace pair
-  (`docs/status/PERFORMANCE.md:68-76`): 61,469,941 turns for 5.67B guest
+  (`docs/archive/status/PERFORMANCE.md:68-76`): 61,469,941 turns for 5.67B guest
   cycles = **92.2 guest cycles per turn**; 4,502 retired host instructions and
   1,059 host cycles per turn. Each turn pays ~30 dispatch instructions plus an
   unpredictable indirect call, 12 callee-saved register spills/reloads in the
