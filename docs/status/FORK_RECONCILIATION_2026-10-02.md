@@ -1111,7 +1111,7 @@ No issue is closed or externally commented on by this work.
 
 ## Next actions and retained work
 
-The [current goal loop](../GOAL_LOOP.md) defines
+The [current goal loop](../GOAL_LOOP.md#critical-path-and-exit-evidence) defines
 execution order: source consolidation and retained PadMint assembly are complete;
 bounded iPad install/save/reload/upgrade now passes. Finish remaining Mac gameplay
 checks and native Windows qualification, then make the migration decision using matched performance

@@ -7,7 +7,7 @@ so **the app you build is yours alone: never share or upload it.**
 
 For how disc translation, the shared runtime and each platform build fit
 together, see the [architecture overview](architecture/Overview.md) and
-[build process](architecture/Build.md).
+[build toolchain](architecture/Build.md).
 
 Windows players who prefer to build their own: see [BlueWake on Windows](WINDOWS.md).
 
