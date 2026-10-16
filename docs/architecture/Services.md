@@ -69,6 +69,12 @@ interrupts, or callbacks rather than directly replacing arbitrary guest state.
 
 ### MMIO dispatch
 
+Memory-mapped I/O (MMIO) lets guest code communicate with GameCube devices by
+loading from and storing to reserved address ranges as though they were memory.
+Those addresses do not hold ordinary MEM1 bytes: BlueWake interprets each
+access as a register read or command for the corresponding compatibility
+service.
+
 Translated memory accesses use guest RAM unless an address belongs to a
 hardware range. MMIO callbacks synchronize time-sensitive state, route the
 operation to the matching device, and refresh interrupt state after a register
@@ -136,7 +142,7 @@ whether the host delivers an external interrupt at a safe execution boundary.
 | Device completion | DI, SI, DSP, AI, VI, or PE records a pending source | [BlueWake sources](../../runtime/host/src/interrupt_sources.c), [RecompCore state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/interrupts.h) |
 | Source publication | Device state becomes guest-visible PI cause state | [Interrupt refresh](../../runtime/host/src/main.c#L3525-L3544) |
 | Mask evaluation | PI and CPU masks gate delivery | [Interrupt delivery](../../runtime/host/src/main.c#L3078-L3234) |
-| Safe boundary | Guest exception state is updated before execution resumes | [Guest exceptions](GuestState.md#guest-time-and-exceptions) |
+| Safe boundary | Guest exception state is updated before execution resumes | [Guest exceptions](GuestState.md#guest-time-callbacks-and-exceptions) |
 
 Guest callbacks are separate from external interrupts. A queued DVD callback,
 for example, runs with the guest register and scheduler conventions expected by
