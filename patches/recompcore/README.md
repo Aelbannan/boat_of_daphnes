@@ -141,3 +141,8 @@ drawing. A lost surface is configured again (up to 30 times in a row) instead of
 made the replacement surface fail with `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`; between the game's frames the surface
 follows the window's size, so the picture no longer trails behind a window being dragged. The size following is
 Vulkan only. On every backend a suboptimal texture is now drawn and the surface configured again after it.
+
+Patch 0180 is pdale-boop's RecompCore #37, for BlueWake #338: `aurora_set_copy_crop(width, height, fraction)`. A
+texture copy of exactly that size takes `fraction` of its source's width about the frame's middle and is scaled back
+to its full size, as a 4:3 camera would have taken it; `GXCopyTex` and gxcore's EFB copies both use it. Nothing
+changes until a game calls it: BlueWake does for the Picto Box's 152x104 copy, behind `picto_crop=1` (off by default).
