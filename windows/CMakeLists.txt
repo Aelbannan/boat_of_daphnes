@@ -79,7 +79,19 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/audio_watch.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
-    ${BLUEWAKE_HOST_SRC}/mouse_camera.c)
+    ${BLUEWAKE_HOST_SRC}/mouse_camera.c
+    ${BLUEWAKE_HOST_SRC}/texture_pack_menu.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/formats.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/addrlib.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/hd.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/imaging.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/output_staging.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/disc_image.cpp
+    ${BLUEWAKE_HOST_SRC}/wwhd/wiiu_disc.cpp)
 
 # The manifest (DPI awareness, long paths, UTF-8 code page) is merged into the
 # one the linker embeds.
@@ -96,7 +108,9 @@ add_executable(BlueWake
 # owns main() and hands over after setting the defaults.
 set_source_files_properties(${BLUEWAKE_HOST_SRC}/main.c PROPERTIES
     COMPILE_DEFINITIONS "main=bluewake_host_main")
-target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
+target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash ZLIB::ZLIB bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
+include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_disc_crypto.cmake")
+target_link_libraries(BlueWake PRIVATE bluewake_wwhd_disc_crypto)
 if(TARGET imgui)
     target_link_libraries(BlueWake PRIVATE imgui)
 endif()
@@ -504,6 +518,8 @@ add_test(NAME bluewake_save_state_test COMMAND bluewake_save_state_test)
 include("${BLUEWAKE_REPO_ROOT}/cmake/host_state_save_test.cmake")
 include("${BLUEWAKE_REPO_ROOT}/cmake/dvd_completion_test.cmake")
 include("${BLUEWAKE_REPO_ROOT}/cmake/cache_flush_fallback_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_import_job_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_disc_image_test.cmake")
 target_include_directories(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
 target_compile_options(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
 target_link_libraries(bluewake_cache_flush_fallback_test PRIVATE bluewake_posix_compat)
