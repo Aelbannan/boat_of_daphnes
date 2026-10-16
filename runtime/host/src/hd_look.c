@@ -52,6 +52,10 @@ void bluewake_hd_look_reload(void) {
     // they drew long dark streaks, so the HD look leaves them off; only
     // BLUEWAKE_HD_SUN_SHADOWS=1 turns them on.
     g_sun = setting("BLUEWAKE_HD_SUN_SHADOWS") >= 0 ? setting("BLUEWAKE_HD_SUN_SHADOWS") : all >= 0 ? 0 : -1;
+    // Sun shadows come from a shadow map (Aurora's post_fx), so what is off
+    // screen still casts. DOL_AURORA_SUN_SHADOW_MAP=0 keeps the screen's
+    // version alone, for comparing the two.
+    const int sun_map = setting("DOL_AURORA_SUN_SHADOW_MAP") >= 0 ? setting("DOL_AURORA_SUN_SHADOW_MAP") : g_sun;
     g_edge = setting("BLUEWAKE_HD_EDGE_LIGHT") >= 0 ? setting("BLUEWAKE_HD_EDGE_LIGHT") : all;
     g_torch = setting("BLUEWAKE_HD_TORCH_LIGHT") >= 0 ? setting("BLUEWAKE_HD_TORCH_LIGHT") : all;
     if (bloom >= 0)
@@ -60,9 +64,11 @@ void bluewake_hd_look_reload(void) {
         aurora_set_far_blur(far_blur == 1);
     if (ao >= 0)
         aurora_set_ambient_occlusion(ao == 1);
-    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s, edge light %s, torch light %s, cloud shadows %s, far blur %s, bloom %s\n",
+    if (sun_map >= 0)
+        aurora_set_sun_shadow_map(sun_map == 1);
+    fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s%s, edge light %s, torch light %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
-            g_sun == 1 ? "on" : "off", g_edge == 1 ? "on" : "off", g_torch == 1 ? "on" : "off",
+            g_sun == 1 ? "on" : "off", g_sun == 1 && sun_map == 1 ? " (shadow map)" : "", g_edge == 1 ? "on" : "off", g_torch == 1 ? "on" : "off",
             g_clouds == 1 ? "on" : "off",
             far_blur < 0 ? "unset" : far_blur ? "on" : "off", bloom < 0 ? "unset" : bloom ? "on" : "off");
 }

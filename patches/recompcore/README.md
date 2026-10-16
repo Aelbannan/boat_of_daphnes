@@ -162,3 +162,14 @@ neighbour's alpha, with their colours counting too (each cloud is drawn twice, o
 swimming Link follows him as well: a ripple's growing rings, the trail of rings behind him and his wake, which stepped
 at 30 FPS or jumped back a ring whenever a new one was born. It sits on `bluewake-next` after #41, so this pin carries
 #37, #38 and #41 as well.
+
+Patch 0183 is pdale-boop's sun shadow map (`aurora_set_sun_shadow_map`). BlueWake turns it on with its sun shadows
+(`BLUEWAKE_HD_SUN_SHADOWS=1`, still off by default); `DOL_AURORA_SUN_SHADOW_MAP=0` keeps the screen's version alone. The HD look's sun shadows came from the screen, so something off screen cast nothing.
+With the map, each EFB pass's solid draws are drawn again from the sun into a depth map before the pass, with two
+fixed pipelines and each draw's own constants (no pipeline per draw), and each pixel's place in the world is looked up
+in it with a turned disc of lookups, at full resolution and without the screen's steps. Alpha-tested scenery (leaves,
+fences) casts its texture's cutout, the sail and flags cast, and blended furniture casts when its vertices stand still;
+the game's own shadows are left out while the map is on (`DOL_AURORA_GAME_SHADOWS=1` keeps them). In an in-between
+frame the draws take their blended constants and the map that frame's camera. The pin still carries local debug
+commits (F3 frame dump, `_DEBUG=2`, `DOL_AURORA_SUN_SHADOW_MAP_ALL`, `DOL_AURORA_SUN_CASTER_LOG`) that come out before
+a pull request.
