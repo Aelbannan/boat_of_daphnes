@@ -54,6 +54,9 @@ struct Settings {
     // At the next launch.
     std::string aspect = "4:3";
     bool keep_aspect = true;
+    // picto_crop=1 in settings.ini only (no menu entry while it is off by
+    // default): BLUEWAKE_PICTO_CROP, Picto Box photos under widescreen.
+    bool picto_crop = false;
     bool betterww = false;
     std::map<std::string, bool> options;  // only those changed from their default
     bool option_defaults_off = false; // Session-only --options none baseline.
