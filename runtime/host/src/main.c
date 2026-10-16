@@ -7591,11 +7591,25 @@ int main(int argc, char** argv) {
             window_y = saved_y;
         }
 #endif
+        // Wayland FIFO present waits on the compositor for a free swapchain
+        // image, and that wait runs on the game thread. KWin 6.8 holds the
+        // image long enough to drop the game below full speed (several
+        // hundred milliseconds a second inside present). Mailbox returns
+        // immediately and the compositor still times the display.
+        // BLUEWAKE_VSYNC=1 keeps the blocking FIFO present.
+        const char* vsync_env = getenv("BLUEWAKE_VSYNC");
+        bool vsync = true;
+#if defined(__linux__)
+        if (getenv("WAYLAND_DISPLAY") != NULL)
+            vsync = false;
+#endif
+        if (vsync_env != NULL && vsync_env[0] != '\0')
+            vsync = vsync_env[0] != '0';
         const AuroraBackendConfig aurora_config = {
             .app_name = "BlueWake",
             .window_width = 960u,
             .window_height = 720u,
-            .vsync = true,
+            .vsync = vsync,
             .allow_texture_dumps = false,
             .info_logging = true,
             .graphics_logging = getenv("DOL_AURORA_RECOMP_GRAPHICS_LOG") != NULL,
