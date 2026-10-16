@@ -451,13 +451,17 @@ flowchart TB
 0xC1FFFFFF
 uncached
 MEM1 mirror`"]
-        Extension["`0x81800000–
+        Extension["`cached: 0x81800000–
 0x81FFFFFF
+uncached: 0xC1800000–
+0xC1FFFFFF
 BlueWake
 MEM1 extension`"]
-        Retail["`0x80000000–
+        Retail["`cached: 0x80000000–
 0x817FFFFF
-retail cached
+uncached: 0xC0000000–
+0xC17FFFFF
+retail
 MEM1`"]
 
         Mirror ~~~ Extension ~~~ Retail
