@@ -69,7 +69,7 @@ Vulkan, Metal or D3D12`"]
 
 | Stack layer | Project anchor | Role in BlueWake graphics |
 | --- | --- | --- |
-| Game module and host | [BlueWake README](../../README.md) | Supplies translated Wind Waker code plus the native process, guest memory, timing, window, and lifecycle integration. |
+| Game module and host | [Game module](GameModule.md), [BlueWake host](Host.md) | Supplies translated Wind Waker code plus the native process, guest memory, timing, window, and lifecycle integration. |
 | Retail GX semantics | [GXRuntime README](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/README.md) | Reconstructs GameCube FIFO, CP, XF, BP, PE, texture, EFB, and VI behavior inside the pinned RecompCore dependency. |
 | Native renderer | [Aurora README](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/README.md) | Converts GXRuntime's normalized state and draws into native renderer resources and work. BlueWake uses RecompCore's owned Aurora fork. |
 | WebGPU implementation | [Dawn README](https://dawn.googlesource.com/dawn/+/HEAD/README.md) | Implements the WebGPU device and command interfaces through which Aurora reaches platform graphics APIs. |
