@@ -12,7 +12,7 @@
 - [Ownership and address model](#ownership-and-address-model)
   - [MEM1 layout](#mem1-layout)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
-- [Boot state](#boot-state)
+- [Starting a fresh guest session](#starting-a-fresh-guest-session)
 - [Guest time and exceptions](#guest-time-and-exceptions)
 
 ## Responsibility
@@ -580,24 +580,27 @@ structures, resolving a pointer only when they access the referenced bytes.
 | Install memory and MMIO accessors | Ordinary addresses reach RAM; hardware ranges reach compatibility services | [MMIO callback setup](../../runtime/host/src/main.c#L7943-L7948) |
 | Establish REL aliases | Relocated data uses linked guest addresses while code addresses remain valid for dispatch and guest function pointers | [REL alias setup](../../runtime/host/src/main.c#L7968-L8101) |
 
-## Boot state
+## Starting a fresh guest session
 
-This state is constructed when BlueWake starts a fresh guest session, after the
-host has loaded the native game module and created its platform resources but
-before the first translated instruction is dispatched. It is not a firmware or
-BIOS boot: the host directly prepares the memory, processor, OS, and device
-conditions that the translated game expects at its entry point.
+This is the boot of the GameCube guest machine inside an already-running
+BlueWake process. Platform startup, native game-module loading, and native
+resource creation have already finished. The host now constructs the initial
+`CPUState`, MEM1 contents, REL aliases, OS globals, and device state, then sets
+the guest `pc` to the translated DOL entry point. The diagram shows those setup
+dependencies, ending with the guest ready for its first dispatch; it is not an
+exact call sequence or a firmware/BIOS boot.
 
-The sequence runs once for that fresh runtime initialization. Normal gameplay
-then mutates the resulting state through translated execution and host
-services. Loading a BlueWake save state instead restores a previously captured
-guest-machine snapshot at a safe host boundary rather than treating the
-freshly initialized entry state as the point from which play resumes.
+This path runs once for a fresh guest session. Normal gameplay then mutates the
+resulting state through translated execution and host services. Loading a
+BlueWake save state instead restores a previously captured guest-machine
+snapshot at a safe host boundary.
 [Host initialization](../../runtime/host/src/main.c#L7316-L8115) and
 [save-state boundary](Host.md#runtime-inputs-and-persistence)
 
 ```mermaid
 flowchart TD
+    Host["`Running BlueWake host
+starts a fresh guest session`"]
     DOL["main.dol"]
     REL["`REL
 metadata
@@ -618,9 +621,14 @@ globals, stack
 and arenas`"]
     Devices["`Device
 state`"]
-    Ready["`CPUState.pc set
-to entry PC`"]
+    Ready["`Guest ready for first dispatch
+CPUState.pc set to entry PC`"]
 
+    Host -->|"initialize"| CPU
+    Host -->|"load image"| Loader
+    Host -->|"register"| Aliases
+    Host -->|"construct"| OS
+    Host -->|"reset"| Devices
     DOL --> Loader --> MEM1
     REL --> Aliases
     CPU -->|"`ram points to`"| MEM1
