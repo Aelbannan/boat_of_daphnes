@@ -48,18 +48,13 @@ The host receives the same authoritative state when the block yields rather
 than reconstructing the CPU from native registers. [Generated-state
 optimization](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/core/cpu.h#L193-L200)
 
-For example, if a guest register contains `0x80300000`, an ordinary MEM1 load
-with no overriding alias resolves it to backing pointer `B + 0x00300000`, where
-`B` is the native address of MEM1. The memory helper reads the bytes using the
-guest's byte order, and the loaded value becomes the destination guest
-register's value. The original register still contains a 32-bit guest address;
-resolution does not replace it with a native pointer.
-
 ### CPU, memory space, and I/O
 
 The CPU context carries guest-visible registers and execution control. Memory
 instructions keep their 32-bit guest addresses until the access helpers route
-them to native backing storage or an I/O callback.
+them to native backing storage or an I/O callback. In the diagram, DOL is the
+always-loaded main executable and RELs are relocatable game modules; both have
+already had their executable instructions translated to native functions.
 
 ```mermaid
 flowchart TD
@@ -428,6 +423,9 @@ addresses.
 | REL data and BSS | The game enters content whose relocatable module reads or updates its linked data. | Each REL contributes relocatable layout, initialized data, zeroed BSS, and linked guest addresses; its translated functions live in the native module. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) added generated REL image and alias plumbing shared by translated code and the host. |
 | Dispatch metadata | A gameplay call, return, callback, or interrupt resumes at a DOL or REL code address. | Generated tables map the guest `pc` to the corresponding native translated function. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) demonstrates this boundary by preserving the correct guest return path around asynchronous callbacks. [Composite generation](../../scripts/generate_composite.py#L562-L707) defines the tables. |
 
+These artifacts become live guest state through the storage and address rules
+below.
+
 ## Ownership and address model
 
 The module can export two aligned, non-overlapping allocations: one `CPUState`
@@ -502,6 +500,13 @@ to map memory at that numeric address. The memory helpers translate it to a
 pointer inside the BlueWake process on each access. Consequently, the host
 virtual address can change between launches because the module loader and OS
 choose where native allocations and code reside.
+
+For example, if a guest register contains `0x80300000`, an ordinary MEM1 load
+with no overriding alias resolves it to backing pointer `B + 0x00300000`, where
+`B` is the native address of MEM1. The helper reads the bytes using the guest's
+byte order and writes the loaded value to the destination guest register. The
+original address remains a 32-bit guest value; resolution does not replace it
+with a native pointer.
 
 The diagram shows the logical resolution rules rather than the literal order
 of every access. The pinned `get_ram_ptr()` first tries a direct MEM1 fast path
@@ -582,17 +587,12 @@ The formulas describe address translation, not a bulk conversion of guest
 memory. Host and translated code retain guest addresses in registers and data
 structures, resolving a pointer only when they access the referenced bytes.
 
-| Step | Runtime result | Code reference |
-| --- | --- | --- |
-| Select module-exported or compatibility storage | One authoritative `CPUState` structure and one separate MEM1 allocation, connected by `CPUState.ram` | [Storage selection](../../runtime/host/src/main.c#L7329-L7343) |
-| Install memory and MMIO accessors | Ordinary addresses reach RAM; hardware ranges reach compatibility services | [MMIO callback setup](../../runtime/host/src/main.c#L7943-L7948) |
-| Establish REL aliases | Relocated data uses linked guest addresses while code addresses remain valid for dispatch and guest function pointers | [REL alias setup](../../runtime/host/src/main.c#L7968-L8101) |
-
 ## Starting a fresh guest session
 
-This is the boot of the GameCube guest machine inside an already-running
-BlueWake process. Platform startup, native game-module loading, and native
-resource creation have already finished. The host now constructs the initial
+With the storage and address rules established, BlueWake can construct a fresh
+GameCube guest machine inside an already-running process. Platform startup,
+native game-module loading, and native resource creation have already finished.
+The host now constructs the initial
 `CPUState`, MEM1 contents, REL aliases, OS globals, and device state, then sets
 the guest `pc` to the translated DOL entry point. The diagram shows those setup
 dependencies, ending with the guest ready for its first dispatch; it is not an
@@ -657,7 +657,8 @@ CPUState.pc set to entry PC`"]
 
 ## Guest time and exceptions
 
-Translated blocks charge guest cycles rather than reading wall time directly.
+After the first dispatch, translated blocks charge guest cycles rather than
+reading wall time directly.
 The cycle domain advances devices to a shared point and chooses the next safe
 boundary. Services publish interrupt sources; the host delivers an exception
 only where architectural and scheduler state can be preserved.
