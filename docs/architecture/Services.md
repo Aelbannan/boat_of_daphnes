@@ -47,7 +47,9 @@ devices`"]
     Boundary --> Disc
     Boundary --> Input
     Boundary --> Audio
-    Time --> Platform
+    Time -->|"orders work"| Disc
+    Time -->|"orders work"| Input
+    Time -->|"orders work"| Audio
     Disc --> Platform
     Input --> Platform
     Audio --> Platform
@@ -55,11 +57,18 @@ devices`"]
 
 ## Mechanical contents
 
+This section explains the common machinery behind the individual services:
+which layer owns each responsibility, how guest accesses reach a device model,
+and how guest time keeps their effects ordered.
+
 ### Ownership split
+
+The split keeps GameCube-visible behavior in the compatibility layer while the
+BlueWake host supplies the native resources needed to carry it out.
 
 | Layer | Owns | Does not own | Code reference |
 | --- | --- | --- | --- |
-| Translated game | Guest device commands and responses | Native resources | [Guest-state boundary](GuestState.md#host-work-across-the-guestnative-boundary) |
+| Translated game | Produces guest device commands and consumes their responses | Native resources | [Guest-state boundary](GuestState.md#host-work-across-the-guestnative-boundary) |
 | RecompCore | Reusable DI, SI, VI, PI, audio-DMA, and interrupt rules | BlueWake file layout or event loop | [Platform interface](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/platform.h) |
 | BlueWake host | Address routing, scheduling, adapters, and game integration | The game's decisions to access devices | [Host runtime](../../runtime/host/src/main.c), [cycle domain](../../runtime/host/src/cycle_domain.h) |
 | Native platform | OS input, audio, and storage facilities | GameCube-visible semantics | [RecompCore platform ABI](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/platform.h) |
@@ -69,10 +78,49 @@ interrupts, or callbacks rather than directly replacing arbitrary guest state.
 
 ### MMIO dispatch
 
-Translated memory accesses use guest RAM unless an address belongs to a
-hardware range. MMIO callbacks synchronize time-sensitive state, route the
-operation to the matching device, and refresh interrupt state after a register
-raises or acknowledges an event.
+Memory-Mapped Input/Output (MMIO) lets guest code communicate with hardware by
+reading and writing special addresses representing device registers. An
+**MMIO family** groups registers belonging to one hardware subsystem. BlueWake
+routes the address to that subsystem's handler, which interprets the specific
+register operation.
+
+- **VI — Video Interface:** exposes video timing, retrace, and related status
+  registers. [Timing](../../runtime/host/src/main.c#L5381-L5453) and [register routing](../../runtime/host/src/main.c#L4787-L4802)
+- **DI — Disc Interface:** accepts disc commands and exposes transfer, status,
+  and completion state. [Implementation](../../runtime/host/src/main.c#L3024-L3076)
+- **SI — Serial Interface:** models controller communication, polling, channel
+  status, and interrupts. [Implementation](../../runtime/host/src/main.c#L3618-L3653)
+- **PI — Processor Interface:** collects interrupt causes, applies masks, and
+  exposes related control registers. [Source publication](../../runtime/host/src/interrupt_sources.c) and [register routing](../../runtime/host/src/main.c#L3630-L3631)
+- **PE — Pixel Engine:** exposes graphics completion, token, and interrupt
+  state. [Implementation](../../runtime/host/src/main.c#L10232-L10297)
+- **AI — Audio Interface:** controls audio DMA timing, playback rate, and
+  related interrupt state. [Read path](../../runtime/host/src/main.c#L3654-L3658) and [write path](../../runtime/host/src/main.c#L4835-L4846)
+- **DSP — Digital Signal Processor:** provides audio-processor control,
+  mailboxes, DMA registers, and interrupt communication. [Adapter](../../runtime/host/src/dsp_adapter.cpp) and [register routing](../../runtime/host/src/main.c#L3660-L3838)
+- **ARAM — Auxiliary RAM:** controls transfers between MEM1 and the audio
+  subsystem's auxiliary memory. [Implementation](../../runtime/host/src/aram_dma.c)
+- **GX — graphics command path:** receives FIFO commands submitted by guest
+  graphics code. `GX` is the subsystem name used by the runtime rather than an
+  additional expansion used here. [Implementation](../../runtime/host/src/main.c#L4739-L4779)
+- **EFB — Embedded Frame Buffer:** exposes pixel and depth reads plus graphics
+  completion behavior. [Implementation](../../runtime/host/src/main.c#L3594-L3623)
+- **EXI — External Interface:** exposes the emulated IPL/RTC device used for
+  console SRAM transactions. BlueWake serves memory-card operations separately
+  through guest CARD API intercepts. [SRAM implementation](../../runtime/host/src/ipl_sram.c)
+  and [card implementation](../../runtime/host/src/card_runtime.c)
+
+The routing model is **guest address → device family → register operation**.
+“Family” is only a documentation grouping for related registers; it is not a
+separate memory allocation.
+
+Ordinary translated memory accesses resolve to MEM1 or registered REL alias
+storage. A special hardware address instead reaches an external-access hook,
+which routes it to the matching device. Time-sensitive handlers synchronize
+the required state and refresh interrupts after a register raises or
+acknowledges an event. Optimized GX FIFO and EFB paths can bypass that general
+synchronization when the operation does not change a guest device clock,
+deadline, or interrupt source.
 
 | MMIO family | Guest-visible purpose | Host integration |
 | --- | --- | --- |
@@ -81,7 +129,7 @@ raises or acknowledges an event.
 | SI | Controller polls, channel status, and interrupts | [SI model](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/si.h) |
 | AI, DSP, ARAM | Audio DMA, mailboxes, accelerator state, and transfers | [Audio synchronization](../../runtime/host/src/main.c#L5148-L5220), [ARAM DMA](../../runtime/host/src/aram_dma.c) |
 | GX, EFB | FIFO traffic, PE state, and graphics barriers | [Graphics stack](Graphics.md) |
-| EXI storage | Memory-card and console-configuration transactions | [Card runtime](../../runtime/host/src/card_runtime.c), [SRAM runtime](../../runtime/host/src/ipl_sram.c) |
+| EXI | IPL/RTC SRAM transactions for console configuration | [SRAM runtime](../../runtime/host/src/ipl_sram.c) |
 
 The host installs the MMIO callbacks as external-memory hooks during startup.
 [MMIO hook installation](../../runtime/host/src/main.c#L7943-L7948)
@@ -115,6 +163,9 @@ References: [cycle domain](../../runtime/host/src/cycle_domain.c),
 
 ### Artifact-to-game examples
 
+These examples connect the service models and their stored state to behavior a
+player can observe during normal gameplay.
+
 | Service artifact or data | In-game action | Runtime contact | Example project contribution |
 | --- | --- | --- | --- |
 | VI, PI, and PE state | A frame reaches retrace, the game observes graphics completion, or an enabled interrupt enters its handler. | Device models update status and causes; PI masks and CPU state determine delivery. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) exercises presentation continuity by keeping Vulkan rendering alive across a resize. |
@@ -122,7 +173,7 @@ References: [cycle domain](../../runtime/host/src/cycle_domain.c),
 | SI channels and pad samples | Moving Link, aiming, conducting, navigating a menu, or entering first person reads a GameCube-format controller sample. | Native input is mapped and latched into SI channel state at retrace. | [PR #222](https://github.com/chrissotraidis/bluewake/pull/222) assigns player one to the controller the player presses and limits rumble to that port. |
 | Host camera-input state | Holding R3 and moving the right stick changes follow-camera distance while a tap still enters first person. | Host gesture state updates the existing camera integration, which adjusts camera data in guest memory. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221), carrying [PR #213](https://github.com/chrissotraidis/bluewake/pull/213), adds optional controller camera zoom. |
 | AI, DSP, PCM, and ARAM data | Music, voices, ambient sound, and effects stream while gameplay continues. | Guest-cycle audio DMA reads PCM; DSP mailboxes and ARAM transfers publish completion and interrupts. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the DSP, audio-recovery, capture, and shared host integration. |
-| Memory-card image | Selecting or saving a file changes durable game progress. | EXI/card transactions update the validated host-backed card while preserving guest status and callbacks. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated card locking, backup, validation, and atomic persistence patches. |
+| Memory-card image | Selecting or saving a file changes durable game progress. | CARD API intercepts update the validated host-backed card while preserving guest status and callbacks. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated card locking, backup, validation, and atomic persistence patches. |
 | IPL SRAM | The game observes console-like configuration such as sound or clock-related state. | The SRAM adapter exposes guest bytes and persists accepted changes separately from the disc. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the SRAM runtime and player-storage integration. |
 
 ## Interrupt delivery
@@ -136,13 +187,17 @@ whether the host delivers an external interrupt at a safe execution boundary.
 | Device completion | DI, SI, DSP, AI, VI, or PE records a pending source | [BlueWake sources](../../runtime/host/src/interrupt_sources.c), [RecompCore state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/interrupts.h) |
 | Source publication | Device state becomes guest-visible PI cause state | [Interrupt refresh](../../runtime/host/src/main.c#L3525-L3544) |
 | Mask evaluation | PI and CPU masks gate delivery | [Interrupt delivery](../../runtime/host/src/main.c#L3078-L3234) |
-| Safe boundary | Guest exception state is updated before execution resumes | [Guest exceptions](GuestState.md#guest-time-and-exceptions) |
+| Safe boundary | Guest exception state is updated before execution resumes | [Guest exceptions](GuestState.md#guest-time-callbacks-and-exceptions) |
 
 Guest callbacks are separate from external interrupts. A queued DVD callback,
 for example, runs with the guest register and scheduler conventions expected by
 the game. [Callback delivery](../../runtime/host/src/callback_delivery.c)
 
 ## Disc and persistent storage
+
+These services give the guest its expected disc and console-storage interfaces
+while mapping immutable game assets and mutable player data to separate native
+files.
 
 ### Disc commands and asynchronous completion
 
@@ -203,13 +258,37 @@ guest-cycle domain does.
 
 ## Lifecycle and observable state
 
+Compatibility services live for the guest session. Their lifecycle keeps
+device state coherent across startup, translated execution, synchronization,
+persistence, and shutdown.
+
+```mermaid
+flowchart TD
+    Initialize["`Initialize services
+coherent boot-time registers`"]
+    Dispatch["`Dispatch translated work
+guest commands and RAM changes`"]
+    Synchronize["`Synchronize required devices
+ordered DMA, status and events`"]
+    Rebudget["`Select the next boundary
+deadline, decrementer or interrupt`"]
+    Stop{"Guest session ending?"}
+    Shutdown["`Shut down services
+close storage and release resources`"]
+
+    Initialize --> Dispatch
+    Dispatch --> Synchronize --> Rebudget --> Stop
+    Stop -->|"no"| Dispatch
+    Stop -->|"yes"| Shutdown
+```
+
 | Phase | Service-layer action | Observable result |
 | --- | --- | --- |
 | Initialize | Open resources, construct models, install callbacks, and select the first deadline | Coherent device registers at boot |
 | Dispatch | Run translated work within the current budget | Guest commands and RAM changes |
 | Synchronize | Advance devices required by time or an observable access | Ordered DMA, status, callbacks, and interrupts |
 | Rebudget | Select the next device, decrementer, or interrupt boundary | Execution cannot skip a required event |
-| Shut down | Stop adapters and persist accepted mutable storage | No worker retains invalid guest resources |
+| Shut down | Stop adapters and close mutable storage whose accepted writes were already persisted | No worker retains invalid guest resources, and durable data remains available to the next run |
 
 Graphics-related GX services continue in the [graphics stack](Graphics.md).
 

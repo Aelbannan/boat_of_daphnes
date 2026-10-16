@@ -23,7 +23,8 @@ new high-level game API.
 | Translated REL functions | Implement the game's relocatable code modules while preserving linked guest addresses. | REL-grouped composite source |
 | Dispatch tables | Map a guest program counter or function pointer to the corresponding native function. | [`generate_composite.py`](../../scripts/generate_composite.py#L562-L707) |
 | DOL and REL metadata | Describe code ranges, data images, BSS, aliases, and the initial entry point. | [`generate_composite.py`](../../scripts/generate_composite.py#L799) |
-| Module descriptor | Publishes the ABI contract, callbacks, metadata, and optional shared CPU and memory storage. | `staticrecomp_get_module` export |
+| Module descriptor | Publishes the ABI contract, callbacks, and metadata. | `staticrecomp_get_module` export |
+| Shared-storage getters | Optionally expose the module-owned `CPUState` and MEM1 allocations required by the declared CPU ABI. | `bluewake_composite_guest_cpu` and `bluewake_composite_guest_mem1` exports |
 
 ### Artifact-to-game examples
 
@@ -33,7 +34,7 @@ new high-level game API.
 | Translated REL functions | Entering a scene or using a system implemented by a relocatable module executes its original code. | Dispatch resolves the REL's linked guest code range while guest data remains at linked addresses. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) added the combined DOL/REL composite and shared REL storage. |
 | Dispatch tables | A call, return, callback, or interrupt resumes at the guest address selected by game state. | Generated range tables select the matching native function without rewriting the guest `pc`. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) fixes a DVD callback that could corrupt the paused function's return path. |
 | DOL and REL metadata | Boot loads initialized data; scene modules see relocated data and zeroed BSS. | The host consumes code ranges, data images, BSS descriptions, aliases, and the entry point. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) contributed the generated metadata and module-owned guest storage contract. |
-| Module descriptor and shared storage | Launch binds the host to the exact module ABI before the title sequence begins. | The host validates versions and sizes, then adopts compatible `CPUState` and MEM1 exports. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) introduced the explicit descriptor, CPU contract, and shared-storage exports. |
+| Module descriptor and shared-storage getters | Launch binds the host to the exact module ABI before the title sequence begins. | The host validates descriptor versions and sizes, then resolves the separate `CPUState` and MEM1 getter exports required by that ABI. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) introduced the explicit descriptor, CPU contract, and shared-storage exports. |
 
 ## Module loading and ABI
 
@@ -46,24 +47,30 @@ loader`"]
 export`"]
     Descriptor["`Module
 descriptor`"]
+    Getters["`Separate CPUState
+and MEM1
+getter exports`"]
     State["`Shared
 CPUState and
 MEM1`"]
 
-    Host --> Loader --> Export --> Descriptor
+    Host --> Loader --> Export
+    Export --> Descriptor
+    Export --> Getters --> State
     Descriptor -->|"validate ABI"| Host
-    Descriptor --> State
-    Host --> State
+    Host -->|"validate and select"| State
 ```
 
 The host opens `gGZLE01_recomp` with the platform dynamic loader and obtains
-its `StaticRecompModuleDesc`. Startup stops if the export is missing or the
-descriptor is incompatible.
+its `StaticRecompModuleDesc`. It resolves CPU and MEM1 getter symbols
+separately when the descriptor's CPU ABI requires module-owned storage.
+Startup stops if a required export is missing or incompatible.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
 | Open the shared library | Translated native code is mapped into the process | [Module loading](../../runtime/host/src/main.c#L7316-L7322) |
-| Read the exported descriptor | The host receives entry, dispatch, metadata, callbacks, and storage exports | [Composite generation](../../scripts/generate_composite.py#L799) |
+| Read the exported descriptor | The host receives entry, dispatch, metadata, callbacks, and the ABI requirements | [Composite generation](../../scripts/generate_composite.py#L799) |
+| Resolve shared-storage getters | The host obtains compatible module-owned `CPUState` and MEM1 allocations without treating them as descriptor fields | [Storage contract](../../cmake/composite/module_cpu_contract.h#L9-L64), [symbol lookup](../../runtime/host/src/main.c#L7340-L7357) |
 | Validate the ABI | Only a compatible host/module pair continues to guest initialization | [ABI validation](../../runtime/host/src/main.c#L7329-L7343) |
 
 ## Translated-code dispatch
