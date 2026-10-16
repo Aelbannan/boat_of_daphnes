@@ -67,10 +67,15 @@ consumer needs the backing bytes.
   External Frame Buffer (XFB) consumed by the Video Interface (VI). Aurora
   preserves the logical copy and presentation boundaries without requiring
   every implementation step to be a literal hardware framebuffer.
-- **Aurora and Dawn** — Aurora maps normalized GX state to shaders, pipelines,
-  textures, render passes, copies, and presentation. Dawn supplies the
-  platform-neutral WebGPU implementation used to reach native graphics APIs.
-  Aurora is the renderer; it is not the authority for retail GX meaning.
+- **Aurora** — [Aurora](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/README.md)
+  is a source-level GameCube and Wii compatibility layer used by decompilation
+  projects. BlueWake uses RecompCore's owned Aurora fork as its native renderer:
+  it maps normalized GX state to shaders, pipelines, textures, render passes,
+  copies, and presentation. Aurora renders GX meaning established by GXRuntime;
+  it does not decide what the game draws.
+- **Dawn** — Chromium's WebGPU implementation beneath Aurora. It connects
+  Aurora's GPU resources and commands to native APIs such as Vulkan, Metal,
+  and Direct3D 12.
 
 ## Mechanical contents
 
