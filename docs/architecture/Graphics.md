@@ -4,6 +4,7 @@
 
 - [Responsibility](#responsibility)
 - [Concepts](#concepts)
+  - [Stack-level view](#stack-level-view)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
   - [Guest-visible GX state](#guest-visible-gx-state)
@@ -38,6 +39,45 @@ guest addresses. The host exposes a bounded native view only while a graphics
 consumer needs the backing bytes.
 
 ## Concepts
+
+### Stack-level view
+
+```mermaid
+flowchart TD
+    Game["`BlueWake
+translated game module`"]
+    Host["`BlueWake host
+memory, timing
+and lifecycle`"]
+    GX["`RecompCore / GXRuntime
+retail GX front end`"]
+    Aurora["`Aurora
+native renderer`"]
+    Dawn["`Dawn
+WebGPU implementation`"]
+    API["`Native graphics API
+Vulkan, Metal or D3D12`"]
+    GPU["`GPU and display`"]
+
+    Game -->|"GX command stream"| GX
+    Host -->|"guest ranges and barriers"| GX
+    GX -->|"normalized render packets"| Aurora
+    Host -->|"window and presentation lifecycle"| Aurora
+    Aurora -->|"WebGPU resources and commands"| Dawn
+    Dawn --> API --> GPU
+```
+
+| Stack layer | Project anchor | Role in BlueWake graphics |
+| --- | --- | --- |
+| Game module and host | [BlueWake README](../../README.md) | Supplies translated Wind Waker code plus the native process, guest memory, timing, window, and lifecycle integration. |
+| Retail GX semantics | [GXRuntime README](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/README.md) | Reconstructs GameCube FIFO, CP, XF, BP, PE, texture, EFB, and VI behavior inside the pinned RecompCore dependency. |
+| Native renderer | [Aurora README](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/README.md) | Converts GXRuntime's normalized state and draws into native renderer resources and work. BlueWake uses RecompCore's owned Aurora fork. |
+| WebGPU implementation | [Dawn README](https://dawn.googlesource.com/dawn/+/HEAD/README.md) | Implements the WebGPU device and command interfaces through which Aurora reaches platform graphics APIs. |
+
+The translated module is a BlueWake build artifact, GXRuntime is part of the
+pinned RecompCore dependency, and Aurora is vendored there as an owned fork.
+Dawn and the selected native graphics API sit below those project-specific
+layers.
 
 - **GX** — the GameCube graphics API and hardware-facing command model used by
   the game. BlueWake preserves its retail FIFO, register, memory, and
