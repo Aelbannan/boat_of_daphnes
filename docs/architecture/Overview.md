@@ -4,7 +4,10 @@
 
 - [Introduction](#introduction)
 - [High-level view](#high-level-view)
-- [Build toolchain](#build-toolchain)
+- [Build process](#build-process)
+- [Runtime](#runtime)
+
+Architecture path: [Index](README.md) → **Overview**
 
 ## Introduction
 
@@ -44,19 +47,31 @@ same process at runtime.
 ```mermaid
 flowchart TD
     subgraph Build["Build time"]
-        Disc["Supported GameCube disc"]
-        Extract["Validate and extract<br/>DOL and REL modules"]
-        Translator["DolRecomp<br/>PowerPC translation"]
-        Generated["Generated C<br/>composite source tree"]
-        Prepared["Mods and verified<br/>source preparations"]
-        Training["Optional local<br/>PGO training"]
-        HostSource["BlueWake host and<br/>platform source"]
-        RuntimeSource["RecompCore / GXRuntime<br/>and Aurora"]
-        GameCompiler["Target compiler<br/>(translated module)"]
-        AppCompiler["Target compiler<br/>(platform application)"]
-        GameModule["Native translated<br/>game module"]
-        Executable["Platform application"]
-        Package["Runnable platform package"]
+        Disc["Game disc"]
+        Extract["`Extract
+DOL + RELs`"]
+        Translator["`DolRecomp
+translate PPC`"]
+        Generated["Generated C"]
+        Prepared["`Prepared C
++ optional
+mods`"]
+        Training["Optional PGO"]
+        HostSource["`Host +
+platform
+source`"]
+        RuntimeSource["`Runtime +
+renderer
+source`"]
+        GameCompiler["`Game-module
+compiler`"]
+        AppCompiler["`Application
+compiler`"]
+        GameModule["`Native game
+module`"]
+        Executable["Platform app"]
+        Package["`Runnable
+package`"]
 
         Disc --> Extract --> Translator --> Generated --> Prepared --> GameCompiler --> GameModule
         Prepared --> Training --> GameCompiler
@@ -68,35 +83,37 @@ flowchart TD
     end
 
     subgraph Runtime["Runtime — one application process"]
-        Startup["Platform startup"]
+        Startup["Startup"]
         Host["BlueWake host"]
-        Game["Translated Wind Waker code"]
-        Guest["Guest CPU state and memory"]
-        Services["GameCube-compatible services<br/>timing, storage, input, and audio"]
-        Graphics["GXRuntime / Aurora / Dawn<br/>platform graphics API"]
-        Assets["Original game data and assets"]
+        Game["Game module"]
+        Guest["Guest state"]
+        Services["`GameCube
+services`"]
+        Graphics["`Graphics
+stack`"]
+        Assets["Disc assets"]
 
         Startup --> Host
-        Host -->|"loads and starts"| Game
-        Host <-->|"coordinates and integrates"| Game
-        Host <-->|"reads and updates"| Guest
-        Game <-->|"reads and updates"| Guest
+        Host -->|"loads"| Game
+        Host <-->|"coordinates"| Game
+        Host <-->|"state access"| Guest
+        Game <-->|"reads / updates"| Guest
         Host <--> Services
         Game <--> Services
         Host <--> Graphics
-        Game -->|"submits original GX work"| Graphics
-        Assets -->|"loaded into guest state"| Guest
+        Game -->|"GX work"| Graphics
+        Assets -->|"reads"| Services
     end
 
     Package --> Startup
-    Disc -. "supplies runtime game data" .-> Assets
+    Disc -. "runtime data" .-> Assets
 ```
 
 The diagram shows component and data flow, not an exact call sequence. The
 central boundary is consistent across platforms: translated game code remains
 separate from the handwritten host and compatibility runtime.
 
-## Build toolchain
+## Build process
 
 All supported platforms share the same broad pipeline:
 
@@ -109,6 +126,9 @@ All supported platforms share the same broad pipeline:
 | Compile | Prepared game source, BlueWake host, and runtime sources | Native game module and platform application |
 | Package | Native outputs and required support files | Linux, Windows, macOS, iOS/iPadOS, or tvOS deliverable |
 
+Concrete player-visible uses and the PRs that contributed to these outputs are
+listed in [build artifact-to-game examples](Build.md#artifact-to-game-examples).
+
 Android support is in progress in
 [PR #93](https://github.com/chrissotraidis/bluewake/pull/93), so it is not yet
 shown as a current platform branch.
@@ -119,3 +139,24 @@ backend, signing, and packaging requirements.
 
 For the complete pipeline, component references, output paths, and per-platform
 branches, continue to [Build](Build.md).
+
+## Runtime
+
+The packaged application runs these cooperating parts in one native process:
+
+| Part | Responsibility |
+| --- | --- |
+| Platform application and host | Enter the process, load the game module, coordinate execution, and connect native facilities. |
+| Game module | Executes translated game instructions against shared guest state. |
+| Guest state | Preserves GameCube registers, memory, addresses, and time across execution boundaries. |
+| Compatibility services and graphics | Provide guest-visible devices and GX behavior through native input, audio, storage, and GPU APIs. |
+
+The detailed runtime chapters connect each owned artifact to an in-game action
+and a concrete contributing PR: [host data](Host.md#artifact-to-game-examples),
+[game-module artifacts](GameModule.md#artifact-to-game-examples),
+[guest state](GuestState.md#game-perspective-examples),
+[service data](Services.md#artifact-to-game-examples), and
+[graphics data](Graphics.md#artifact-to-game-examples).
+
+For the complete component map, interaction boundaries, and links to each
+entity's internals, continue to [Runtime](Runtime.md).

@@ -5,6 +5,7 @@
 - [End-to-end overview](#end-to-end-overview)
 - [Build toolchain overview](#build-toolchain-overview)
   - [Concepts](#concepts)
+  - [Artifact-to-game examples](#artifact-to-game-examples)
 - [1. Coordinate](#1-coordinate)
   - [`bluewake.sh` game profile](#bluewakesh-game-profile)
   - [Linux builder](#linux-builder)
@@ -31,6 +32,8 @@
   - [iPhone and iPad](#iphone-and-ipad-iosipados-arm64)
   - [Apple TV](#apple-tv-tvos-arm64-experimental)
   - [Android](#android-in-progress)
+
+Architecture path: [Overview](Overview.md) → **Build process**
 
 This chapter expands the build-time half of the
 [architecture overview](Overview.md). It follows the player's disc through
@@ -91,11 +94,30 @@ checkout and prefixes shared dependency caches that intentionally live outside
 | --- | --- | --- | --- | --- |
 | Coordinate | [Platform builders](#1-coordinate) and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Selects the target, inputs, options, and ordered build stages. | Ordered build with pinned inputs and provenance | Build logs under `OUT/logs/` |
 | Fetch | Git and [`bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Retrieves and verifies the exact runtime and translator revisions. | Exact RecompCore and DolRecomp source | Checkout under `ROOT/ref/recompcore/` |
-| Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL, RELs, and runtime disc | `OUT/game/main.dol` and `OUT/game/rels/` |
+| Extract | [Platform builders](#3-extract) | Confirms the supported disc and separates the code inputs needed for translation. | Validated DOL and RELs; the original disc remains an external runtime input | `OUT/game/main.dol` and `OUT/game/rels/` |
 | Translate | [Pinned DolRecomp](https://github.com/elliotttate/DolRecomp/commit/b8b534591cba8ca7cd43943a655ee6e2591cf5de) | Converts the game's PowerPC machine code into compilable C. | Generated C for PowerPC code | Generated tree under `OUT/translated/` |
 | Compose and prepare | [`generate_composite.py`](../../scripts/generate_composite.py) and [mod scripts](../../scripts/mods) | Joins translated units and applies selected, guarded source variants. | Verified composite source and selected variants | `OUT/composite-src/` and its digest files |
 | Train | [Platform PGO paths](#6-train) and `llvm-profdata` | Records representative execution frequencies for compiler optimization. | Optional local optimization profile | `OUT/pgo-local/composite.profdata` or `OUT/composite.profdata` |
 | Compile and package | [CMake targets and platform packagers](#7-compile-and-package) | Produces native binaries and arranges them for the target platform. | Native module and platform application | [Platform artifact paths](#7-compile-and-package) |
+
+### Artifact-to-game examples
+
+Build artifacts are not guest objects that gameplay modifies directly. This
+table instead shows which player-visible behavior each artifact enables once
+it is consumed by a later build stage or loaded at runtime. The cited PR is a
+concrete BlueWake contribution that created, validated, or exercised that
+artifact; it need not be the artifact's historical origin.
+
+| Artifact | Player-visible use | How it reaches the game | Example project contribution |
+| --- | --- | --- | --- |
+| Build logs and provenance | A developer can reproduce and diagnose the exact build that a player tested. | Builders record selected inputs, stages, tool output, and native artifacts under `OUT`. | [PR #254](https://github.com/chrissotraidis/bluewake/pull/254) makes the Linux build environment reproducible and shared with CI. |
+| Pinned RecompCore and DolRecomp checkout | Every translated action and compatibility service uses the selected translator/runtime behavior. | DolRecomp generates the game code; RecompCore supplies guest CPU, services, graphics, DSP, and host interfaces. | [PR #353](https://github.com/chrissotraidis/bluewake/pull/353) advances the runtime pin so a resized Vulkan window keeps drawing. |
+| Extracted `main.dol` and RELs | The title flow, Link's actions, scenes, actors, and other original routines remain available for translation. | Extraction supplies the executable and 415 relocatable modules without changing the player's disc. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the shared extraction and build pipeline used by the current module. |
+| DolRecomp-generated C | Original PowerPC routines execute as compiled native functions. | The compiler turns mechanically translated DOL and REL functions into the game module. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) integrated the translated module and its cross-platform host contract. |
+| Composite source and metadata | Calls, returns, callbacks, and scene-module transitions resolve across DOL and REL code. | Composite generation joins translated units with dispatch, data-image, alias, and ABI metadata. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) exercises this boundary by preserving the correct translated return path around a DVD callback. |
+| PGO profile | Frequently exercised training routes can be optimized without changing guest-visible behavior. | Clang consumes merged execution counts while compiling the final translated module. | [PR #243](https://github.com/chrissotraidis/bluewake/pull/243) preserves the existing profile when a host-only change rebuilds the app. |
+| Native game module and platform host | Starting BlueWake loads translated gameplay and connects it to windows, input, audio, files, and graphics. | The host dynamically loads the module and coordinates its shared guest state. | [PR #254](https://github.com/chrissotraidis/bluewake/pull/254) validates this Linux build in the same container used by CI. |
+| Packaged Linux AppImage | A Linux or SteamOS player launches the assembled host, module, and support files as one application. | AppImage packaging arranges the already-built runtime without including private game data in CI. | [PR #217](https://github.com/chrissotraidis/bluewake/pull/217) adds SteamOS-compatible AppImage packaging validation. |
 
 ## 1. Coordinate
 
@@ -118,10 +140,10 @@ is sourced configuration and shell functions, not a standalone builder.
 
 | Stage | What it does | Result | Artifact/output | Code reference |
 | --- | --- | --- | --- | --- |
-| Describe the game | Defines the game ID, bundle ID, module name, default output, and PGO inputs. | One shared game and application identity | `PROFILE_*` variables | [Profile variables](../../scripts/builder/profiles/bluewake.sh) |
-| Pin dependencies | Selects exact RecompCore and DolRecomp revisions and verifies the Dawn archive by checksum. | Reproducible dependency inputs | `RECOMPCORE_SHA`, `DOLRECOMP_SHA`, `DAWN_SHA256` | [Dependency pins](../../scripts/builder/profiles/bluewake.sh) |
-| Guard generation | Records the accepted digest for the unmodified generated composite. | Builders reject unexpected translator or disc output. | `COMPOSITE_DIGEST` | [Digest and verification](../../scripts/builder/profiles/bluewake.sh) (`COMPOSITE_DIGEST`, `profile_generate`) |
-| Define Apple hooks | Implements dependency, extraction, translation, generation, mod, compile, and app functions. | The generic Apple pipeline can build BlueWake without game-specific logic. | `profile_*` shell functions | [Profile hooks](../../scripts/builder/profiles/bluewake.sh) |
+| Describe the game | Defines the game ID, bundle ID, module name, default output, and PGO inputs. | One shared game and application identity | `PROFILE_*` variables | [Profile variables](../../scripts/builder/profiles/bluewake.sh#L20-L35) |
+| Pin dependencies | Selects exact RecompCore and DolRecomp revisions and verifies the Dawn archive by checksum. | Reproducible dependency inputs | `RECOMPCORE_SHA`, `DOLRECOMP_SHA`, `DAWN_SHA256` | [Dependency pins](../../scripts/builder/profiles/bluewake.sh#L37-L44) |
+| Guard generation | Records the accepted digest for the unmodified generated composite. | Builders reject unexpected translator or disc output. | `COMPOSITE_DIGEST` | [Digest and verification](../../scripts/builder/profiles/bluewake.sh#L45-L190) |
+| Define Apple hooks | Implements dependency, extraction, translation, generation, mod, compile, and app functions. | The generic Apple pipeline can build BlueWake without game-specific logic. | `profile_*` shell functions | [Profile hooks](../../scripts/builder/profiles/bluewake.sh#L49-L317) |
 
 Linux and Windows parse the shared pin and digest values directly. The Apple
 builder sources the file and invokes its hook functions.
@@ -611,5 +633,6 @@ The Dawn archive bridge remains experimental; see the
 
 Android arm64 support is under development in
 [PR #93](https://github.com/chrissotraidis/bluewake/pull/93). It is not yet a
-current build path, so there is no supported compile/package table or artifact
-contract yet.
+current build path, so its proposed artifacts are not included above.
+
+Continue to the runtime [high-level view](Runtime.md#high-level-view).
