@@ -532,13 +532,20 @@ void display_tab() {
 
 // The folder scripts/import_wwhd_textures.py puts its pack in.
 std::string importer_pack_folder() {
+    // Follow the app's data/settings location, including Linux portable mode
+    // and isolated sessions. The normal Mac/Linux locations stay the same.
+    std::filesystem::path base = g_data_dir;
+    if (base.empty() && !g_path.empty())
+        base = std::filesystem::path(g_path).parent_path();
+    if (!base.empty())
+        return (base / "Load" / "Textures" / "WWHD").string();
     const char* home = std::getenv("HOME");
     if (home == nullptr || home[0] == '\0')
         return "";
 #if defined(__linux__)
     const char* data = std::getenv("XDG_DATA_HOME");
-    const std::string base = data != nullptr && data[0] != '\0' ? data : std::string(home) + "/.local/share";
-    return base + "/BlueWake/Load/Textures/WWHD";
+    const std::string fallback = data != nullptr && data[0] != '\0' ? data : std::string(home) + "/.local/share";
+    return fallback + "/BlueWake/Load/Textures/WWHD";
 #else
     return std::string(home) + "/Library/Application Support/BlueWake/Load/Textures/WWHD";
 #endif
@@ -589,6 +596,10 @@ void hd_textures_section() {
     }
     if (ImGui::Button("Choose texture pack folder..."))
         bw_texture_pack::choose_folder(game_window(), g_texture_pack);
+    std::string imported;
+    const std::string textures = std::filesystem::path(importer_pack_folder()).parent_path().string();
+    if (bw_texture_pack::import_controls(game_window(), textures, imported))
+        set_texture_pack(imported);
     const std::string error = bw_texture_pack::picker_error();
     if (!error.empty()) {
         ImGui::TextWrapped("The folder picker did not open (%s). Type the folder instead:", error.c_str());

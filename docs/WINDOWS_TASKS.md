@@ -55,6 +55,38 @@ unchecked; Android #347's API 36 app import and recovery results do not replace 
 | Picto Box photos under widescreen keep their 4:3 shape (`picto_crop=1` in `settings.ini`, off by default) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn, with `picto_crop=1` added to `settings.ini` (`BLUEWAKE_PICTO_CROP=1` also works): the log's `[aspect]` line ends "Picto Box photos cropped to 4:3", and a new photo, from the Picto Box and the Deluxe Picto Box, keeps the shape of what was in the middle of the viewfinder instead of the whole wide view squeezed. Without it, photos are as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`, and the gallery fix) at 2560x1080: photos from both Picto Boxes with the crop at 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build with RecompCore#37's commit: new photos from the Picto Box with `BLUEWAKE_PICTO_CROP=1` at all three, and from the Deluxe Picto Box at 16:9; without it, 16:9 photos are squeezed. Mac: not built or run yet |
 | The Picto Box gallery under widescreen: photos as wide as their frames, and in them (#346, merged `dc45b43`) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn: in the Picto Box gallery the middle photo sits in its frame, and so do the ones beside it, at rest and while sliding. At 21:9 a photo is as wide as its frame (it was squeezed to 77% of it). | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`) at 2560x1080: 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build: 16:9, 16:10 and 21:9. M3 Max/Metal, fresh module, host `14bc288` / runtime `57123c6`: all three photos align at each aspect; left/right navigation endpoints captured, not frame-by-frame animation. All three runs exit 0 with copied cards unchanged ([evidence](status/PICTO_RECOGNITION_2026-10-15.md#gallery-alignment)). |
 
+### Draft native HD importer (#315)
+
+This is not in `main` or a download yet. On a build of #315, use
+**F1 › Mods › Wind Waker HD textures › Import from Wind Waker HD…** with
+your own decrypted folder, then a USA WUD/WUX image and its keys:
+
+- Cancel and reopen each picker; replace the image; switch between common
+  and title key. Import must stay disabled until all required files are selected.
+- Import while the game runs, close/reopen the menu, cancel an active import,
+  and quit during one. Existing packs and saves must stay intact; incomplete
+  output must be removed. A wrong key should give a recoverable error.
+- Finish an import, Resume to save the choice, then restart. Verify the pack
+  loads. Turn HD textures off, Resume and restart; check gameplay with original
+  textures. Turn them on, Resume and restart again to check the pack. Confirm key paths
+  and values are absent from settings. Compare the pack against the script
+  using [the documented check](WWHD_TEXTURES.md#native-importer-memory-check-october-15-2026).
+- Repeat with portable mode, a path containing spaces/non-ASCII characters,
+  and both mouse and controller navigation.
+- In a separate test data folder, force-close an import and retry: its marked temporary
+  output should be recovered, while completed packs and older unmarked temporary
+  folders stay intact. A second live import using the same output parent must
+  refuse promptly; another parent should still work. The generated killed-child
+  tests are wired into CI; the Windows app check remains outstanding.
+
+The M3 Max Mac completed the full folder import (3,546 textures) and a generated
+encrypted WUX menu import; the latter's nine PNGs matched the CLI and its copied
+card was unchanged. The image/key and cancellation core passed Windows/Linux CI
+at `254195d`, and Windows/Linux CI passed again at `3b13534`, including the fix that
+refuses to publish when conflicting generated textures cannot be removed. On Linux,
+pdale-boop completed a full menu import from his own dump. These results do not
+establish Windows picker or authentic-disc acceptance.
+
 ## 2. Shipped, still to check by hand
 
 | Change | Issue | What to check | Shipped in | Result |

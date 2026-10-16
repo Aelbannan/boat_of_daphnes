@@ -870,6 +870,12 @@ void hd_textures_section(Settings& d) {
             changed();
         }
     }
+    std::string imported;
+    if (bw_texture_pack::import_controls(nullptr, g_data_dir + "Load\\Textures", imported)) {
+        d.texture_pack = imported;
+        d.hd_textures = true;
+        changed();
+    }
     const std::string error = bw_texture_pack::picker_error();
     if (!error.empty())
         ImGui::TextWrapped("The folder picker did not open (%s). Put the pack in the texture folder instead.",

@@ -380,6 +380,13 @@ int main(int argc, char** argv) {
             NSString* pack = [data stringByAppendingPathComponent:@"Load/Textures/GZLE01"];
             [[NSFileManager defaultManager] createDirectoryAtPath:pack withIntermediateDirectories:YES
                                                        attributes:nil error:nil];
+            // A pack made by Import from Wind Waker HD is used on its own.
+            NSString* chosen = [d stringForKey:@"BlueWake.TexturePackFolder"];
+            BOOL isDir = NO;
+            if (chosen.length > 0 && ![chosen containsString:@".."] &&
+                [[NSFileManager defaultManager] fileExistsAtPath:[data stringByAppendingPathComponent:chosen]
+                                                     isDirectory:&isDir] && isDir)
+                pack = [data stringByAppendingPathComponent:chosen];
             if ([d boolForKey:@"BlueWake.Mod.HDTextures"])
                 bw_default("DOL_AURORA_TEXTURE_PACK", pack);
             // The Wind Waker HD look (runtime/host/src/hd_look.h).

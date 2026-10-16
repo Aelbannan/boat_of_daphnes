@@ -51,3 +51,7 @@ jobs:
         run: |
           cc -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I runtime/host/src tests/audio_dma_stereo_test.c -o "$RUNNER_TEMP/bluewake_audio_dma_stereo_test"
           "$RUNNER_TEMP/bluewake_audio_dma_stereo_test"
+      - name: Preserve iOS HD import cancellation and file-access lifetime
+        run: |
+          xcrun --sdk macosx clang++ -std=c++17 -O1 -fobjc-arc -Werror=objc-method-access -Werror=arc-retain-cycles -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -I apple/ios/src -framework Foundation tests/wwhd_ios_import_operation_test.mm -o "$RUNNER_TEMP/bluewake_wwhd_ios_import_operation_test"
+          "$RUNNER_TEMP/bluewake_wwhd_ios_import_operation_test" "$RUNNER_TEMP"
