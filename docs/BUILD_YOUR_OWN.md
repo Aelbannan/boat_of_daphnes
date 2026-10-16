@@ -165,6 +165,12 @@ The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Bett
 
 ## If something fails
 
+If a Mac build reports missing SQLite functions, Mono headers, or a Homebrew SQLite dependency
+that is not self-contained, update BlueWake and rerun the same build command. Both the local
+training host and the Mac app use the pinned static SQLite, including when an existing CMake
+cache contains older SQLite paths. There is no need to rename Mono, install SQLite with Homebrew,
+edit CMake caches, or delete the build directory.
+
 Each step writes a log under `build/device/logs`, and the error names it. Rerunning the same command
 reuses compatible completed work. For help, ask on [Discord](https://discord.gg/xwHfUD2bxW) or
 [open an issue](https://github.com/chrissotraidis/bluewake/issues), with the failing stage and relevant error excerpt.
