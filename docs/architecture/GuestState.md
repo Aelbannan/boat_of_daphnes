@@ -473,9 +473,15 @@ selected words at 0x80000020–0x800000FC`"]
 
 The retail and extension ranges form the cached 32 MiB window. Clearing the
 mirror bit maps the uncached `0xC0000000–0xC1FFFFFF` view onto those same
-backing bytes; it does not allocate a second MEM1. Registered REL aliases are
-checked according to the resolver rules below and can direct a linked range to
-separate shared storage.
+backing bytes; it does not allocate a second MEM1. On GameCube hardware, a
+cached access can be satisfied from Gekko's data cache while a DMA-capable
+device reads or writes MEM1 directly. The uncached alias lets game code access
+that physical-RAM view when coordinating buffers with hardware. BlueWake does
+not maintain a separate cache copy, but translated code still produces these
+`0xC0000000`-based addresses, so the runtime must recognize them and resolve
+them to the same native bytes. Registered REL aliases are checked according to
+the resolver rules below and can direct a linked range to separate shared
+storage.
 [Storage contract](../../cmake/composite/module_cpu_contract.h#L16-L27),
 [host allocation](../../runtime/host/src/main.c#L7688-L7696), and
 [boot layout](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c).
