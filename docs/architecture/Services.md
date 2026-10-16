@@ -256,6 +256,26 @@ Compatibility services live for the guest session. Their lifecycle keeps
 device state coherent across startup, translated execution, synchronization,
 persistence, and shutdown.
 
+```mermaid
+flowchart TD
+    Initialize["`Initialize services
+coherent boot-time registers`"]
+    Dispatch["`Dispatch translated work
+guest commands and RAM changes`"]
+    Synchronize["`Synchronize required devices
+ordered DMA, status and events`"]
+    Rebudget["`Select the next boundary
+deadline, decrementer or interrupt`"]
+    Stop{"Guest session ending?"}
+    Shutdown["`Shut down services
+persist accepted data and release resources`"]
+
+    Initialize --> Dispatch
+    Dispatch --> Synchronize --> Rebudget --> Stop
+    Stop -->|"no"| Dispatch
+    Stop -->|"yes"| Shutdown
+```
+
 | Phase | Service-layer action | Observable result |
 | --- | --- | --- |
 | Initialize | Open resources, construct models, install callbacks, and select the first deadline | Coherent device registers at boot |
