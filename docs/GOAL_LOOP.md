@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 15, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 16, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -34,15 +34,15 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 ## Where things stand on October 15
 
 **The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
-Nothing has been released since. `main` has 86 merged pull requests on top of it: 55 change the app or its builds
-and 31 are docs. pdale-boop wrote 21 of them; cforain, jkoehler11, jslay88 and Mrlinkwii contributed too. The
+Nothing has been released since. The changes in `main` include contributions from pdale-boop, cforain,
+jkoehler11, jslay88 and Mrlinkwii. The
 [next release's draft](status/RELEASE_NEXT_DRAFT_2026-10-11.md) lists the changes with their checks. 0.8.0 waits for
 the HD work (Chris, October 12).
 
 | Platform | Download today | New in `main` | Still to do |
 | --- | --- | --- | --- |
 | Windows | 0.7.0 zip, built on Chris's PC | Behaviour timing on by default (#335); the Mac and Linux menu layout, controller navigation and the same hotkeys (#326, #329, #330, #332) | The checks in [WINDOWS_TASKS.md](WINDOWS_TASKS.md#1-in-main-for-the-next-windows-build) on a Windows PC, then the release build |
-| Linux | None: build from source ([LINUX.md](LINUX.md)). 0.7.0's notes say a ready-made AppImage comes with 0.8.0 | The same menus, Restart now and safe mode (#324, #327, #328); portable mode (#303); the folder picker (#344); behaviour timing (#335) | The window-resize crash fix (RecompCore#38, being pinned in #353); an AppImage built from a contributor's own disc |
+| Linux | None: build from source ([LINUX.md](LINUX.md)). 0.7.0's notes say a ready-made AppImage comes with 0.8.0 | The same menus, Restart now and safe mode (#324, #327, #328); portable mode (#303); the folder picker (#344); behaviour timing (#335); resizing the window no longer crashes (RecompCore#38, pdale-boop, #353) | An AppImage built from a contributor's own disc; resize on Wayland |
 | Mac | None: build from source | The same menus and hotkeys (#324, #326, #327) | The menu with a controller; whether the prepared build becomes the default |
 | iPhone, iPad | 0.7.0 app, with PadMint | Mods › Wind Waker HD textures (#314); the D-pad in menus and gyro aim (#301, #304) | A tap test of #316 (menu switches keep the menu open) on the iPad; an HD import on hardware (#315) |
 | Android | None: experimental own-disc builds from #93 | Not in `main` yet | #93: one builder check from LiquidAzir, then merge as "build it yourself, experimental"; HD import (#347); other phones; #238 |
@@ -68,20 +68,29 @@ safe startup turns the HD look off (#343), and Picto Box gallery photos fit thei
 
 ### Waiting on Chris
 
-- **#321:** whether the softer HD look is right; a build with it is going on Chris's iPad.
-- **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks.
+- **#321:** whether the softer HD look is right. A build with it is on Chris's iPad Pro since October 15 (sun shadows off; ambient occlusion, cloud shadows, bloom and the far blur gentler); saves unchanged.
+- **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks; #342 also needs its conflicts with `main` resolved before integration.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
 - **0.8.0:** when to freeze.
 
+### Mac builder follow-up, October 16
+
+[PR #367](https://github.com/chrissotraidis/bluewake/pull/367) makes the training host and final Mac app use the
+same pinned static SQLite. The regression covers both fresh discovery and existing caches that select Mono's
+old header and an external library; both cases pass, and both fail with the fix removed. The PR records the
+full private Mac build with conflicting paths and the CI results. Players can update and rerun without moving
+Mono, editing caches, or deleting their build directory once the fix is merged.
+
 ### Next, in order
 
-1. #315: a Windows import (asked of pdale-boop on October 15) and the iOS fix checked again on the simulator; then
-   merge. #347 follows #93.
+1. #315: a Windows import (asked of pdale-boop on October 15), an authentic WUD/WUX comparison, and the iOS fix
+   checked again on the simulator. Keep the draft's iPhone/iPad hardware, memory and lifecycle checks open until
+   they pass. #347 follows #93 and #315, with its own Android phone and lifecycle checks.
 2. #93: merge once LiquidAzir's `--no-tiered` check is in and CI passes.
-3. #353: RecompCore#38 in the pin (Chris approved, October 15), after Windows/Linux CI and a Mac check.
-4. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
+3. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
    While its release build runs on someone's PC, merge only docs into `main`.
-5. Speed, horizon 2: profile what is left, then one measured change per pull request.
+4. Speed, horizon 2: first the benchmark tour ([BENCHMARK_TOUR.md](BENCHMARK_TOUR.md)), so every change is measured the
+   same way; then profile what is left, one measured change per pull request.
 
 ## The plan from October 12 (Chris's decisions)
 

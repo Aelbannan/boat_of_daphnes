@@ -1,8 +1,11 @@
 # BlueWake for iPadOS and iOS
 
-The iOS host builds the same Route A host as macOS (`runtime/host/src`) against GXRuntime,
-Aurora (Metal through Dawn) and SDL3 for UIKit, plus three iOS-only pieces in `src/`: the entry
-shim, the touch controls and a small DSP support shim. It needs recompcore patches 0056-0065. Audio uses Dolphin's high-level Zelda DSP by default
+The iOS host builds the same host as macOS (`runtime/host/src`) against GXRuntime,
+Aurora (Metal through Dawn) and SDL3 for UIKit, plus iOS-only pieces in `src/`: among them the entry
+shim, the touch controls, the disc and save importers and a small DSP support shim. The runtime is the
+RecompCore commit pinned in [scripts/builder/profiles/bluewake.sh](../../scripts/builder/profiles/bluewake.sh)
+(`RECOMPCORE_SHA`), which the builder fetches; to build the app, see
+[Build your own BlueWake](../../docs/BUILD_YOUR_OWN.md) and [the builder](../../docs/BUILDER.md). Audio uses Dolphin's high-level Zelda DSP by default
 (BLUEWAKE_DSP_MODE=lle selects the interpreter). The console's SRAM is emulated on EXI channel 0
 (runtime/host/src/ipl_sram.c, Dolphin's defaults: English, stereo) and kept in
 Documents/BlueWake/sram.bin, so the game plays in stereo and its Stereo/Mono option persists;

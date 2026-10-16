@@ -23,10 +23,16 @@ jobs:
         run: python3 tests/test_mac_package.py
       - name: Preserve Mac optimization selection and interrupted source
         run: python3 tests/test_mac_optimization_cache.py
+      - name: Build pinned Mac SQLite despite framework and cached library conflicts
+        run: python3 tests/test_mac_sqlite.py
       - name: Preserve explicit Windows optimization cache selection
         run: python3 tests/test_windows_prepared_cache.py
+      - name: Android --app-only reuses only the module it was compiled as
+        run: python3 tests/test_android_app_only.py
       - name: Require complete guest checkpoint comparison coverage
         run: python3 tests/test_guest_checkpoints.py
+      - name: Check the benchmark tour on synthetic logs
+        run: python3 tests/test_bench_tour.py
       - name: Preserve direct-call host boundaries and preparation
         run: |
           python3 tests/test_direct_calls.py

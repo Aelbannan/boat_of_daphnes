@@ -49,19 +49,8 @@ matching completed work is reused. This does not enable PadMint Mac support.
 local packaging checks, not a playable build or an accepted public release.
 PadMint's complete Mac path is not implemented or claimed here.
 
-**Acceptance is in progress.** At `3392854`, the fresh owned-disc combined
-build completes translation, local training, compilation, packaging and local
-signature checks. Its relocated app passes actual game save/reload while
-preserving the original card and other slots, and fullscreen/preferences survive
-a separate launch. Fresh start reaches player control; a current-module save
-state also restores correctly after quitting and reopening the app. A fresh
-ladder/outdoor/door/indoor route passes. These checks do not establish every
-scene, audible output, physical
-controllers or sustained performance. A local replacement from the recorded
-earlier developer app also preserves copied saves/settings/SRAM and loads the
-save afterward; physical iOS upgrades remain untested. See the
-[reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md) for remaining
-checks before migration is recommended.
+Dated records of the combined Mac build's checks are in
+[status/BUILD_YOUR_OWN_EVIDENCE_2026-10-03.md](status/BUILD_YOUR_OWN_EVIDENCE_2026-10-03.md).
 
 ## What you need
 
@@ -175,6 +164,12 @@ The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Bett
 **⋯ › Mods › Better Wind Waker Settings**. No patched disc is needed. See [MODS.md](MODS.md).
 
 ## If something fails
+
+If a Mac build reports missing SQLite functions, Mono headers, or a Homebrew SQLite dependency
+that is not self-contained, update BlueWake and rerun the same build command. Both the local
+training host and the Mac app use the pinned static SQLite, including when an existing CMake
+cache contains older SQLite paths. There is no need to rename Mono, install SQLite with Homebrew,
+edit CMake caches, or delete the build directory.
 
 Each step writes a log under `build/device/logs`, and the error names it. Rerunning the same command
 reuses compatible completed work. For help, ask on [Discord](https://discord.gg/xwHfUD2bxW) or

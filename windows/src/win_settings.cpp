@@ -177,6 +177,7 @@ void load_file() {
         else if (k == "haptics_triggers") d.haptics_triggers = parse_bool(v);
         else if (k == "aspect") d.aspect = (v == "16:9" || v == "16:10" || v == "21:9") ? v : "4:3";
         else if (k == "keep_aspect") d.keep_aspect = parse_bool(v);
+        else if (k == "picto_crop") d.picto_crop = parse_bool(v);
         else if (k == "betterww") d.betterww = parse_bool(v);
         else if (k.rfind("option.", 0) == 0) d.options[k.substr(7)] = parse_bool(v);
         else if (k == "hd_textures") d.hd_textures = parse_bool(v);
@@ -236,6 +237,8 @@ void save_file() {
                  d.haptics_strength, d.haptics_triggers);
     std::fprintf(f, "aspect=%s\nkeep_aspect=%d\nbetterww=%d\nhd_textures=%d\nlle_audio=%d\n", d.aspect.c_str(),
                  d.keep_aspect, d.betterww, d.hd_textures, d.lle_audio);
+    if (d.picto_crop)
+        std::fprintf(f, "picto_crop=1\n");
     for (const auto& [name, on] : d.options)
         std::fprintf(f, "option.%s=%d\n", name.c_str(), on);
     std::fprintf(f, "movement_extras=%d\nsprint_speed=%.2f\nfast_transitions=%d\nquick_doors=%d\n",
@@ -1560,6 +1563,8 @@ extern "C" void bw_settings_apply_launch(void) {
     if (d.aspect != "4:3")
         env_default("BLUEWAKE_ASPECT", d.aspect);
     env_default("DOL_AURORA_ASPECT_FIT", d.keep_aspect ? "1" : "0");
+    if (d.picto_crop)
+        env_default("BLUEWAKE_PICTO_CROP", "1");
     if (d.betterww)
         env_default("BLUEWAKE_MODS", "betterww");
     if (!d.options.empty()) {

@@ -6413,15 +6413,19 @@ static void host_apply_aspect(void) {
         return;
     const char* mod = NULL;
     const char* ratio = NULL;
+    float crop = 0.f;  // (4/3) / aspect
     if (strcmp(aspect, "16:10") == 0) {
         mod = "widescreen1610";
         ratio = "1.6";
+        crop = 5.f / 6.f;
     } else if (strcmp(aspect, "16:9") == 0) {
         mod = "widescreen";
         ratio = "1.7778";
+        crop = 3.f / 4.f;
     } else if (strcmp(aspect, "21:9") == 0) {
         mod = "widescreen219";
         ratio = "2.3333";
+        crop = 4.f / 7.f;
         // The picture is as tall as 4:3's (the camera widens, it does not
         // look further up or down): the follow camera starts a little
         // further back, as one notch of the wheel out would put it.
@@ -6435,7 +6439,18 @@ static void host_apply_aspect(void) {
     char list[256];
     snprintf(list, sizeof list, "%s%s%s", mods && mods[0] ? mods : "", mods && mods[0] ? "," : "", mod);
     setenv("BLUEWAKE_MODS", list, 1);
-    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s\n", aspect, mod, getenv("DOL_AURORA_ASPECT_RATIO"));
+    // BLUEWAKE_PICTO_CROP=1 (off by default): a Picto Box photo is copied from
+    // the viewfinder (304x208 of the frame) into a 152x104 picture, so the
+    // wider camera's view came out squeezed to 4:3 / aspect of its width. The
+    // copy takes the middle of the view instead, what a 4:3 camera would have
+    // taken (RecompCore's aurora_set_copy_crop). The Picto Box and the Deluxe
+    // Picto Box (colour) make the same copy.
+    const char* picto_crop = getenv("BLUEWAKE_PICTO_CROP");
+    const bool picto = picto_crop != NULL && strcmp(picto_crop, "1") == 0;
+    if (picto)
+        aurora_set_copy_crop(152, 104, crop);
+    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s, Picto Box photos %s\n", aspect, mod,
+            getenv("DOL_AURORA_ASPECT_RATIO"), picto ? "cropped to 4:3" : "as the wide camera sees them");
 }
 
 // ---------------------------------------------------------------------------
@@ -6447,7 +6462,7 @@ static void host_apply_aspect(void) {
 //       save at the first clean point at or after that retrace (see below);
 //   BLUEWAKE_LOAD_STATE=path
 //       restore right after boot, before the first guest instruction runs;
-//   F5 / F9 (the window; fn-F5 / fn-F9 on a Mac keyboard), or the options
+//   F5 / F8 (the window; fn-F5 / fn-F8 on a Mac keyboard), or the options
 //   menu's Save state / Load latest state
 //       save to BLUEWAKE_STATE_DIR (default: the working directory; the Mac
 //       app's is its data folder's states/) as quick-<retrace>.bwstate / load
@@ -6455,7 +6470,7 @@ static void host_apply_aspect(void) {
 //       in that directory (after a relaunch).
 //   BLUEWAKE_LOAD_STATE_FORCE=1 loads a state made by another translation of
 //       the game (a different composite), which is otherwise refused.
-//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F9 at that retrace.
+//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F8 at that retrace.
 //
 // Checked (headless, the Outset save walked by a pad script): a state saved
 // at retrace 1000 and loaded at boot, or mid-run at 900 or 1300, reaches
@@ -7042,7 +7057,7 @@ static const char* host_state_dir(void) {
     return ".";
 }
 
-// The newest .bwstate in the state directory: what F9 loads when this run has
+// The newest .bwstate in the state directory: what F8 loads when this run has
 // neither saved nor loaded one (after a relaunch).
 static bool host_state_latest(char* out, size_t size) {
     DIR* dir = opendir(host_state_dir());
@@ -7069,7 +7084,7 @@ static bool host_state_latest(char* out, size_t size) {
     return found;
 }
 
-// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F9 at that retrace, once.
+// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F8 at that retrace, once.
 static u64 g_state_test_load_retrace;
 static bool g_state_test_load_done;
 
@@ -7591,11 +7606,25 @@ int main(int argc, char** argv) {
             window_y = saved_y;
         }
 #endif
+        // Wayland FIFO present waits on the compositor for a free swapchain
+        // image, and that wait runs on the game thread. KWin 6.8 holds the
+        // image long enough to drop the game below full speed (several
+        // hundred milliseconds a second inside present). Mailbox returns
+        // immediately and the compositor still times the display.
+        // BLUEWAKE_VSYNC=1 keeps the blocking FIFO present.
+        const char* vsync_env = getenv("BLUEWAKE_VSYNC");
+        bool vsync = true;
+#if defined(__linux__)
+        if (getenv("WAYLAND_DISPLAY") != NULL)
+            vsync = false;
+#endif
+        if (vsync_env != NULL && vsync_env[0] != '\0')
+            vsync = vsync_env[0] != '0';
         const AuroraBackendConfig aurora_config = {
             .app_name = "BlueWake",
             .window_width = 960u,
             .window_height = 720u,
-            .vsync = true,
+            .vsync = vsync,
             .allow_texture_dumps = false,
             .info_logging = true,
             .graphics_logging = getenv("DOL_AURORA_RECOMP_GRAPHICS_LOG") != NULL,

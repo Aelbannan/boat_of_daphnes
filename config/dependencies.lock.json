@@ -112,7 +112,7 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "57123c6c12ae0fa52dcba20742dc7e79866de978",
+      "sha": "77d4717d868cec8b4014932bb22978c284a535a7",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
@@ -602,6 +602,20 @@
             "patches/recompcore/0177-answer-picto-actor-id-from-current-efb.patch"
           ],
           "evidence": "Mac M3 Max Metal: clear Lenzo subject 94/detail 0; empty-wall subject 0 with normal warm-cache rendering. Copied card unchanged. Contributors confirmed Linux/M4 Pro and all three Lenzo photos plus bad-photo rejection on Windows. Cold first-use alpha-only draws can still be skipped while pipelines compile; RecompCore#39 is a separate Mac-tested follow-up awaiting Windows/Linux gameplay checks."
+        },
+        "vulkan_resize": {
+          "runtime": "f647d03d3886eb2357950190fe1cba3fa3d10242",
+          "tracked_patches": [
+            "patches/recompcore/0178-Aurora-a-resized-Vulkan-window-keeps-its-surface.patch"
+          ],
+          "evidence": "pdale-boop's RecompCore#38 (#325): on Arch/X11 with an RTX 5070 Ti on Vulkan, window resizes, fullscreen switches and resizes with F1 open keep drawing, with no VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and no stale-size snapback. The size following runs on Vulkan only; on Metal and Direct3D 12 it does nothing. Suboptimal textures are now presented and a lost surface is reconfigured up to 30 times before being released, on every backend."
+        },
+        "picto_copy_crop": {
+          "runtime": "77d4717d868cec8b4014932bb22978c284a535a7",
+          "tracked_patches": [
+            "patches/recompcore/0180-Aurora-aurora_set_copy_crop-for-pictures-taken-through-a-widened-camera.patch"
+          ],
+          "evidence": "pdale-boop's RecompCore#37 (#338): aurora_set_copy_crop(width, height, fraction) makes a texture copy of that size take the middle fraction of its source's width and scale it back, as a 4:3 camera would; both GXCopyTex and gxcore's EFB copies use it. Nothing calls it unless BLUEWAKE_PICTO_CROP=1 (picto_crop=1). Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12, 2560x1080: Picto Box and Deluxe Picto Box photos keep their 4:3 shape at 16:9, 16:10 and 21:9; Arch Linux, Vulkan: the same at all three aspects for the Picto Box and at 16:9 for the Deluxe Picto Box."
         }
       }
     },

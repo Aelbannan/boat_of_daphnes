@@ -21,7 +21,7 @@ biggest cut first, and to measure every change the same way.
 
 | Horizon | When | Change | Expected | Gate |
 | --- | --- | --- | --- | --- |
-| **1. Lean what we have** | 0.6.1 and 0.7.0, days | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; slower on Android in #93, so it needs separate defaults; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
+| **1. Lean what we have** | 0.7.0 and the next two weeks | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; slower on Android in #93, so it needs separate defaults; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
 | **2. Behavior, not cycles** | 0.8, weeks | First timing step in `main`: prepaid blocks, with the budget checked at loops and calls. Further work: natives for loops that cross chunks most (collision, J3D drawing, particles), cached static display lists and the graphics thread on four-core CPUs. | Timing: 7–9% on Mac, 7–11% on Intel desktops, 9% on Deck; results and play evidence below | Timing default on Windows/Linux (#335); other platforms and further changes keep their own measurement and play gates |
 | **3. Follow the decompilation** | Months | Drawing at the GX/J3D API level through Aurora, then matched scenes ported from source | The largest; the HD project's draw batching alone was worth 47 to 53% | Each piece checked against the recompilation |
 
@@ -178,7 +178,7 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
 
-**Not written yet** (October 15): the script below is a plan.
+**Not written yet** (October 15): the script below is a plan. The handoff for doing it is [BENCHMARK_TOUR.md](BENCHMARK_TOUR.md).
 
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.

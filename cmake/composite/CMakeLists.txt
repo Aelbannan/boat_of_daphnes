@@ -218,6 +218,12 @@ if(BLUEWAKE_FIXED_MEM1)
 endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "" OUTPUT_NAME "${MODULE_NAME}" UNITY_BUILD OFF C_VISIBILITY_PRESET hidden)
+# Extra sources a builder adds (the Android builder's training-module profile
+# flush, android/src/profile_flush.c); empty otherwise.
+set(COMPOSITE_EXTRA_SOURCES "" CACHE STRING "Extra sources compiled into the module")
+if(COMPOSITE_EXTRA_SOURCES)
+  target_sources(${MODULE_NAME} PRIVATE ${COMPOSITE_EXTRA_SOURCES})
+endif()
 target_compile_definitions(${MODULE_NAME} PRIVATE MODULE_GAME_ID="${GAME_ID}" DOLRECOMP_CPU_HEADER="core/cpu.h")
 target_include_directories(${MODULE_NAME} PRIVATE "${COMPOSITE_DIR}" "${GXRUNTIME_DIR}/include" "${ABI_DIR}")
 if(APPLE)
@@ -247,14 +253,17 @@ if(WIN32)
 else()
   target_link_libraries(${MODULE_NAME} PRIVATE m)
 endif()
-# ELF (Linux, Steam Deck, Android): the module is a shared object built -fPIC,
+# ELF (Linux, Steam Deck): the module is a shared object built -fPIC,
 # and the chunks declared each other's symbols with default visibility, so every
 # reference was an address loaded from the GOT that then stayed live in a
 # register across the chunk's one large function. That doubled the register
 # allocator's work: a chunk took 11.7 s here against 5.9 s for the same source
 # compiled for Windows, whose DLLs have no GOT. hidden_externs.h declares the
 # module's own symbols hidden, so each reference is a direct PC-relative operand.
-if(NOT WIN32 AND NOT APPLE)
+# Android leaves it out: on ARM64 the game thread then ran about 5% more
+# instructions at Outset's pier (172 M a retrace against 163 M, #93), and players
+# feel that every frame while they wait for the compile once.
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
   set(CHUNK_C_SOURCES ${CHUNK_INPUTS})
   list(FILTER CHUNK_C_SOURCES INCLUDE REGEX "\\.c$")
   set_property(SOURCE ${CHUNK_C_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
