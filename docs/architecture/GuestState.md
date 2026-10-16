@@ -6,6 +6,7 @@
 - [Mechanical contents](#mechanical-contents)
   - [CPU, memory space, and I/O](#cpu-memory-space-and-io)
   - [Host work across the guest/native boundary](#host-work-across-the-guestnative-boundary)
+  - [State versus execution transitions](#state-versus-execution-transitions)
   - [CPUState layout](#cpustate-layout)
   - [Game-perspective examples](#game-perspective-examples)
 - [DOL and REL roles](#dol-and-rel-roles)
@@ -13,15 +14,17 @@
   - [MEM1 layout](#mem1-layout)
   - [Guest-to-host address resolution](#guest-to-host-address-resolution)
 - [Starting a fresh guest session](#starting-a-fresh-guest-session)
-- [Guest time and exceptions](#guest-time-and-exceptions)
+- [Guest time, callbacks, and exceptions](#guest-time-callbacks-and-exceptions)
+- [Project history references](#project-history-references)
 
 ## Responsibility
 
 Guest state is the GameCube-visible machine model shared by the host and the
-translated module. Its core pieces are `CPUState`, which records the current
+translated module. Its core pieces are `CPUState`, which is the authoritative
 guest processor context, and MEM1, which holds the guest main-memory bytes.
-REL aliases, timing, exceptions, and device state complete the model used to
-resume translated execution.
+`CPUState` is not a complete machine snapshot: REL alias storage and the
+services that model devices, DSP, graphics, timing, and interrupts retain
+additional state needed to resume the guest.
 
 ## Mechanical contents
 
@@ -248,6 +251,39 @@ through the GPU`"]
 | I/O and services | Resolves guest addresses, models MMIO registers, advances device deadlines, writes DMA or callback results into guest memory, and publishes interrupts. | Reads disc and player-data files, samples controllers, sends audio to the platform queue, and passes graphics work toward the GPU. [Compatibility services](Services.md) and [graphics stack](Graphics.md) |
 | Persistence and shutdown | Serializes or restores CPU, MEM1, alias, and device state only at a safe host boundary. | Writes save-state, card, SRAM, settings, and log files and releases native resources. [Runtime inputs and persistence](Host.md#runtime-inputs-and-persistence) and [shutdown](Host.md#shutdown) |
 
+### State versus execution transitions
+
+`CPUState` stores processor context; it does not contain an enum describing
+where control currently sits. The labels below are a conceptual state machine
+for explaining handoffs between the host and translated module. They are not
+fields or named states in the implementation.
+
+```mermaid
+flowchart LR
+    Ready["Ready for dispatch"]
+    Executing["Executing translated code"]
+    Boundary["At a host boundary"]
+    Handler["Handler ready"]
+    Stopped["Stopped"]
+    Service["Nested host service<br/>for MMIO or an edge"]
+
+    Ready -->|"dispatch at CPUState.pc"| Executing
+    Executing -->|"yield"| Boundary
+    Boundary -->|"resume"| Ready
+    Boundary -->|"prepare exception handler"| Handler
+    Handler --> Ready
+    Ready -->|"stop condition"| Stopped
+    Boundary -->|"stop condition"| Stopped
+    Executing -->|"native call and return"| Service --> Executing
+```
+
+Normal execution calls ahead-of-time translated native functions; it does not
+simulate a hardware instruction fetch/decode pipeline. A translated block can
+call an MMIO or edge service and return without first yielding the whole turn,
+which is why the nested service path does not imply a new persistent state.
+The detailed scheduling and module handoff are shown in the [host main
+loop](Host.md#main-loop-execution).
+
 ### CPUState layout
 
 This is an inventory of the `CPUState` used by the current BlueWake build, not
@@ -367,20 +403,16 @@ The following examples start with behavior the game needs and identify the
 guest state involved. They are representative mechanical paths, not verified
 instruction-by-instruction traces of one specific frame.
 
-The PR column identifies a concrete change that exercised or extended the
-artifact. It does not imply that the PR originated the underlying PowerPC or
-RecompCore state.
-
-| Guest-state artifact | In-game action | What touches the artifact | Example project contribution |
-| --- | --- | --- | --- |
-| Integer and branch state | A gameplay routine reads flags, chooses a branch, updates an actor field, and calls another routine. | Translated integer instructions use `gpr`, condition operations update `cr`, direct calls place a return address in `lr`, and indirect calls or jump tables can use `ctr`. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) preserves the paused game function's stack and return state while a disc callback runs. |
-| Floating point, paired single, and camera data | Link, the camera, an animation, or a model transform updates positions, angles, matrices, or vertex-related values. | Translated floating-point and paired-single instructions use `fpr`, `ps1`, `fpscr`, and `gqr`; host integrations can also adjust specific camera structures in guest memory. | [PR #221](https://github.com/chrissotraidis/bluewake/pull/221), carrying [PR #213](https://github.com/chrissotraidis/bluewake/pull/213), connects an R3-plus-stick gesture to the existing guest-camera integration without replacing the translated camera routine. |
-| Program and machine control | Execution moves from the current gameplay block to another DOL or REL routine and later returns to its caller. | A translated branch changes `pc`, `lr`, or `ctr`; the dispatcher maps the guest code address to a native translated function. `msr` and related fields retain guest CPU mode. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) fixes a timing-dependent return to unmapped `pc=0x8180FFF0` by protecting the interrupted routine's return-address slot. |
-| Exception and callback context | A retrace or enabled device event enters a guest handler, or an asynchronous disc read invokes the game's completion callback. | Interrupt delivery records architectural exception state; callback delivery temporarily runs guest code under the expected register, stack, interrupt, and scheduler conventions. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) makes callback stack setup match the guest OS convention instead of overwriting paused guest state. |
-| Reservation and locked cache | Guest OS or synchronization code performs an atomic update while gameplay systems share state. | Translated `lwarx`/`stwcx.` operations use reservation fields; Gekko locked-cache operations use modeled tags and validity bits. These support gameplay but are not one player-facing feature. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the shared `CPUState`, guest CPU contract, and composite runtime that carry this pinned RecompCore state. |
-| Guest time | A gameplay update runs until the next video, audio, DSP, callback, decrementer, or interrupt boundary. | Translated blocks charge `downcount`; the host uses cycle budget, time base, observations, and deadlines to decide when the module yields. | [PR #142](https://github.com/chrissotraidis/bluewake/pull/142) schedules asynchronous DVD completion after a guest-time delay, preserving title-to-history-intro music. |
-| Address and external-access bookkeeping | The game reads an actor or asset in RAM, follows a REL-linked address, or touches controller, disc, audio, or graphics registers. | Memory helpers cache ordinary resolution and record accesses crossing into host MMIO. The value held by the game remains a guest address. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) contributed module-owned RAM, linked REL aliases, and the external-access paths used by the consolidated host. |
-| Memory and runtime bindings | The same translated load reaches MEM1, while a hardware-address load reaches a compatibility service. | RAM bindings provide ordinary backing bytes; callback bindings route non-RAM accesses without placing native pointers in guest registers. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) added the explicit module CPU contract and exported shared guest storage used by these bindings. |
+| Guest-state artifact | In-game action | What touches the artifact |
+| --- | --- | --- |
+| Integer and branch state | A gameplay routine reads flags, chooses a branch, updates an actor field, and calls another routine. | Translated integer instructions use `gpr`, condition operations update `cr`, direct calls place a return address in `lr`, and indirect calls or jump tables can use `ctr`. |
+| Floating point, paired single, and camera data | Link, the camera, an animation, or a model transform updates positions, angles, matrices, or vertex-related values. | Translated floating-point and paired-single instructions use `fpr`, `ps1`, `fpscr`, and `gqr`; host integrations can also adjust specific camera structures in guest memory. |
+| Program and machine control | Execution moves from the current gameplay block to another DOL or REL routine and later returns to its caller. | A translated branch changes `pc`, `lr`, or `ctr`; the dispatcher maps the guest code address to a native translated function. `msr` and related fields retain guest CPU mode. |
+| Exception and callback context | A retrace or enabled device event enters a guest handler, or an asynchronous disc read invokes the game's completion callback. | Interrupt delivery records architectural exception state; callback delivery temporarily runs guest code under the expected register, stack, interrupt, and scheduler conventions. |
+| Reservation and locked cache | Guest OS or synchronization code performs an atomic update while gameplay systems share state. | Translated `lwarx`/`stwcx.` operations use reservation fields; Gekko locked-cache operations use modeled tags and validity bits. These support gameplay but are not one player-facing feature. |
+| Guest time | A gameplay update runs until the next video, audio, DSP, callback, decrementer, or interrupt boundary. | Translated blocks charge `downcount`; the host uses cycle budget, time base, observations, and deadlines to decide when the module yields. |
+| Address and external-access bookkeeping | The game reads an actor or asset in RAM, follows a REL-linked address, or touches controller, disc, audio, or graphics registers. | Memory helpers cache ordinary resolution and record accesses crossing into host MMIO. The value held by the game remains a guest address. |
+| Memory and runtime bindings | The same translated load reaches MEM1, while a hardware-address load reaches a compatibility service. | RAM bindings provide ordinary backing bytes; callback bindings route non-RAM accesses without placing native pointers in guest registers. |
 
 Two short end-to-end examples show how these areas combine:
 
@@ -417,11 +449,11 @@ Ahead-of-time translation replaces executable instructions with native
 functions, but the original executable formats still define runtime data and
 addresses.
 
-| Artifact | In-game action | Runtime role | Example project contribution |
-| --- | --- | --- | --- |
-| DOL sections and data | The game starts in its always-loaded program and reads initialized global data. | DOL sections define the initial guest layout; data is copied into MEM1 while translated functions live in the native module. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated the DOL loader, shared guest storage, and composite native module. |
-| REL data and BSS | The game enters content whose relocatable module reads or updates its linked data. | Each REL contributes relocatable layout, initialized data, zeroed BSS, and linked guest addresses; its translated functions live in the native module. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) added generated REL image and alias plumbing shared by translated code and the host. |
-| Dispatch metadata | A gameplay call, return, callback, or interrupt resumes at a DOL or REL code address. | Generated tables map the guest `pc` to the corresponding native translated function. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) demonstrates this boundary by preserving the correct guest return path around asynchronous callbacks. [Composite generation](../../scripts/generate_composite.py#L562-L707) defines the tables. |
+| Artifact | In-game action | Runtime role and source |
+| --- | --- | --- |
+| DOL sections and data | The game starts in its always-loaded program and reads initialized global data. | DOL sections define the initial guest layout; data is copied into MEM1 while translated functions live in the native module. [DOL loading](../../runtime/host/src/main.c#L7978-L7981) |
+| REL data and BSS | The game enters content whose relocatable module reads or updates its linked data. | Each REL contributes relocatable layout, initialized data, zeroed BSS, and linked guest addresses; its translated functions live in the native module. [REL alias setup](../../runtime/host/src/main.c#L7968-L8101) |
+| Dispatch metadata | A gameplay call, return, callback, or interrupt resumes at a DOL or REL code address. | Generated tables map the guest `pc` to the corresponding native translated function. [Composite generation](../../scripts/generate_composite.py#L562-L707) |
 
 These artifacts become live guest state through the storage and address rules
 below.
@@ -451,6 +483,12 @@ from the interval between them. BlueWake places `ArenaLo` after the DOL BSS and
 guest stack reserve and sets `ArenaHi` to `0x817FEC60`. This is guest memory
 inside MEM1, unrelated to the BlueWake process's native heap. [Boot arena
 setup](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c#L25-L78).
+
+The 128 KiB stack reserve and the initial stack pointer serve different boot
+purposes. The reserve is the interval immediately above the DOL BSS and is
+included when boot derives `ArenaLo`. The initial `r1` value, `0x817FFF00`, is
+placed in the fixed above-arena boot area, above `ArenaHi`; it does not point
+into that reserved interval.
 
 ```mermaid
 flowchart LR
@@ -496,10 +534,12 @@ storage.
 
 A guest address is a 32-bit value in the emulated Gekko address space. It is
 not normally a host pointer, and BlueWake does not require the operating system
-to map memory at that numeric address. The memory helpers translate it to a
-pointer inside the BlueWake process on each access. Consequently, the host
-virtual address can change between launches because the module loader and OS
-choose where native allocations and code reside.
+to map memory at that numeric address. Logically, each memory access resolves
+the guest value to storage or an I/O service inside the BlueWake process.
+Generated fast paths can fold the arithmetic or bypass a general lookup when
+they preserve the same result. The resulting host virtual address can change
+between launches because the module loader and OS choose where native
+allocations and code reside.
 
 For example, if a guest register contains `0x80300000`, an ordinary MEM1 load
 with no overriding alias resolves it to backing pointer `B + 0x00300000`, where
@@ -527,16 +567,17 @@ tables`"]
     Native["`Call native
 translated
 function`"]
-    Alias{"`Registered
-REL alias
-match?`"}
+    OriginalAlias{"`Alias match at
+original address?`"}
     AliasPointer["`Alias backing
 pointer
 + range offset`"]
     Mirror["`Canonicalize
-cached or
-uncached MEM1
-address`"]
+by clearing the
+mirror bit`"]
+    MirroredAlias{"`Address changed and
+alias matches the
+canonical form?`"}
     RAM{"`Inside
 allocated
 MEM1?`"}
@@ -554,9 +595,11 @@ service`"]
     Use -->|"`program
 counter`"| Dispatch --> Native
     Use -->|"`load or
-store`"| Alias
-    Alias -->|"yes"| AliasPointer
-    Alias -->|"no"| Mirror --> RAM
+store`"| OriginalAlias
+    OriginalAlias -->|"yes"| AliasPointer
+    OriginalAlias -->|"no"| Mirror --> MirroredAlias
+    MirroredAlias -->|"yes"| AliasPointer
+    MirroredAlias -->|"no"| RAM
     RAM -->|"yes"| RAMPointer
     RAM -->|"no"| Callback --> Service
 ```
@@ -647,26 +690,69 @@ CPUState.pc set to entry PC`"]
     Devices --> Ready
 ```
 
-| Step | Runtime result | In-game consequence | Example contribution and code |
+| Step | Runtime result | In-game consequence | Source |
 | --- | --- | --- | --- |
 | Select guest storage | Chooses one `CPUState` and one separate MEM1 allocation, initializes them, and connects them through `CPUState.ram` | Every later register access and memory access observes the same guest machine state. | [Module storage contract](../../cmake/composite/module_cpu_contract.h#L29-L104), [host selection](../../runtime/host/src/main.c#L7329-L7343) |
-| Initialize devices | Reset video, disc, controller, interrupt, audio, DSP, ARAM, SRAM, and card state | The opening program sees console-like devices in a coherent reset state before it polls input, starts audio, or requests assets. | [PR #222](https://github.com/chrissotraidis/bluewake/pull/222) extends the launch-time controller handoff; [host initialization](../../runtime/host/src/main.c#L7550-L7686) initializes the complete device set. |
-| Load DOL sections | Initialized data is copied into MEM1 and BSS is cleared | The game's always-loaded globals contain their linked initial values instead of uninitialized host memory. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) consolidated shared module-owned guest RAM. [Host DOL load](../../runtime/host/src/main.c#L7978-L7981), [RecompCore loader](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/loader.c) |
-| Create GameCube OS state | Low memory, arenas, stack, clocks, and machine-state registers satisfy guest startup assumptions | Startup code can allocate memory, use its stack, read clocks, and enter callbacks or exceptions under expected OS conventions. | [PR #211](https://github.com/chrissotraidis/bluewake/pull/211) corrects one such guest stack convention for callbacks. [Host boot call](../../runtime/host/src/main.c#L8123-L8133), [RecompCore boot](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c) |
-| Select the entry point | `cpu.pc` is set to the module descriptor's entry address | The first dispatch enters the translated game startup path rather than an emulated firmware sequence. | [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) contributed the explicit module/host dispatch contract. [Execution start](../../runtime/host/src/main.c#L8135-L8136) |
+| Initialize devices | Reset video, disc, controller, interrupt, audio, DSP, ARAM, SRAM, and card state | The opening program sees console-like devices in a coherent reset state before it polls input, starts audio, or requests assets. | [Host initialization](../../runtime/host/src/main.c#L7550-L7686) initializes the complete device set. |
+| Load DOL sections | Initialized data is copied into MEM1 and BSS is cleared | The game's always-loaded globals contain their linked initial values instead of uninitialized host memory. | [Host DOL load](../../runtime/host/src/main.c#L7978-L7981), [RecompCore loader](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/loader.c) |
+| Create GameCube OS state | Low memory, arenas, stack, clocks, and machine-state registers satisfy guest startup assumptions | Startup code can allocate memory, use its stack, read clocks, and enter callbacks or exceptions under expected OS conventions. | [Host boot call](../../runtime/host/src/main.c#L8123-L8133), [RecompCore boot](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c) |
+| Select the entry point | `cpu.pc` is set to the module descriptor's entry address | The first dispatch enters the translated game startup path rather than an emulated firmware sequence. | [Execution start](../../runtime/host/src/main.c#L8135-L8136) |
 
-## Guest time and exceptions
+## Guest time, callbacks, and exceptions
 
-After the first dispatch, translated blocks charge guest cycles rather than
-reading wall time directly.
-The cycle domain advances devices to a shared point and chooses the next safe
-boundary. Services publish interrupt sources; the host delivers an exception
-only where architectural and scheduler state can be preserved.
+After the first dispatch, translated blocks charge **guest cycles**. The cycle
+domain uses that deterministic timeline to order device progress, deadlines,
+callbacks, and interrupt sources. Guest cycles do not themselves measure how
+quickly the native process runs. **Wall-time pacing** can wait at video retrace
+boundaries so those guest events are presented at real-time speed; disabling or
+temporarily bypassing pacing changes elapsed wall time without redefining their
+guest-cycle order. [Cycle domain](../../runtime/host/src/cycle_domain.c),
+[pacing implementation](../../runtime/host/src/main.c#L880-L907), and [retrace
+pacing point](../../runtime/host/src/main.c#L5417-L5423)
+
+CPU exceptions and guest callbacks both enter translated code, but they use
+different mechanisms:
+
+| Mechanism | Context transition | Return path |
+| --- | --- | --- |
+| CPU exception | Saves architectural return state such as the interrupted `pc` and `msr` in `srr0` and `srr1`, updates exception-related state, and selects the guest handler PC. | The guest exception path restores architectural or scheduler context and resumes through its return-from-interrupt path. [External interrupt delivery](../../runtime/host/src/main.c#L3216-L3230), [exception return handling](../../runtime/host/src/main.c#L15981-L16019) |
+| Guest callback | Saves a host-side image of the active guest registers, prepares `r3`, `r4`, `r1`, and `lr` according to the guest calling convention, and dispatches the callback address. | Reaching the callback-return sentinel restores the saved register image. This is a function call into guest code, not a CPU exception. [Callback delivery](../../runtime/host/src/callback_delivery.c#L23-L121) |
+
+A concrete external-interrupt example follows this path:
+
+```mermaid
+flowchart LR
+    Interrupted["Interrupted guest state"]
+    Save["Save return context<br/>PC and machine state"]
+    Select["Select guest handler PC"]
+    Execute["Execute translated handler"]
+    Restore["Restore context and resume"]
+
+    Interrupted --> Save --> Select --> Execute --> Restore
+```
+
+The host records the interrupted state, sets `srr0`/`srr1`, masks external
+interrupt delivery, and selects the translated guest handler. Guest OS handler
+code can save a fuller scheduler context before its return path restores the
+selected context and resumes execution. This is a small implementation example,
+not a claim that every exception follows an identical guest OS route.
 
 | Step | Runtime result | Code reference |
 | --- | --- | --- |
 | Account completed work | All devices observe one absolute guest timeline | [Cycle domain](../../runtime/host/src/cycle_domain.c) |
 | Advance to the next deadline | Video, audio, DSP, disc, and controller state remain ordered | [Device synchronization](../../runtime/host/src/main.c#L5455-L5474) |
 | Publish and deliver interrupts | Guest exception state and handler PC are established at a safe boundary | [Interrupt routing](../../runtime/host/src/main.c#L3441-L3544), [delivery](../../runtime/host/src/main.c#L3078-L3234) |
+
+## Project history references
+
+These changes are useful examples of the project history behind the mechanisms
+described above; the implementation links beside each claim remain the source
+of truth for current behavior.
+
+- [PR #37](https://github.com/chrissotraidis/bluewake/pull/37): shared CPU and MEM1 contracts, composite dispatch, and REL alias plumbing.
+- [PR #142](https://github.com/chrissotraidis/bluewake/pull/142): guest-time scheduling for asynchronous disc completion.
+- [PR #211](https://github.com/chrissotraidis/bluewake/pull/211): guest callback stack and return-context handling.
+- [PR #213](https://github.com/chrissotraidis/bluewake/pull/213) and [PR #221](https://github.com/chrissotraidis/bluewake/pull/221): guest camera integration and its input path.
+- [PR #222](https://github.com/chrissotraidis/bluewake/pull/222): launch-time controller handoff.
 
 Return to the runtime [high-level view](Runtime.md#high-level-view).
