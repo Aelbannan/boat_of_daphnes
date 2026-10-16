@@ -12,6 +12,7 @@
 - [Host and guest-state integration](#host-and-guest-state-integration)
   - [Ownership boundary](#ownership-boundary)
   - [Guest memory and native GPU memory](#guest-memory-and-native-gpu-memory)
+  - [From guest bytes to a GPU resource](#from-guest-bytes-to-a-gpu-resource)
   - [End-to-end interaction](#end-to-end-interaction)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
@@ -344,6 +345,37 @@ access.
 References: [guest-memory resource kinds](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h),
 [texture and copy state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L138-L194),
 and [BlueWake's bounded resolver](../../runtime/host/src/main.c#L5073-L5161).
+
+### From guest bytes to a GPU resource
+
+BlueWake does not copy data to a visible VRAM address. GXRuntime resolves the
+guest source and establishes its GX meaning; Aurora converts it when necessary
+and asks Dawn to create native buffers or textures. Aurora writes the prepared
+data into CPU-mapped staging storage, records buffer or texture copy commands,
+and submits the command buffer through Dawn.
+
+```text
+guest memory -> resolve and decode -> staging buffer -> Dawn copy command
+             -> Vulkan / D3D12 / Metal -> driver-managed GPU resource
+```
+
+The native API and graphics driver choose the physical memory heap and manage
+residency. A discrete GPU will normally transfer staged data from system memory
+to device-local VRAM; an integrated or unified-memory GPU may use shared
+physical memory. The Dawn resource and synchronization boundary remains the
+same in either case. Cached resources can be reused until guest changes or
+renderer state require them to be updated or rebuilt.
+
+For example, a guest texture is converted from its GameCube format, created as
+a Dawn texture with copy-destination usage, and queued for upload. Aurora uses
+the same staging model for vertex, index, uniform, and storage buffers. Queue
+ordering guarantees that these copies complete before a dependent draw reads
+the resources and writes the native EFB targets.
+
+References: [texture conversion and creation](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/texture.cpp#L54-L145),
+[mapped staging resources](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/common.cpp#L1164-L1192),
+[queued texture uploads](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/common.cpp#L660-L705),
+and [GPU copy encoding](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/gfx/common.cpp#L1834-L1900).
 
 ### End-to-end interaction
 
