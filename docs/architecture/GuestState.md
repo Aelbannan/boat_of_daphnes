@@ -446,6 +446,14 @@ view of the same bytes. Fixed boundaries are labeled directly. `ArenaLo` and
 the DOL ranges come from the loaded image, so their box heights are only
 schematic.
 
+In GameCube OS terminology, an **arena** is the contiguous portion of guest
+MEM1 made available to the game's memory allocators. `ArenaLo` is its lower
+boundary and `ArenaHi` is its upper boundary; the game carves one or more heaps
+from the interval between them. BlueWake places `ArenaLo` after the DOL BSS and
+guest stack reserve and sets `ArenaHi` to `0x817FEC60`. This is guest memory
+inside MEM1, unrelated to the BlueWake process's native heap. [Boot arena
+setup](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/src/boot.c#L25-L78).
+
 ```mermaid
 flowchart LR
     subgraph MEM1["MEM1 native backing — 32 MiB<br/>cached ranges · high to low"]
