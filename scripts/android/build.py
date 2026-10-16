@@ -304,6 +304,10 @@ class AndroidBuilder(wb.Builder):
         # The profile only when one is named: an app-only build of a trained module need not name it again.
         if self.args.profile is not None and sha256_file(self.args.profile.resolve()) != record.get("profile_sha256"):
             differ.append(("profile", record.get("profile"), self.args.profile.name))
+        # --no-tiered asks for every function at -O2; a trained, tiered module compiled its cold ones at -O1.
+        # Leaving --no-tiered out reuses the module as it was compiled.
+        if self.args.no_tiered and record.get("tiered"):
+            differ.append(("tiered", True, False))
         if differ:
             die("--app-only reuses the compiled game module, which was built differently:\n"
                 + "".join(f"  {name}: the module has {has!r}, this build asks for {asks!r}\n"
