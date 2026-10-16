@@ -442,16 +442,15 @@ crosses the host/module ABI.
 BlueWake provides one contiguous 32 MiB MEM1 allocation. Each byte can be
 reached through a cached or uncached guest address. The two stacked boxes divide
 the backing by cached address from high to low; the side callout shows the
-uncached view of the same bytes. Box sizes are not to scale.
+uncached view of the same bytes. Their relative heights approximate the 8 MiB
+extension and 24 MiB retail regions.
 
 ```mermaid
 flowchart LR
     subgraph MEM1["MEM1 native backing — 32 MiB<br/>cached ranges · high to low"]
         direction TB
-        Extension["`BlueWake MEM1 extension — 8 MiB
-0x81800000–0x81FFFFFF`"]
-        Retail["`Retail MEM1 — 24 MiB
-0x80000000–0x817FFFFF`"]
+        Extension["BlueWake MEM1 extension — 8 MiB<br/>0x81800000–0x81FFFFFF"]
+        Retail["&#160;<br/>&#160;<br/>Retail MEM1 — 24 MiB<br/>0x80000000–0x817FFFFF<br/>&#160;<br/>&#160;"]
 
         Extension ~~~ Retail
     end
