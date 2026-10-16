@@ -69,11 +69,40 @@ interrupts, or callbacks rather than directly replacing arbitrary guest state.
 
 ### MMIO dispatch
 
-Memory-mapped I/O (MMIO) lets guest code communicate with GameCube devices by
-loading from and storing to reserved address ranges as though they were memory.
-Those addresses do not hold ordinary MEM1 bytes: BlueWake interprets each
-access as a register read or command for the corresponding compatibility
-service.
+Memory-Mapped Input/Output (MMIO) lets guest code communicate with hardware by
+reading and writing special addresses representing device registers. An
+**MMIO family** groups registers belonging to one hardware subsystem. BlueWake
+routes the address to that subsystem's handler, which interprets the specific
+register operation.
+
+- **VI — Video Interface:** exposes video timing, retrace, and related status
+  registers. [Timing](../../runtime/host/src/main.c#L5381-L5453) and [register routing](../../runtime/host/src/main.c#L4787-L4802)
+- **DI — Disc Interface:** accepts disc commands and exposes transfer, status,
+  and completion state. [Implementation](../../runtime/host/src/main.c#L3024-L3076)
+- **SI — Serial Interface:** models controller communication, polling, channel
+  status, and interrupts. [Implementation](../../runtime/host/src/main.c#L3618-L3653)
+- **PI — Processor Interface:** collects interrupt causes, applies masks, and
+  exposes related control registers. [Source publication](../../runtime/host/src/interrupt_sources.c) and [register routing](../../runtime/host/src/main.c#L3630-L3631)
+- **PE — Pixel Engine:** exposes graphics completion, token, and interrupt
+  state. [Implementation](../../runtime/host/src/main.c#L10232-L10297)
+- **AI — Audio Interface:** controls audio DMA timing, playback rate, and
+  related interrupt state. [Read path](../../runtime/host/src/main.c#L3654-L3658) and [write path](../../runtime/host/src/main.c#L4835-L4846)
+- **DSP — Digital Signal Processor:** provides audio-processor control,
+  mailboxes, DMA registers, and interrupt communication. [Adapter](../../runtime/host/src/dsp_adapter.cpp) and [register routing](../../runtime/host/src/main.c#L3660-L3838)
+- **ARAM — Auxiliary RAM:** controls transfers between MEM1 and the audio
+  subsystem's auxiliary memory. [Implementation](../../runtime/host/src/aram_dma.c)
+- **GX — graphics command path:** receives FIFO commands submitted by guest
+  graphics code. `GX` is the subsystem name used by the runtime rather than an
+  additional expansion used here. [Implementation](../../runtime/host/src/main.c#L4739-L4779)
+- **EFB — Embedded Frame Buffer:** exposes pixel and depth reads plus graphics
+  completion behavior. [Implementation](../../runtime/host/src/main.c#L3594-L3623)
+- **EXI — External Interface:** carries memory-card and console-configuration
+  transactions. [Card implementation](../../runtime/host/src/card_runtime.c)
+  and [SRAM implementation](../../runtime/host/src/ipl_sram.c)
+
+The routing model is **guest address → device family → register operation**.
+“Family” is only a documentation grouping for related registers; it is not a
+separate memory allocation.
 
 Translated memory accesses use guest RAM unless an address belongs to a
 hardware range. MMIO callbacks synchronize time-sensitive state, route the
