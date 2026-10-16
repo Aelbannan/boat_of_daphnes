@@ -5,6 +5,10 @@
 - [Responsibility](#responsibility)
 - [Concepts](#concepts)
   - [Stack-level view](#stack-level-view)
+- [Platform graphics stacks](#platform-graphics-stacks)
+  - [Build-time backend set](#build-time-backend-set)
+  - [Runtime backend resolution](#runtime-backend-resolution)
+  - [Supported target mappings](#supported-target-mappings)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
   - [Guest-visible GX state](#guest-visible-gx-state)
@@ -116,6 +120,143 @@ layers.
 - **Dawn** — Chromium's WebGPU implementation beneath Aurora. It connects
   Aurora's GPU resources and commands to native APIs such as Vulkan, Metal,
   and Direct3D 12.
+
+## Platform graphics stacks
+
+BlueWake sends the same normalized GX work to Aurora on every platform. The
+platform split begins below that boundary: the build decides which Dawn
+backends are present, then Aurora selects a backend and Dawn resolves a native
+surface and GPU adapter at startup. The paths below cover BlueWake's supported
+targets, not every platform that upstream Aurora can build.
+
+### Build-time backend set
+
+```mermaid
+flowchart TD
+    Target["`BlueWake build target
+Linux, Windows or Apple`"]
+    Provider["`Aurora Dawn provider
+package, system or vendor`"]
+    Flags["`Platform backend flags
+DAWN_ENABLE_*`"]
+    Aurora["`Aurora binary
+compiled backend list`"]
+
+    Target --> Provider --> Flags --> Aurora
+```
+
+The Dawn *provider* controls where the implementation comes from, not which
+API the player will necessarily use. `package` downloads Aurora's pinned
+prebuilt Dawn, `system` consumes a prepared Dawn installation, and `vendor`
+builds the pinned source. The resulting `DAWN_ENABLE_*` values compile the
+platform-appropriate backend bindings into Aurora.
+
+| Build path | Dawn source | Code reference |
+| --- | --- | --- |
+| Linux player build | Pinned prebuilt package; Linux CI can build the pinned vendored source | [Linux configuration](../../scripts/linux/build.py#L504-L516), [provider implementation](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/cmake/AuroraDawnProvider.cmake#L107-L195) |
+| Windows player build | Auto-resolution selects the available pinned Windows package | [Windows host configuration](../../scripts/windows/build.py#L512-L544), [package resolution](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/cmake/AuroraDawnProvider.cmake#L176-L245) |
+| macOS | Pinned prebuilt macOS package | [Apple builder](../../scripts/builder/profiles/bluewake.sh#L277-L288) |
+| iPhone, iPad, and Apple TV | Prepared pinned Dawn installation supplied as a CMake package | [Apple device builder](../../scripts/builder/profiles/bluewake.sh#L290-L300) |
+
+### Runtime backend resolution
+
+BlueWake requests `BACKEND_AUTO`. Aurora tries only the backends compiled for
+the target, in its fixed preference order. A candidate succeeds only if SDL
+can create the required native window and Dawn can obtain a compatible surface
+and high-performance adapter for that backend.
+
+```mermaid
+flowchart TD
+    Auto["`BlueWake requests
+BACKEND_AUTO`"]
+    List["`Aurora platform list
+ordered compiled backends`"]
+    Window["`SDL native window
+and surface descriptor`"]
+    Adapter["`Dawn adapter request
+backend + surface
+high-performance GPU`"]
+    Ready{"`Adapter and device
+available?`"}
+    Next["`Destroy candidate window
+try next backend`"]
+    Device["`Selected WebGPU device
+queue and surface`"]
+    API["`Platform API driver
+and GPU`"]
+
+    Auto --> List --> Window --> Adapter --> Ready
+    Ready -->|"no"| Next --> List
+    Ready -->|"yes"| Device --> API
+```
+
+The surface descriptor is platform-specific: an `HWND` on Windows, an Xlib or
+Wayland surface on Linux, and a `CAMetalLayer` obtained through SDL on Apple
+platforms. Dawn then translates the shared WebGPU calls into the selected
+native API. The chosen backend is retained by Aurora and reported by BlueWake
+as `[renderer] D3D12`, `Vulkan`, `Metal`, or the applicable fallback.
+
+References: [BlueWake requests automatic selection](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/backends/aurora/aurora_backend.cpp#L259-L333),
+[Aurora preference loop](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/aurora.cpp#L73-L99),
+[backend selection](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/aurora.cpp#L143-L169),
+[native surface bindings](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/dawn/BackendBinding.cpp),
+and [Dawn adapter request](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/webgpu/gpu.cpp#L791-L865).
+
+### Supported target mappings
+
+```mermaid
+flowchart TD
+    Shared["`Shared path
+GXRuntime → Aurora → Dawn`"]
+    Linux["`Linux and SteamOS
+X11 or Wayland surface`"]
+    Windows["`Windows
+Win32 surface`"]
+    Apple["`macOS, iOS and tvOS
+Metal-layer surface`"]
+    Vulkan["`Vulkan
+preferred`"]
+    GLES["`OpenGL ES
+fallback`"]
+    D3D12["`Direct3D 12
+preferred`"]
+    WinFallback["`Vulkan, then D3D11
+fallbacks`"]
+    Metal["`Metal
+preferred`"]
+    Null["`Null or host headless
+non-presenting fallback`"]
+
+    Shared --> Linux --> Vulkan
+    Linux -.-> GLES
+    Shared --> Windows --> D3D12
+    Windows -.-> WinFallback
+    Shared --> Apple --> Metal
+    GLES -.-> Null
+    WinFallback -.-> Null
+    Metal -.-> Null
+```
+
+| BlueWake target | Compiled candidates | Automatic attempt order | Native surface | Expected player path |
+| --- | --- | --- | --- | --- |
+| Linux, including SteamOS | Vulkan, desktop OpenGL, OpenGL ES, and Null | Vulkan → OpenGL ES → Null; desktop OpenGL is currently not enumerated by the automatic preference list | SDL X11 or Wayland window | `GXRuntime → Aurora → Dawn → Vulkan → driver/GPU` |
+| Windows | D3D12, Vulkan, D3D11, and Null | D3D12 → Vulkan → D3D11 → Null | SDL Win32 window / `HWND` | `GXRuntime → Aurora → Dawn → D3D12 → driver/GPU` |
+| macOS | Metal and Null | Metal → Null | SDL Cocoa window / `CAMetalLayer` | `GXRuntime → Aurora → Dawn → Metal → Apple GPU` |
+| iPhone and iPad | Metal and Null | Metal → Null | SDL UIKit window / `CAMetalLayer` | `GXRuntime → Aurora → Dawn → Metal → Apple GPU` |
+| Apple TV | Metal and Null | Metal → Null | SDL tvOS window / `CAMetalLayer` | `GXRuntime → Aurora → Dawn → Metal → Apple GPU` |
+
+`Null` is the final non-presenting backend, not a normal player graphics path.
+If Aurora initialization still fails and the user did not explicitly require
+it, the BlueWake host can fall back to its headless backend. On Linux, BlueWake
+warns when the selected backend name begins with `OpenGL`, because the Vulkan
+path is expected to perform substantially better. [PR #353](https://github.com/chrissotraidis/bluewake/pull/353)
+is a concrete Vulkan-specific contribution: it keeps the surface configured
+through Linux window resizes without changing guest GX state.
+
+The compile-time platform mapping is defined by the
+[Dawn provider](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/cmake/AuroraDawnProvider.cmake#L14-L47),
+while the actual attempt order comes from
+[Aurora's compiled preference list](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/aurora.cpp#L73-L99).
 
 ## Mechanical contents
 
