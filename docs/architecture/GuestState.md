@@ -445,7 +445,7 @@ range to the lowest; box sizes are not to scale.
 
 ```mermaid
 flowchart TB
-    subgraph Views["MEM1 guest address views — high to low"]
+    subgraph Views[" "]
         direction TB
         Mirror["`0xC0000000–
 0xC1FFFFFF
@@ -463,6 +463,8 @@ MEM1`"]
         Mirror ~~~ Extension ~~~ Retail
     end
 ```
+
+*MEM1 guest address views, ordered from high to low.*
 
 The retail and extension ranges form the cached 32 MiB window. Clearing the
 mirror bit maps the uncached `0xC0000000–0xC1FFFFFF` view onto those same
