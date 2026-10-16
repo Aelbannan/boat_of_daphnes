@@ -1,6 +1,6 @@
 # Next release: candidate record (draft)
 
-Prepared on October 11, 2026 for Chris to decide; brought up to date on October 15. Nothing here is frozen: the version, the commit and when to build
+Prepared on October 11, 2026 for Chris to decide; brought up to date on October 17. Nothing here is frozen: the version, the commit and when to build
 are Chris's call ([GOAL_LOOP.md](../GOAL_LOOP.md), S4). Fill in each check with the device, the commit and what was
 seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](RELEASE_0.7.0.md), October 10.
 
@@ -38,11 +38,17 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | The Wind Temple's R04 and R08: a switch, off by default, gives loose RELs a load time (pdale-boop, #331), and save states wait for it (#350) | #318 | Every platform | Sweeps on Windows, Linux and the Mac: only R04 and R08 change | F5 and F8 during a real wait; then the default |
 | Safe startup turns the HD look off (#343) | none | Windows, Mac, Linux | Mac fixtures and gameplay | Windows and Linux by hand |
 | **Fixed:** resizing the window keeps the existing surface and the picture drawing (pdale-boop, RecompCore#38, pinned by #353) | #325 | Windows, Mac, Linux | Arch/X11/NVIDIA, including F1 open; Mac/Metal zoom and fullscreen; Windows/D3D12 resizing and fullscreen; Windows and Linux CI | Reporter confirmation on `main`; Wayland; Windows resizing with F1 open |
+| **Android, experimental:** an arm64 APK built from your own disc on a Windows PC (LiquidAzir, #93), and `--app-only` refuses a module built with other options (#372) | #75 | Android | Fold 7: Outset at full speed with behaviour timing in alternated cool-start runs; the app-only tests; CI | Other phones; a Bluetooth controller with the D-pad option; #238 |
+| **HD textures made in the app:** Mods › Wind Waker HD textures › Import from Wind Waker HD…, from a decrypted HD folder or a WUD/WUX image with its key files (#315) | #57 | Windows, Mac, Linux, iPhone, iPad | Full imports on the Mac and on Linux (pdale-boop's own dump): 3,546 textures, byte for byte the script's; generated images on an Android emulator and the iOS simulator | A Windows import; an authentic WUD/WUX image; an iPhone or iPad |
+| **Full speed on Wayland:** mailbox present, so KWin 6.8 no longer holds the game at about 70% (jslay88, #370; `BLUEWAKE_VSYNC=1` for FIFO) | #56, #215 | Linux | CachyOS, KWin 6.8, RTX 4090 at 120 Hz: retraces held 59.9 | GNOME; the Steam Deck's gamescope |
+| Picto Box photos under widescreen keep their 4:3 shape, opt-in (`picto_crop=1` on Windows, `BLUEWAKE_PICTO_CROP=1` on Mac and Linux; pdale-boop, #338 with RecompCore#37) | none | Windows, Mac, Linux | Windows and Arch at 16:9, 16:10 and 21:9 | The Mac |
+| Mac builds work with Mono or Homebrew SQLite installed (#367) | none | Mac builder | A full private Mac build with the conflicting paths; the regression fails without the fix | PadMint's `player-check.sh` |
+| The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests | The tour's first run on a disc |
 
-Not in it yet: Android (#93: one builder check left, then experimental), the importer built into the app (#315, draft)
-and its Android menu (#347, draft), the softer HD look (#321, installed on Chris's iPad and awaiting his assessment),
-the iOS menu-switch change (#316), and the Picto Box candidates (#338 and #342). Their remaining checks and decisions
-are in [GOAL_LOOP.md](../GOAL_LOOP.md) and [PRIORITIES.md](../PRIORITIES.md).
+Not in it yet: the Android HD import (#347, draft), the softer HD look (#321, on Chris's iPad and awaiting his
+assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box photo (#342), Smooth Motion without the
+flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 4, 5 and 7 (#366, #365, #361).
+Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and [PRIORITIES.md](../PRIORITIES.md).
 
 ## Checks before publishing
 

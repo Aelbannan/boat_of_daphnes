@@ -28,7 +28,7 @@ ledgers before the much older historical status logs:
 - docs/archive/status/RELEASE.md: next-candidate scope and outstanding acceptance gates.
 - docs/archive/status/STABILITY_2026-10-01.md: experiments, regressions, exact limits and failed approaches.
 - docs/archive/FORK_INTEGRATION.md: integration, physical iPad checks and platform boundaries.
-- docs/WINDOWS.md and docs/status/TVOS_BUILD.md: experimental platform foundations.
+- docs/WINDOWS.md and docs/TVOS_BUILD.md: experimental platform foundations.
 - docs/BUILD_YOUR_OWN.md: player-owned-disc builder and personal-build rules.
 
 ### Phase 1: inventory and core stability

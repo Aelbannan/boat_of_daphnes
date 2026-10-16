@@ -627,7 +627,7 @@ signing material.
 | Install and launch | When requested, installs the app, transfers the disc into its data container, and launches it through `devicectl`. | Running device installation | App data `Library/Caches/BlueWake/GZLE01.iso` | [Device deployment](../../scripts/builder/build.sh) (`--install`) |
 
 The Dawn archive bridge remains experimental; see the
-[tvOS build guide](../status/TVOS_BUILD.md).
+[tvOS build guide](../TVOS_BUILD.md).
 
 ### Android (in progress)
 

@@ -184,6 +184,11 @@ desktop build: Resume, Save state (F5), Load latest state (F8) and Quit the game
 A setting that applies at the next launch shows **Restart now** beside its note: BlueWake saves your
 settings, closes and starts again by itself.
 
+**Wayland:** when `WAYLAND_DISPLAY` is set, BlueWake presents with mailbox instead of FIFO (#370, jslay88). FIFO
+waits for the compositor on the game thread, and on KWin 6.8 that wait held the game at about 70% speed.
+Mailbox doesn't tear. `BLUEWAKE_VSYNC=1` brings back FIFO. Checked on KWin 6.8; GNOME and the Steam Deck's
+gamescope haven't been checked yet.
+
 **Safe mode:** if the last launch never reached a clean exit (it crashed or was killed), the next one starts
 in safe mode, as on Windows: Fast sound, 4:3, in a window, with the mods, Better Wind Waker's settings, the
 texture pack, the HD look, the gameplay extras and the stage select off. Your earlier `settings.ini` is copied beside it

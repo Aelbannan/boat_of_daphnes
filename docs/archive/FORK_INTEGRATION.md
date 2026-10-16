@@ -170,7 +170,7 @@ The connected-device inventory contains no physical Apple TV. Ian reported title
 Apple TV 4K; this integration has no independent physical TV gameplay, audio, controller or saves
 acceptance. The retagged Dawn dependency, purgeable tvOS Caches data and lack of a couch-friendly
 in-game settings/backup shell remain explicit developer-preview limits. PadMint remains iOS only.
-See [Apple TV build](../status/TVOS_BUILD.md). No personal build or game data is published.
+See [Apple TV build](../TVOS_BUILD.md). No personal build or game data is published.
 
 ## Contribution path
 

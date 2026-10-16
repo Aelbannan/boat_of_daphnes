@@ -51,7 +51,7 @@ physical iPad run. Where it stands and how to install it:
 As of **September 25, 2026**, a fresh checkout builds the device app from the user's own disc image
 with one command, `scripts/ios/build_device.sh DISC.iso`, using only published sources: the
 RecompCore and DolRecomp forks and the pinned Dawn package. Prerequisites, signing and installing:
-[docs/status/DEVICE_BUILD.md](../status/DEVICE_BUILD.md).
+[docs/DEVICE_BUILD.md](../DEVICE_BUILD.md).
 
 As of **September 26, 2026**, BlueWake runs on a **physical iPad Pro (M2)** at a steady 30 FPS at full
 game speed after loading a save, in Outset's heavy pier view and while walking the village (the 15 FPS
@@ -97,7 +97,7 @@ below records the older Route A baseline, not Route B acceptance. See the
 | Graphics correctness | Open | Link's hair/material state is visibly wrong; wider GX fidelity still needs qualification |
 | Product acceptance | Open | Physical controller, human audio review, unrestricted play, and endurance |
 | iPadOS (simulator) | Pass, bounded | First run, title to Outset play, saves, stereo audio, touch/keyboard/controller; 58-60 retraces a second (densest view 51-54); matches Dolphin across the checked scenes |
-| iOS / iPadOS hardware | Next | One-command device build from the user's disc, verified from a clean checkout; install needs the user's signing identity ([build and install](../status/DEVICE_BUILD.md), [what to check](status/IPAD_STATE_2026-09-24.md)) |
+| iOS / iPadOS hardware | Next | One-command device build from the user's disc, verified from a clean checkout; install needs the user's signing identity ([build and install](../DEVICE_BUILD.md), [what to check](status/IPAD_STATE_2026-09-24.md)) |
 
 The live engineering record is in [CURRENT.md](status/CURRENT.md), the
 gate ledger is in [GATES.md](status/GATES.md), and the prioritized work

@@ -7,9 +7,9 @@ image of The Legend of Zelda: The Wind Waker (GZLE01, USA, revision 0). One scri
 scripts/ios/build_device.sh "/path/to/The Legend Of Zelda The Wind Waker.iso"
 ```
 
-It is the Builder (`scripts/builder/build.sh`, [BUILDER.md](../BUILDER.md)) with the BlueWake profile,
+It is the Builder (`scripts/builder/build.sh`, [BUILDER.md](BUILDER.md)) with the BlueWake profile,
 and takes the same options; `--ipa FILE` also writes an unsigned IPA for sideloading
-([BUILD_YOUR_OWN.md](../BUILD_YOUR_OWN.md)). The mods are built in (`--no-mods` skips them). It needs no
+([BUILD_YOUR_OWN.md](BUILD_YOUR_OWN.md)). The mods are built in (`--no-mods` skips them). It needs no
 `build/`, `generated/` or `ref/` directory beforehand and no files from any other machine. Game-derived outputs stay under `build/` (git ignores it), downloaded dependencies also use `ref/`,
 and nothing is uploaded.
 
@@ -91,16 +91,16 @@ proves the build but will not install on a device.
    picked up too), checks that it is GZLE01 USA revision 0 and prepares `main.dol` and `rels/` on the
    device. Saves stay in the app's container.
 
-What to check on the iPad is listed in [IPAD_STATE_2026-09-24.md](../archive/status/IPAD_STATE_2026-09-24.md).
+What to check on the iPad is listed in [IPAD_STATE_2026-09-24.md](archive/status/IPAD_STATE_2026-09-24.md).
 
 ## Optimization and performance
 
-See [the Builder's current optimization status](../BUILDER.md#optimization-profiles) for the
+See [the Builder's current optimization status](BUILDER.md#optimization-profiles) for the
 measured difference between baseline and developer builds. Runtime and host profiles are bundled;
 the developer's translated-game profile is private and is not an input players should obtain.
 The builder generates the game profile on each player's Mac from their own disc by default
 (`--no-train` skips it); `--training-save FILE` optionally supplies a copy of the player's own
-BlueWake card. See [the player guide](../BUILD_YOUR_OWN.md#local-optimization). iPad performance of
+BlueWake card. See [the player guide](BUILD_YOUR_OWN.md#local-optimization). iPad performance of
 locally trained builds is still being measured.
 
 The advanced `--composite-pgo FILE` (repeatable) and `--host-pgo FILE` options accept profiles you
@@ -155,7 +155,7 @@ translator produces anything else; `--accept-new-composite` overrides that for d
 ## Historical verification (2026-09-25)
 
 The measurements below describe the specified older commits and machines, not the current
-Builder's complete local-training workflow. Current build comparisons are in [BUILDER.md](../BUILDER.md).
+Builder's complete local-training workflow. Current build comparisons are in [BUILDER.md](BUILDER.md).
 
 On 2026-09-25, on an M2 MacBook Air (Xcode 26.6, CMake 3.27.1), from fresh clones of this
 repository with no `ref/`, `build/` or `generated/`:

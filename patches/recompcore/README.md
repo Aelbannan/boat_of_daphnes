@@ -15,16 +15,16 @@ the render worker paused while the swapchain changes). BlueWake now builds from
 https://github.com/chrissotraidis/RecompCore, branch `bluewake-next`: 9618e9d plus 0114 (one DSP
 interpreter table layout under the Microsoft ABI, so Exact/LLE audio no longer calls address 0
 on Windows), with the same DolRecomp. The Builder fetches it at the commit pinned in
-`scripts/builder/profiles/bluewake.sh`; see docs/status/DEVICE_BUILD.md.
+`scripts/builder/profiles/bluewake.sh`; see docs/DEVICE_BUILD.md.
 
 Patches 0115-0125 add the ordered save, shutdown and audio fixes, opt-in display
 timing, and a render-worker identity fix reproduced with ThreadSanitizer. The stability baseline
 pin was `99e4748002d42c1a86fdcb33a47cd0e97292acff`. Tests and hardware limits are in
-[the local stability ledger](../../docs/status/LOCAL_STABILITY_2026-10-01.md).
+[the local stability ledger](../../docs/archive/status/LOCAL_STABILITY_2026-10-01.md).
 
 Patch 0126 preserves the published in-memory card contents after a directory-sync
 error, while continuing to report the error. Evidence is in
-[the overnight ledger](../../docs/status/OVERNIGHT_2026-10-02.md).
+[the overnight ledger](../../docs/archive/status/OVERNIGHT_2026-10-02.md).
 
 Patch 0127 resumes a paused, already buffered output before the overflow/drop
 path can prevent recovery; its actual SDL dummy-device regression covers the full queue.
@@ -55,7 +55,7 @@ is still required; donor scene results are not transferred.
 Patch 0140 changes session logging only: GX batches between 20 and 50 ms are summed
 into one `[gx-slow-sum]` line every ten seconds, and batches of 50 ms or more keep
 their own `[gx-slow]` line. A player's 104-minute Windows log had 33,712 of the old
-lines. Evidence is in [the stability plan](../../docs/status/STABILITY_PLAN_2026-10-03.md).
+lines. Evidence is in [the stability plan](../../docs/archive/status/STABILITY_PLAN_2026-10-03.md).
 
 Patch 0141 is Elliott Tate's slow-game detector for Smooth Motion (his RecompCore
 `0bb1fef`, Wind-Waker-Recomp patch 0122), with his authorship: the median of the last

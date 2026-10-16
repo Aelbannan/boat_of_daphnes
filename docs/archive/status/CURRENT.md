@@ -713,7 +713,7 @@ Still open: the pier view's main thread is 82-86 percent busy at 30 FPS on the M
 The September 24 handoff assumed this Mac's `build/` and `generated/` trees and an unpublished
 RecompCore commit (3476998), and the tracked patch series could not rebuild it (it starts at 0008).
 Now `scripts/ios/build_device.sh DISC.iso` builds the signed app in a fresh checkout from published
-sources only, and [DEVICE_BUILD.md](../../status/DEVICE_BUILD.md) gives the prerequisites, signing, install and
+sources only, and [DEVICE_BUILD.md](../../DEVICE_BUILD.md) gives the prerequisites, signing, install and
 the optional PGO profiles.
 
 - **Published forks.** RecompCore https://github.com/chrissotraidis/RecompCore (branch `bluewake`,

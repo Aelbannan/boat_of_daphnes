@@ -52,13 +52,13 @@ tell.
 
 Updated 2026-09-25: the steps that were here assumed this Mac's `build/` and `generated/` trees and
 an unpublished RecompCore commit. A fresh checkout now builds the device app from the disc image
-with one command, `scripts/ios/build_device.sh DISC.iso`; see [DEVICE_BUILD.md](../../status/DEVICE_BUILD.md).
+with one command, `scripts/ios/build_device.sh DISC.iso`; see [DEVICE_BUILD.md](../../DEVICE_BUILD.md).
 
 ## Installing on the iPad (not done yet)
 
 The signing certificate, Developer Mode, the provisioning profile for `dev.bluewake.BlueWake`,
 `build_device.sh --identity ... --profile ... --install` and copying the disc to the iPad are in
-[DEVICE_BUILD.md](../../status/DEVICE_BUILD.md#signing-and-installing-on-the-ipad).
+[DEVICE_BUILD.md](../../DEVICE_BUILD.md#signing-and-installing-on-the-ipad).
 
 ## What to check on the iPad
 
