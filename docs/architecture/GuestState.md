@@ -440,19 +440,30 @@ crosses the host/module ABI.
 ### MEM1 layout
 
 BlueWake provides one contiguous 32 MiB MEM1 allocation. Each byte can be
-reached through a cached or uncached guest address. The two stacked boxes divide
-the backing by cached address from high to low; the side callout shows the
-uncached view of the same bytes. Their relative heights approximate the 8 MiB
-extension and 24 MiB retail regions.
+reached through a cached or uncached guest address. The stacked boxes follow
+the current boot layout from high to low; the side callout shows the uncached
+view of the same bytes. Fixed boundaries are labeled directly. `ArenaLo` and
+the DOL ranges come from the loaded image, so their box heights are only
+schematic.
 
 ```mermaid
 flowchart LR
     subgraph MEM1["MEM1 native backing — 32 MiB<br/>cached ranges · high to low"]
         direction TB
-        Extension["BlueWake MEM1 extension — 8 MiB<br/>0x81800000–0x81FFFFFF"]
-        Retail["&#160;<br/>&#160;<br/>Retail MEM1 — 24 MiB<br/>0x80000000–0x817FFFFF<br/>&#160;<br/>&#160;"]
+        Extension["&#160;<br/>BlueWake MEM1 extension — 8 MiB<br/>0x81800000–0x81FFFFFF<br/>&#160;"]
+        Boot["`Above-arena boot area
+0x817FEC60–0x817FFFFF
+initial SP: 0x817FFF00`"]
+        Arena["&#160;<br/>&#160;<br/>OS arena and game heap<br/>ArenaLo–0x817FEC60<br/>&#160;<br/>&#160;"]
+        Stack["`Guest stack reserve
+DOL BSS end–ArenaLo
+128 KiB plus alignment`"]
+        DOL["`DOL sections and BSS span
+linked ranges from main.dol`"]
+        Low["`OS low-memory globals
+selected words at 0x80000020–0x800000FC`"]
 
-        Extension ~~~ Retail
+        Extension ~~~ Boot ~~~ Arena ~~~ Stack ~~~ DOL ~~~ Low
     end
 
     Mirror["`Uncached MEM1 mirror
