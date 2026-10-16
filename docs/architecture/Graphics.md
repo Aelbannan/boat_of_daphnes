@@ -11,6 +11,7 @@
   - [Supported target mappings](#supported-target-mappings)
 - [Host and guest-state integration](#host-and-guest-state-integration)
   - [Ownership boundary](#ownership-boundary)
+  - [Guest memory and native GPU memory](#guest-memory-and-native-gpu-memory)
   - [End-to-end interaction](#end-to-end-interaction)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
@@ -283,6 +284,66 @@ objects. Conversely, a native texture or pipeline is not guest state merely
 because it currently represents guest bytes. The guest-visible meaning lives
 in the addressable data and GX machine model; Aurora's objects are an
 implementation of that meaning.
+
+### Guest memory and native GPU memory
+
+BlueWake does not expose the host GPU's video memory as another guest-address
+range. Graphics source data commonly shares ordinary guest memory with the
+rest of the game, but GXRuntime and Aurora create separate state and native GPU
+resources when that data is consumed.
+
+| Storage | Typical contents | Guest access |
+| --- | --- | --- |
+| MEM1 and linked REL storage | Model vertices, display lists, texture images, palettes, matrices, and other game data | Normal 32-bit guest addresses and translated loads/stores |
+| GXRuntime graphics state | FIFO bytes, CP/XF/BP/PE registers, texture/TLUT descriptors, TMEM semantics, and copy configuration | GX commands, graphics MMIO, and guest-visible synchronization |
+| Aurora and Dawn resources | Converted textures, vertex/index buffers, shaders, pipelines, color/depth targets, and command buffers | No direct guest address; these are native implementation resources |
+| EFB representation | Current rendered color and depth results | GX copy, clear, peek, poke, and synchronization semantics rather than ordinary MEM1 access |
+
+```mermaid
+flowchart TD
+    Memory["`Guest memory
+vertices, textures
+and display lists`"]
+    Address["`32-bit guest address
+in GX state`"]
+    Resolver["`BlueWake resolver
+bounded native view`"]
+    Front["`GXRuntime
+format and state`"]
+    Resource["`Aurora and Dawn
+native GPU resource`"]
+    EFB["`Native EFB
+representation`"]
+    Copy["`Guest-memory
+copy destination`"]
+    Read["`CPU-visible
+MMIO read value`"]
+    Present["`VI-timed
+presentation`"]
+
+    Memory -->|"named by"| Address --> Resolver --> Front --> Resource --> EFB
+    EFB -->|"copy or capture readback"| Copy --> Memory
+    EFB -->|"peek"| Read
+    EFB -->|"display copy"| Present
+```
+
+Resolution does not replace the original guest address with a native pointer.
+Aurora may convert, upload, or cache the resolved bytes, and those native
+resources can be invalidated or rebuilt without changing guest state. The
+rendered EFB becomes guest data only through a defined operation such as a
+copy or readback; otherwise it proceeds toward presentation.
+
+This mirrors the important GameCube distinction: graphics resources can be
+sourced from main memory, while embedded graphics storage and framebuffer
+operations are not ordinary CPU-addressable MEM1. BlueWake models that
+behavior rather than allocating a flat guest VRAM region. An integrated host
+GPU may physically share system memory, but Dawn still preserves the logical
+resource and synchronization boundary; BlueWake does not assume zero-copy
+access.
+
+References: [guest-memory resource kinds](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/guest_memory.h),
+[texture and copy state](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/include/gxruntime/gx_recomp.h#L138-L194),
+and [BlueWake's bounded resolver](../../runtime/host/src/main.c#L5073-L5161).
 
 ### End-to-end interaction
 
