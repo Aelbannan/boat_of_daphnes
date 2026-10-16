@@ -9,6 +9,9 @@
   - [Build-time backend set](#build-time-backend-set)
   - [Runtime backend resolution](#runtime-backend-resolution)
   - [Supported target mappings](#supported-target-mappings)
+- [Host and guest-state integration](#host-and-guest-state-integration)
+  - [Ownership boundary](#ownership-boundary)
+  - [End-to-end interaction](#end-to-end-interaction)
 - [Mechanical contents](#mechanical-contents)
   - [Component ownership](#component-ownership)
   - [Guest-visible GX state](#guest-visible-gx-state)
@@ -257,6 +260,96 @@ The compile-time platform mapping is defined by the
 [Dawn provider](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/cmake/AuroraDawnProvider.cmake#L14-L47),
 while the actual attempt order comes from
 [Aurora's compiled preference list](https://github.com/chrissotraidis/RecompCore/blob/f647d03d3886eb2357950190fe1cba3fa3d10242/GXRuntime/graphics/aurora/lib/aurora.cpp#L73-L99).
+
+## Host and guest-state integration
+
+The graphics stack is not separate from the host or guest machine model. The
+translated module produces GX work from guest data; the host connects that
+work to GXRuntime, resolves guest resources, and publishes completion at the
+correct guest-time boundaries. Aurora remains below this contract and owns
+native rendering resources rather than authoritative game state.
+
+### Ownership boundary
+
+| State domain | Examples | Owner and lifetime | Architecture reference |
+| --- | --- | --- | --- |
+| Core guest state | `CPUState`, MEM1, linked REL storage, camera and actor data | Shared authoritative machine state used by the translated module and host | [Guest machine state](GuestState.md#responsibility) |
+| Guest-visible GX state | FIFO contents; CP, XF, BP, PE, texture, EFB-copy, and VI state | GXRuntime's native structures model the GameCube graphics machine across draws and barriers | [Guest-visible GX state](#guest-visible-gx-state) |
+| Native renderer state | Dawn device and surface, pipelines, shaders, converted textures, command buffers, and caches | Aurora and Dawn implementation state; recreated or invalidated without changing guest addresses | [Component ownership](#component-ownership) |
+| Coordination state | Renderer lifecycle, resolver cache, retrace clock, module bridge, and pending completion delivery | BlueWake host state that connects the other domains | [Host responsibility](Host.md#responsibility) |
+
+`CPUState` does not contain MEM1, the complete GX front end, or Aurora's GPU
+objects. Conversely, a native texture or pipeline is not guest state merely
+because it currently represents guest bytes. The guest-visible meaning lives
+in the addressable data and GX machine model; Aurora's objects are an
+implementation of that meaning.
+
+### End-to-end interaction
+
+```mermaid
+flowchart TD
+    Module["`Translated
+game module`"]
+    Host["`BlueWake host
+coordination`"]
+    Pipe["`Gather pipe
+ordered GX bytes`"]
+
+    subgraph Guest["Guest machine model"]
+        CPU["`CPUState
+registers, PC
+and timing`"]
+        Memory["`MEM1 and REL aliases
+game and resource data`"]
+        GX["`GXRuntime state
+FIFO, CP, XF,
+BP, PE and VI`"]
+    end
+
+    Native["`Aurora and Dawn
+native renderer state`"]
+    Display["`Native GPU
+and display`"]
+
+    Module <-->|"`read, update
+and yield state`"| CPU
+    Module <-->|"guest loads and stores"| Memory
+    Module -->|"GX writes"| Pipe --> GX
+    Host <-->|"initialize and inspect"| CPU
+    Host <-->|"resolve and update"| Memory
+    Host -->|"connect writer and drain"| Pipe
+    Memory -->|"bounded resource views"| GX
+    Host <-->|"barriers, tokens and retrace"| GX
+    GX -->|"normalized render work"| Native
+    Native -->|"copy or readback"| Memory
+    Host -->|"presentation lifecycle"| Native
+    Native --> Display
+```
+
+The diagram shows ownership and data movement, not an exact call order. In
+particular, a GX completion event may be produced asynchronously and then
+published by the host at a translated-code boundary; not every draw performs a
+copy or interrupts the guest.
+
+| Direction | Mechanical interaction | Why it matters | Code reference |
+| --- | --- | --- | --- |
+| Module → GXRuntime | Translated stores reach the gather pipe; direct or batched transport preserves their guest byte order. | The original game remains responsible for draw order and GX configuration. | [Gather-pipe writer](../../cmake/composite/gather_pipe.h), [host connection](../../runtime/host/src/main.c#L8289-L8300) |
+| Guest memory → GXRuntime | A display list, vertex array, texture, TLUT, or copy destination is resolved from its 32-bit guest address to a bounded native view. | Graphics can consume MEM1 or linked REL resources without replacing the address stored by the game. | [Host resolver](../../runtime/host/src/main.c#L5073-L5161), [guest address model](GuestState.md#guest-to-host-address-resolution) |
+| Host → GXRuntime | The host installs the resolver, drains FIFO work at observable barriers, and coordinates draw-sync and draw-done publication. | Native worker latency cannot make guest-visible GPU progress early or indefinitely late. | [Resolver installation](../../runtime/host/src/main.c#L7709-L7718), [completion commits](../../runtime/host/src/main.c#L10273-L10297) |
+| Aurora → guest state | Required EFB copies or readbacks make GPU-produced bytes available to guest memory before the corresponding completion is exposed. | The game can use a rendered image as input, as the Picto Box does. | [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) |
+| Host → Aurora | Completed VI retraces service pending presentation and platform lifecycle work. | A finished draw is displayed according to guest video timing rather than immediately after any FIFO write. | [Retrace service](../../runtime/host/src/main.c#L5397-L5419), [host main loop](Host.md#main-loop-execution) |
+
+Two concrete flows show the boundary in both directions:
+
+1. With controller zoom enabled, the host updates guest camera data. Translated
+   camera code reads that data and emits changed XF transforms; GXRuntime and
+   Aurora render the new view. [PR #221](https://github.com/chrissotraidis/bluewake/pull/221)
+   changes the host/guest integration, not the native graphics API.
+2. During a Picto Box capture, Aurora renders the EFB result and the runtime
+   makes the required copy readable through guest memory before the host
+   publishes the draw-sync token. The translated game then evaluates those
+   bytes. [PR #341](https://github.com/chrissotraidis/bluewake/pull/341) fixes
+   that renderer-to-guest direction.
 
 ## Mechanical contents
 
