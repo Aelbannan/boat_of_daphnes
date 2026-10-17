@@ -44,9 +44,8 @@
 
 int bluewake_native_libm_enabled;
 
-/* native_gx.c defines this when the fifth set is linked. Until then the
- * seventh set's decline gate is on, so a native that keeps declining is left
- * to the translation. Round 5 removes this definition. */
+/* The fifth set defines this itself when it is linked alone. When both sets
+ * are linked, this is the one definition. */
 int bluewake_native_gate_enabled = 1;
 
 /* A run's undo log (the game thread's: the natives run only there, and none

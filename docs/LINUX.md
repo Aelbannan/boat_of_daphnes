@@ -55,6 +55,17 @@ mounts the disc read-only and writes normal outputs to `build/linux`; the disc
 never enters the image or CI. The result is always an x86-64 Linux build. Arm
 hosts use Docker's `linux/amd64` emulation, which is substantially slower.
 
+### If the container build fails
+
+- **Don't run it with `sudo`.** Files a root run creates make Git refuse the checkout ("dubious ownership") and
+  block later runs. Give them back with `sudo chown -R "$USER": path/to/bluewake`, add yourself to the
+  `docker` group (`sudo usermod -aG docker "$USER"`, then log out and back in), and check that `docker info`
+  works without `sudo`.
+- **"failed to extract layer" or another image error:** Docker's build cache is damaged. Run
+  `docker builder prune -af` and build again.
+- **Bazzite, Fedora Atomic and other read-only systems:** build inside a Distrobox (for example Ubuntu 24.04) with the
+  native steps below, or use the ready-made AppImage once it is published.
+
 ## Native build
 
 Install CMake 3.25+, Ninja, Git, `pkg-config`, Clang/Clang++ 17 or newer, LLD,

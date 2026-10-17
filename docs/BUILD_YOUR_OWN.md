@@ -165,6 +165,13 @@ The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Bett
 
 ## If something fails
 
+**Sideloading fails with error -80045** ("This action cannot be completed at this time"): Apple's sign-in rejected
+the sideloading tool's login. It isn't the IPA. Since mid-October 2026 it has hit Sideloadly, AltStore and SideStore
+alike. Update the tool, sign out of the Apple ID in it and sign in again, turn off any VPN or try another network,
+or try a separate Apple ID kept for sideloading. Sometimes the only fix is waiting for the tool's update. On the Mac that
+built the IPA, Xcode can install it instead: the Builder's `--identity`, `--profile` and `--install` options
+([DEVICE_BUILD.md](DEVICE_BUILD.md)).
+
 If a Mac build reports missing SQLite functions, Mono headers, or a Homebrew SQLite dependency
 that is not self-contained, update BlueWake and rerun the same build command. Both the local
 training host and the Mac app use the pinned static SQLite, including when an existing CMake
