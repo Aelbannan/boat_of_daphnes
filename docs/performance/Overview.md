@@ -15,6 +15,18 @@
   - [Coverage and limits](#coverage-and-limits)
 - [Tuning](#tuning)
 - [Evidence and results](#evidence-and-results)
+- [Worked investigation](#worked-investigation)
+  - [1. State the question and freeze the variables](#1-state-the-question-and-freeze-the-variables)
+  - [2. Build the control](#2-build-the-control)
+  - [3. Measure same-build noise first](#3-measure-same-build-noise-first)
+  - [4. Read the benchmark finding](#4-read-the-benchmark-finding)
+  - [5. Profile the same scene](#5-profile-the-same-scene)
+  - [6. Turn the profile into an investigation](#6-turn-the-profile-into-an-investigation)
+  - [7. Implement one change and its safety check](#7-implement-one-change-and-its-safety-check)
+  - [8. Build a matched candidate](#8-build-a-matched-candidate)
+  - [9. Compare control and candidate](#9-compare-control-and-candidate)
+  - [10. Re-profile and validate behavior](#10-re-profile-and-validate-behavior)
+  - [11. Decide, iterate, and report](#11-decide-iterate-and-report)
 
 Performance path: [Index](README.md) → **Overview**
 
@@ -479,6 +491,335 @@ state, rendered mode, pacing, sample count, representative result, and relevant
 correctness check. Disc images, extracted game files, translated modules, cards,
 save states, raw private logs, and optimization profiles do not belong in the
 repository.
+
+## Worked investigation
+
+This hypothetical Linux and SteamOS example shows the complete loop for a
+game-thread optimization. Its shape follows the investigations recorded in
+[issue #215](https://github.com/chrissotraidis/bluewake/issues/215), but the
+sample numbers below are illustrative rather than a claim about a particular
+build.
+
+```mermaid
+flowchart TD
+    Question["`Name one performance
+question`"]
+    Control["`Build and repeat
+the control`"]
+    Benchmark["`Measure fixed scenes
+and checkpoints`"]
+    Profile["`Profile the limiting
+scene and thread`"]
+    Investigate["`Map hot symbols to
+runtime ownership`"]
+    Change["`Implement one
+testable mechanism`"]
+    Candidate["`Build the candidate
+with matched inputs`"]
+    Compare{"`Faster, repeatable,
+and correct?`"}
+    Record["`Record evidence
+and open the PR`"]
+    Revise["`Reject or refine
+the hypothesis`"]
+
+    Question --> Control --> Benchmark --> Profile --> Investigate --> Change --> Candidate --> Compare
+    Compare -->|yes| Record
+    Compare -->|no| Revise --> Question
+```
+
+### 1. State the question and freeze the variables
+
+Begin with one falsifiable question, for example:
+
+> Is repeated guest-address resolution a material part of the game-thread cost
+> at Outset, and can one guarded fast path reduce it without changing guest
+> state?
+
+Record the source commit, compiler, builder options, device power settings,
+scene, state or card, display mode, and Smooth Motion setting. Keep every one of
+them fixed between the control and candidate. Use private paths outside the
+repository for game-derived inputs and measurements:
+
+```bash
+repo=/path/to/bluewake
+disc=/private/path/GZLE01.iso
+card=/private/path/GZLE01.card
+state=/private/path/outset.bwstate
+control_out=/private/build/control
+candidate_out=/private/build/candidate
+results=/private/results/bluewake-performance
+mkdir -p "$results"
+```
+
+The card and state remain private. They are inputs to a local measurement, not
+pull-request artifacts.
+
+### 2. Build the control
+
+Build the unchanged commit with the reproducible Linux container:
+
+```bash
+cd "$repo"
+git rev-parse HEAD
+python3 scripts/linux/build.py "$disc" \
+  --out "$control_out" --ci-container
+```
+
+Keep the complete logs and provenance under `control_out`. If training is on,
+this build creates a profile for the control's exact source and options. Record
+that fact; do not silently compare a trained control with an untrained
+candidate.
+
+The directly runnable control is:
+
+```text
+CONTROL_OUT/BlueWake/bluewake
+```
+
+An AppImage is optional for the measurement. Use `--appimage` when the build
+must be transferred to a Steam Deck as one file.
+
+### 3. Measure same-build noise first
+
+Before comparing code, run the control twice. Each run writes `summary.json` in
+its current directory. Run rendered measurements from the device's desktop or
+game session; a remote shell without display access can run only the headless
+mode reliably.
+
+```bash
+mkdir -p "$results/control-1" "$results/control-2"
+
+( cd "$results/control-1" && \
+  python3 "$repo/scripts/bench_tour.py" \
+    "$card" "$control_out/BlueWake/bluewake" --mode both )
+
+( cd "$results/control-2" && \
+  python3 "$repo/scripts/bench_tour.py" \
+    "$card" "$control_out/BlueWake/bluewake" --mode both )
+
+python3 "$repo/scripts/bench_tour.py" compare \
+  "$results/control-1/summary.json" \
+  "$results/control-2/summary.json"
+```
+
+The comparison should report matching checkpoints. The speed difference shows
+the machine's current run-to-run noise; `bench_tour.py` calls out a stop whose
+difference exceeds 3%. Stabilize temperature, power limits, background work,
+and display conditions before continuing if identical runs move too much.
+
+### 4. Read the benchmark finding
+
+Inspect the complete summaries rather than copying only the fastest stop:
+
+```bash
+python3 -m json.tool "$results/control-1/summary.json" | less
+```
+
+An illustrative slow rendered stop might show:
+
+```text
+sea:44:0 Outset: 22.1 game frames/s, busy 98.0%, loaded, dips: none
+```
+
+That result suggests the game thread is saturated while the game is below its
+30-frame-per-second target. An unpaced run may not emit `[fps-dip]`, so `none`
+does not clear every other subsystem. The rendered profile and session summary
+must still determine whether translated code, guest-state access, host
+coordination, a compatibility service, GX, GPU, or presentation owns the cost.
+
+### 5. Profile the same scene
+
+Use the same build and a saved state for the slow stop. On Linux or SteamOS,
+capture headless and rendered profiles into separate directories:
+
+```bash
+"$repo/scripts/linux/profile_deck.sh" \
+  --state "$state" \
+  --appimage "$control_out/BlueWake/bluewake" \
+  --out "$results/profile-control-headless"
+
+"$repo/scripts/linux/profile_deck.sh" --rendered \
+  --state "$state" \
+  --appimage "$control_out/BlueWake/bluewake" \
+  --out "$results/profile-control-rendered"
+```
+
+The `--appimage` option accepts either an AppImage or the runnable host binary.
+Run the rendered command from the device's desktop or game session so it can
+reach the display.
+
+Read the runtime diagnosis and native symbol ranking:
+
+```bash
+grep -aE 'fps-dip|perf-summary' \
+  "$results/profile-control-rendered/session.log"
+
+sed -n '1,80p' "$results/profile-control-headless/report.txt"
+sed -n '1,80p' "$results/profile-control-rendered/report.txt"
+```
+
+The headless profile isolates the game thread and runtime. The rendered profile
+adds GXRuntime, Aurora, Dawn, and presentation. A hotspot that appears in both
+is upstream of rendering; cost that appears only rendered belongs to the
+graphics path or its interaction with the game.
+
+### 6. Turn the profile into an investigation
+
+Do not edit the first symbol in the report immediately. Establish what it owns
+and why it is hot:
+
+1. Separate samples by thread when necessary with `perf report --sort=tid,symbol`.
+2. Use `perf annotate` to find the expensive instructions inside a named host
+   or runtime function.
+3. For a translated `func_<address>` chunk, locate the containing address range
+   in [`config/GZLE01/symbols.txt`](../../config/GZLE01/symbols.txt); do not guess
+   from the nearest name.
+4. Follow the owner into the [game module](../architecture/GameModule.md),
+   [guest state](../architecture/GuestState.md),
+   [services](../architecture/Services.md), or
+   [graphics](../architecture/Graphics.md) chapter.
+5. Enable a focused existing counter only after the sampled hotspot calls for
+   it. For guest alias resolution, for example, `BLUEWAKE_TRACE_ALIAS_COST=1`
+   reports resolver calls, bounds pruning, iterations, and hits at exit.
+
+Suppose the profile attributes a meaningful share to guest-address resolution
+and the resolver counter confirms repeated searches of the same safe region.
+That supports a guarded fast-path experiment. If the samples are spread across
+translated gameplay instead, the resolver hypothesis is rejected before code
+is changed.
+
+### 7. Implement one change and its safety check
+
+Change only the measured mechanism. A guest-address fast path would need to
+preserve alias precedence, bounds checks, byte order, and fallback behavior.
+Where practical, add a verification mode that computes both the old and new
+answers and reports any disagreement before making the fast path a default.
+
+Run focused tests and repository checks before spending time on another full
+build:
+
+```bash
+cd "$repo"
+python3 tests/test_guest_checkpoints.py
+scripts/audit_repo.sh
+git diff --check
+```
+
+The actual test set should match the changed component. A renderer change needs
+renderer tests; a RecompCore runtime change must first follow that repository's
+own pull-request and pinning process. The commands above are repository sanity
+checks, not a substitute for a focused resolver correctness test.
+
+### 8. Build a matched candidate
+
+Build into a fresh output directory with the same compiler, options, training
+policy, and source base apart from the intended change:
+
+```bash
+python3 scripts/linux/build.py "$disc" \
+  --out "$candidate_out" --ci-container
+```
+
+A source change invalidates the training fingerprint, so the candidate normally
+collects its own counters before the final compile. That is expected. Reusing a
+control profile across changed generated code would make profile compatibility
+another uncontrolled variable.
+
+### 9. Compare control and candidate
+
+Run the candidate under the same conditions and compare it with the adjacent
+control run:
+
+```bash
+mkdir -p "$results/candidate-1"
+
+( cd "$results/candidate-1" && \
+  python3 "$repo/scripts/bench_tour.py" \
+    "$card" "$candidate_out/BlueWake/bluewake" --mode both )
+
+python3 "$repo/scripts/bench_tour.py" compare \
+  "$results/control-1/summary.json" \
+  "$results/candidate-1/summary.json"
+```
+
+An illustrative useful result might read:
+
+```text
+sea:44:0 Outset: speed 22.1 -> 24.0 (+8.6%), busy 98.0% -> 90.2%
+checkpoints match
+```
+
+That is a candidate result, not yet a conclusion. Repeat the runs in an
+alternating order such as control, candidate, candidate, control and use the
+representative result across the samples. A gain confined to one noisy run or
+one scene should be investigated rather than reported as general.
+
+Also exercise scenes outside the training tour when PGO or code layout could be
+involved:
+
+```bash
+mkdir -p "$results/control-untrained" "$results/candidate-untrained"
+
+( cd "$results/control-untrained" && \
+  python3 "$repo/scripts/bench_tour.py" \
+    "$card" "$control_out/BlueWake/bluewake" --mode headless --untrained )
+
+( cd "$results/candidate-untrained" && \
+  python3 "$repo/scripts/bench_tour.py" \
+    "$card" "$candidate_out/BlueWake/bluewake" --mode headless --untrained )
+```
+
+### 10. Re-profile and validate behavior
+
+Profile the candidate at the same state if the benchmark shows a repeatable
+change. The expected hotspot should shrink without merely moving equivalent
+work elsewhere. If the benchmark improves but the original hotspot does not,
+the hypothesis is incomplete and the result needs further investigation.
+
+Matching checkpoints are required for a change intended to be exact, but they
+are not the entire acceptance test. Exercise the affected player-visible paths:
+
+- boot and load the measured state;
+- transition between scenes;
+- play a cutscene with music and effects;
+- test input and controller behavior;
+- save, quit, and continue;
+- inspect rendering in a rendered run.
+
+The exact list should follow the component changed. A timing change may
+intentionally move checkpoint timing and therefore needs the separately agreed
+timing, audio, stage-sweep, and play gates rather than a false claim of exact
+state equality.
+
+### 11. Decide, iterate, and report
+
+Accept the hypothesis only when the improvement exceeds measured noise, appears
+in the intended workload, and passes the relevant correctness checks. Otherwise:
+
+- **No measurable change:** record the negative result and stop or choose a new
+  hotspot; do not stack another speculative optimization on it.
+- **Checkpoint disagreement:** find the first differing retrace and fix or
+  reject the change before making a speed claim.
+- **One scene improves and another regresses:** determine whether the tradeoff
+  is code layout, training coverage, or a workload-specific mechanism.
+- **Hotspot moves:** profile again; the next owner may now be the actual limit.
+
+A performance pull request can summarize the final evidence compactly:
+
+```text
+Question: <measured bottleneck and proposed mechanism>
+Builds: <control commit/options> -> <candidate commit/options>
+Hardware: <device, OS, power/display conditions>
+Workload: <state or tour, rendered/headless, sample count>
+Result: <representative per-stop before/after and module size>
+Correctness: <checkpoint result and player-visible checks>
+Profile: <hot owner before/after; private raw captures retained locally>
+```
+
+Commit only the implementation, tests, and concise derived results. Keep the
+disc, extracted game data, module, card, save state, raw session logs, profiler
+captures, and PGO profiles private.
 
 Return to the [performance index](README.md), or review the components being
 measured in the [architecture overview](../architecture/Overview.md).
