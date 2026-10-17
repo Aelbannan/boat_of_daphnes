@@ -104,6 +104,16 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def seventh_native_sources():
+    """The seventh set (leaf compute) and the replay headers it compiles with.
+    Joins a fingerprint only when --native-entries is on."""
+    names = ["native_replay.h", "native_gx_run.h", "native_leaf_run.h", "native_leaf_group.inc"]
+    for group in ("libm", "bgblk", "rot", "calc", "geom", "jas"):
+        for suffix in (".c", ".h", "_list.h"):
+            names.append(f"native_{group}{suffix}")
+    return names
+
+
 def sync_tree(new, current):
     """Make `current` the same tree as `new`, replacing only files that differ,
     so the unchanged ones keep their timestamps and Ninja does not recompile
@@ -608,6 +618,7 @@ int main(void) {
         inputs.update((f"{digest}\n{int(self.mods)}\n{int(self.args.prepared_blocks)}\n"
                        f"{int(self.args.fixed_cpu)}\n{int(self.args.fixed_mem1)}\n{int(self.args.inline_fp)}\n{int(self.args.gather_pipe)}\n{int(self.args.direct_calls)}\n{int(self.args.inline_gpr)}\n{int(self.args.native_j3d)}\n{int(self.args.native_vec)}\n{int(self.args.native_math)}\n{int(self.args.native_skin)}\n{int(self.args.native_game_math)}\n"
                        f"{int(self.args.lean_memory)}\n{int(self.args.native_entries)}\n"
+                       f"{int(getattr(self.args, 'cache_ops', False))}\n"
                        + ("lean_blocks\n" if getattr(self.args, "lean_blocks", False) else "")
                        + ("lean_deadlines\n" if getattr(self.args, "lean_deadlines", False) else "")
                        + ("behaviour_timing\n" if getattr(self.args, "behaviour_timing", False) else "")).encode())
@@ -642,6 +653,13 @@ int main(void) {
             inputs.update((ROOT / "scripts/windows/lean_deadlines.py").read_bytes())
         if getattr(self.args, "behaviour_timing", False):
             inputs.update((ROOT / "scripts/windows/behaviour_timing.py").read_bytes())
+        if getattr(self.args, "cache_ops", False):
+            inputs.update((ROOT / "scripts/windows/cache_ops.py").read_bytes())
+        if getattr(self.args, "native_entries", False):
+            for name in seventh_native_sources():
+                inputs.update((ROOT / "cmake/composite" / name).read_bytes())
+            inputs.update((ROOT / "scripts/windows/native_leaf_gen.py").read_bytes())
+            inputs.update((ROOT / "scripts/windows/native_gx_gen.py").read_bytes())
         if self.args.direct_calls or self.args.native_game_math or getattr(self.args, "native_entries", False):
             # The source-derived watch lists are part of the prepared module.
             inputs.update(watched_inputs())
@@ -824,6 +842,11 @@ int main(void) {
         if self.args.direct_calls:
             self.run("return-ranges", [sys.executable, ROOT / "scripts/windows/return_ranges.py",
                                         o / "composite-src"])
+        # dcbf, dcbst, dcbi and icbi as the pc store the host's fallback makes
+        # (cache_ops.py; off by default). After return-ranges, before native-entries.
+        if getattr(self.args, "cache_ops", False):
+            self.run("cache-ops", [sys.executable, ROOT / "scripts/windows/cache_ops.py",
+                                    o / "composite-src"])
         if self.args.native_entries:
             self.run("native-entries", [sys.executable, ROOT / "scripts/windows/native_entries.py",
                                          o / "composite-src"])
@@ -852,6 +875,7 @@ int main(void) {
                    "behaviour_timing": getattr(self.args, "behaviour_timing", False),
                    "lean_blocks": getattr(self.args, "lean_blocks", False),
                    "native_entries": self.args.native_entries,
+                   "cache_ops": getattr(self.args, "cache_ops", False),
                    "gather_sha256": {name: sha256_file(ROOT / "cmake/composite" / name)
                                      for name in ("gather_pipe.h", "gather_pipe.c", "gather_pipe_batch.h")},
                    "inline_fp_script_sha256": sha256_file(ROOT / "scripts/windows/chunk_headers.py"),
@@ -914,6 +938,17 @@ int main(void) {
         print(f"tiered: {len(cold)} chunks the training never ran at -O1")
         return listing
 
+    def native_replay_dir(self):
+        """The seventh set's replay, written from this build's composite.
+        Those files are the translation's own blocks, so they stay in the build folder."""
+        if not getattr(self.args, "native_entries", False):
+            return None
+        gen_dir = self.out / "native-gen"
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        self.run("native-leaf-gen", [sys.executable, str(ROOT / "scripts/windows/native_leaf_gen.py"),
+                                      str(self.out / "composite-src"), str(gen_dir)])
+        return gen_dir
+
     def compile_composite(self, build, opt_level, extra_flags, extra_link_flags, name, cold=None):
         rc = self.recompcore
         # Each chunk is one very large function, and two LLVM passes are
@@ -929,6 +964,7 @@ int main(void) {
                  "-mllvm -large-interval-freq-threshold=10")
         flags += " " + subprocess.list2cmdline(extra_flags)
         link_flags = subprocess.list2cmdline(["-fuse-ld=lld", *extra_link_flags])
+        gen_dir = self.native_replay_dir()
         self.run(f"{name}-configure", [
             "cmake", "-S", ROOT / "cmake/composite", "-B", build, "-G", "Ninja", "-DCMAKE_C_COMPILER=clang",
             "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_C_FLAGS={flags}", f"-DCMAKE_SHARED_LINKER_FLAGS={link_flags}",
@@ -939,6 +975,7 @@ int main(void) {
             f"-DBLUEWAKE_NATIVE_SKIN={'ON' if self.args.native_skin else 'OFF'}",
             f"-DBLUEWAKE_NATIVE_MATH={'ON' if self.args.native_math else 'OFF'}",
             f"-DBLUEWAKE_NATIVE_ENTRIES={'ON' if self.args.native_entries else 'OFF'}",
+            *([f"-DBLUEWAKE_NATIVE_GEN_DIR={gen_dir}"] if gen_dir else []),
             f"-DBLUEWAKE_DIRECT_CALLS={'ON' if self.args.direct_calls else 'OFF'}",
             f"-DBLUEWAKE_GATHER_PIPE={'ON' if self.args.gather_pipe else 'OFF'}",
             f"-DBLUEWAKE_INLINE_FP={'ON' if self.args.inline_fp else 'OFF'}",
@@ -1032,14 +1069,25 @@ int main(void) {
                                             "lean_memory", "native_entries", "lean_blocks")},
                                **({"lean_deadlines": True} if getattr(self.args, "lean_deadlines", False) else {}),
                                **({"behaviour_timing": True} if getattr(self.args, "behaviour_timing", False) else {}),
+                               **({"cache_ops": True} if getattr(self.args, "cache_ops", False) else {}),
                                "runtime": self.git("-C", str(self.recompcore), "rev-parse", "HEAD"),
                                "source": tree_digest(self.out / "composite-src")},
                               sort_keys=True).encode())
+        seventh = set()
+        if not getattr(self.args, "native_entries", False):
+            seventh = {f"cmake/composite/{name}" for name in seventh_native_sources()}
         for folder in ("cmake/composite", "runtime/host/src", "windows/src"):
             for path in sorted((ROOT / folder).rglob("*")):
                 if path.is_file():
-                    key.update(path.relative_to(ROOT).as_posix().encode())
+                    rel = path.relative_to(ROOT).as_posix()
+                    if rel in seventh:
+                        continue
+                    key.update(rel.encode())
                     key.update(path.read_bytes())
+        if getattr(self.args, "cache_ops", False):
+            script = ROOT / "scripts/windows/cache_ops.py"
+            key.update(script.relative_to(ROOT).as_posix().encode())
+            key.update(script.read_bytes())
         key.update(Path(__file__).read_bytes())
         return key.hexdigest()
 
@@ -1526,8 +1574,11 @@ def main():
     parser.add_argument("--no-behaviour-timing", action="store_true",
                         help="check the turn's budget after every block, as before behaviour timing: about 9%% slower")
     parser.add_argument("--native-entries", action="store_true",
-                        help="Wind Waker Recomp's certified native entries, second and third sets (off by default; "
-                             "needs --direct-calls, --gather-pipe and --native-vec)")
+                        help="Wind Waker Recomp's certified native entries, the second, third and seventh sets "
+                             "(off by default; needs --direct-calls, --gather-pipe and --native-vec)")
+    parser.add_argument("--cache-ops", action="store_true",
+                        help="dcbf, dcbst, dcbi and icbi as the pc store the host's fallback makes "
+                             "(off by default; after return-ranges, before native-entries)")
     parser.add_argument("--console", action="store_true", help="build BlueWake.exe as a console program")
     parser.add_argument("--conservative", action="store_true",
                         help="build the plain translation, without the optimizations prepared by default "
