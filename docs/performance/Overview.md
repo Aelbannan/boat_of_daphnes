@@ -42,14 +42,20 @@ measurement artifacts determine the limiting component; they do not prescribe
 an optimization by themselves.
 
 ```mermaid
-flowchart LR
-    Workload["Controlled workload<br/>state, scene, settings"]
+flowchart TD
+    Workload["`Controlled workload
+state, scene, settings`"]
     Runtime["BlueWake runtime"]
-    Measure["Instrumentation<br/>logs, counters, profiler"]
-    Evidence["Measurement<br/>artifacts"]
-    Diagnose["Bottleneck<br/>classification"]
-    Change["One targeted<br/>change"]
-    Validate["Performance and<br/>correctness validation"]
+    Measure["`Instrumentation
+logs, counters, profiler`"]
+    Evidence["`Measurement
+artifacts`"]
+    Diagnose["`Bottleneck
+classification`"]
+    Change["`One targeted
+change`"]
+    Validate["`Performance and
+correctness validation`"]
 
     Workload --> Runtime --> Measure --> Evidence
     Evidence --> Diagnose --> Change --> Validate
@@ -74,14 +80,22 @@ The benchmark harness and CPU profiler are independent tools with a useful
 handoff between them. Neither invokes the other:
 
 ```mermaid
-flowchart LR
-    Inputs["Same build, state,<br/>scene and settings"]
-    Tour["bench_tour.py<br/>controlled workload"]
-    Summary["summary.json<br/>speed, busy time,<br/>checkpoints"]
-    Choose["Choose the slow or<br/>changed scene"]
-    Profile["Platform profiler<br/>sample native stacks"]
-    Hotspots["Platform profile<br/>hot symbols and threads"]
-    Diagnose["Correlate runtime result<br/>with native ownership"]
+flowchart TD
+    Inputs["`Same build, state,
+scene and settings`"]
+    Tour["`bench_tour.py
+controlled workload`"]
+    Summary["`summary.json
+speed, busy time,
+checkpoints`"]
+    Choose["`Choose the slow or
+changed scene`"]
+    Profile["`Platform profiler
+sample native stacks`"]
+    Hotspots["`Platform profile
+hot symbols and threads`"]
+    Diagnose["`Correlate runtime result
+with native ownership`"]
 
     Inputs --> Tour --> Summary --> Choose
     Inputs --> Profile
@@ -205,14 +219,20 @@ scenes, discards each stop's settling interval, and writes `summary.json`.
 ```mermaid
 flowchart TD
     Build["Candidate build"]
-    Private["Private card or<br/>save state"]
+    Private["`Private card or
+save state`"]
     Tour["bench_tour.py"]
-    Stops["Fixed scenes<br/>and durations"]
-    Timing["Speed, busy time,<br/>dip causes"]
-    Checkpoints["Guest-state<br/>checkpoints"]
+    Stops["`Fixed scenes
+and durations`"]
+    Timing["`Speed, busy time,
+dip causes`"]
+    Checkpoints["`Guest-state
+checkpoints`"]
     Summary["summary.json"]
-    Compare["bench_tour.py<br/>compare"]
-    Decision["Accept, investigate,<br/>or reject"]
+    Compare["`bench_tour.py
+compare`"]
+    Decision["`Accept, investigate,
+or reject`"]
 
     Build --> Tour
     Private --> Tour
@@ -250,15 +270,24 @@ decisions such as inlining, branch layout, and code-size placement.
 
 ```mermaid
 flowchart TD
-    Prepared["Stage 5 prepared<br/>translated C"]
-    Fingerprint{"Matching source,<br/>compiler, options,<br/>and recipe?"}
-    Instrument["Compile temporary module<br/>with LLVM counters"]
-    Playback["Run isolated headless<br/>opening and tours"]
-    Raw["Raw .profraw<br/>counter files"]
-    Merge["Validate and merge with<br/>llvm-profdata"]
+    Prepared["`Stage 5 prepared
+translated C`"]
+    Fingerprint{"`Matching source,
+compiler, options,
+and recipe?`"}
+    Instrument["`Compile temporary module
+with LLVM counters`"]
+    Playback["`Run isolated headless
+opening and tours`"]
+    Raw["`Raw .profraw
+counter files`"]
+    Merge["`Validate and merge with
+llvm-profdata`"]
     Profile["Private composite.profdata"]
-    Final["Compile final module with<br/>-fprofile-instr-use"]
-    Module["Optimized native<br/>game module"]
+    Final["`Compile final module with
+-fprofile-instr-use`"]
+    Module["`Optimized native
+game module`"]
 
     Prepared --> Fingerprint
     Fingerprint -->|cache miss| Instrument --> Playback --> Raw --> Merge --> Profile
@@ -339,13 +368,20 @@ layer should match the limiting domain:
 ```mermaid
 flowchart TD
     Result["Profile and benchmark"]
-    Game{"Game thread<br/>saturated?"}
-    GX{"GX worker<br/>saturated?"}
-    GPU{"GPU or present<br/>limiting?"}
-    Module["Translated code,<br/>guest access, dispatch"]
-    Graphics["GXRuntime and<br/>Aurora"]
-    Backend["Dawn backend,<br/>GPU, presentation"]
-    Pacing["Pacing, audio,<br/>external load"]
+    Game{"`Game thread
+saturated?`"}
+    GX{"`GX worker
+saturated?`"}
+    GPU{"`GPU or present
+limiting?`"}
+    Module["`Translated code,
+guest access, dispatch`"]
+    Graphics["`GXRuntime and
+Aurora`"]
+    Backend["`Dawn backend,
+GPU, presentation`"]
+    Pacing["`Pacing, audio,
+external load`"]
 
     Result --> Game
     Game -->|yes| Module
