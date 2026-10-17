@@ -57,6 +57,14 @@ unchecked; Android #347's API 36 app import and recovery results do not replace 
 
 ### The native HD importer (#315, merged October 17)
 
+**Checked on Windows** by pdale-boop on October 16 (Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12), with his own
+decrypted dump: the nine wwhd CTests pass; a command-line import took 51 s at 250 MB peak (3,546 replacements, 33,859
+PNGs, 124 conflicts skipped, 17 unsupported); in the app, a cancel kept the earlier pack, an import during play
+finished in about a minute at full speed, nothing was left in `Load\Textures`, and Restart now loaded 3,546
+registrations in that and five more sessions. He also found the import script choosing other (identical) sources for
+68 textures on Windows, fixed in #375. **Still unchecked on Windows:** a WUD/WUX image with keys, quitting during an
+import, a second import into the same folder, and controller navigation.
+
 In `main`, not yet in a download. On a build of `main`, use
 **F1 › Mods › Wind Waker HD textures › Import from Wind Waker HD…** with
 your own decrypted folder, then a USA WUD/WUX image and its keys:

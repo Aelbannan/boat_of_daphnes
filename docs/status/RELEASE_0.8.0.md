@@ -1,10 +1,22 @@
-# Next release: candidate record (draft)
+# BlueWake 0.8.0 release record
 
-Prepared on October 11, 2026 for Chris to decide; brought up to date on October 17. Nothing here is frozen: the version, the commit and when to build
-are Chris's call ([GOAL_LOOP.md](../GOAL_LOOP.md), S4). Fill in each check with the device, the commit and what was
-seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](RELEASE_0.7.0.md), October 10.
+The working record for 0.8.0, started as the next-release draft on October 11. Fill in each check with the device, the
+commit and what was seen; a row stays "not yet" until someone runs it. The Windows build is
+[WINDOWS_BUILD_0.8.0.md](WINDOWS_BUILD_0.8.0.md). Previous release: [0.7.0](RELEASE_0.7.0.md), October 10. Only Chris
+publishes.
 
-## What `main` has since 0.7.0
+## Candidate
+
+| | |
+| --- | --- |
+| Version | 0.8.0, build 7 (`version.json`, set by the freeze pull request) |
+| Candidate commit | The freeze pull request's merge commit, recorded here once it merges: what the Windows build, the AppImage and the IPA are built from |
+| RecompCore | `77d4717d868cec8b4014932bb22978c284a535a7` (through patch 0180: the HD look, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371) |
+| Previous release | 0.7.0, October 10 (`66b33be`) |
+
+While the candidate is being built and checked, only docs and fixes for what the checks find go into `main`.
+
+## What it contains
 
 | Change | Issue | Ships to | Checked so far | Still to check |
 | --- | --- | --- | --- | --- |
@@ -50,11 +62,45 @@ assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box p
 flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 4, 5 and 7 (#366, #365, #361).
 Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and [PRIORITIES.md](../PRIORITIES.md).
 
+## Release notes (draft, for the release page)
+
+BlueWake 0.8.0 brings the Wind Waker HD look, HD textures you make from your own Wind Waker HD game inside the app,
+more speed by default on Windows and Linux, the same menus on every computer, and an experimental Android build.
+Every version needs your own USA (GZLE01) disc image. Nothing from the game is included except in the ready-made
+Windows and Linux builds.
+
+- **The Wind Waker HD look**, off by default: islands on the horizon from further away, bloom, the far-distance blur,
+  ambient occlusion, cloud and sun shadows, and edge and torch light. Press **F2** on Windows, Mac and Linux, or turn
+  it on under **Mods** on iPhone and iPad. Each piece can be turned off by itself.
+- **HD textures from your own Wind Waker HD game.** **Mods › Wind Waker HD textures › Import from Wind Waker HD…**
+  makes the texture pack, HD menus and HUD included, from your decrypted HD dump or a USA WUD/WUX image with its keys,
+  on Windows, Mac, Linux, iPhone and iPad. No Python, and nothing from the Wii U game is included in BlueWake.
+- **Faster by default on Windows and Linux.** Behaviour timing: 7 to 11% faster on Intel desktops and 9% on the Steam
+  Deck, together with lighter checks around the game code (thanks to pdale-boop) and Elliott Tate's faster returns
+  and calls.
+- **The same menus and keys on every computer** (thanks to pdale-boop): F1 settings, F2 the HD look, F5 and F8 save
+  and load state, F7 the stage select, F9 the frame rate, F10 Smooth Motion, F11 fullscreen. The Windows menu works
+  with a controller, and Linux gets Restart now and safe mode.
+- **Controls:** the D-pad moves the cursor in Items and Quest Status, gyro aiming with a DualSense, DualShock 4,
+  Switch Pro or Steam Deck, swapping L and R, and 21:9 widescreen.
+- **Fixed:** Lenzo accepts the right Picto Box photos (thanks to jslay88), each island's sea chart shows its own map,
+  the Greatfish merchant stays on his raft (jslay88), and resizing the window on Linux no longer crashes
+  (pdale-boop). On Wayland the game runs at full speed (jslay88).
+- **New, off by default:** the developers' stage select, with 468 places to jump to from your own file (thanks to
+  pdale-boop).
+- **Linux:** portable mode, a working texture-pack folder picker (thanks to jkoehler11), and the build container
+  (thanks to cforain).
+- **Android, experimental:** build it yourself from your own disc on a Windows PC (thanks to LiquidAzir). See
+  docs/ANDROID.md.
+
+Known issues: with Smooth Motion above 60 FPS, clouds and the HD look can flicker on some PCs (#136; a fix is in
+progress in #371). The Wind Temple's rooms R04 and R08 need an opt-in switch to load (#318).
+
 ## Checks before publishing
 
 | Check | Who | Result |
 | --- | --- | --- |
-| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | not yet |
+| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | The freeze pull request; the candidate commit is filled in when it merges |
 | Windows build from the candidate on Chris's PC, with the play checks in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) sections 1 and 2 | Chris's PC | not yet |
 | Linux AppImage from a contributor's own disc; `check_appimage_abi.py` at 2.39; the release check | cforain or jkoehler11 | not yet |
 | The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | not yet |

@@ -34,7 +34,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 ## Where things stand on October 17
 
 **The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
-Nothing has been released since. The [next release's draft](status/RELEASE_NEXT_DRAFT_2026-10-11.md) lists what
+Nothing has been released since. The [next release's draft](status/RELEASE_0.8.0.md) lists what
 `main` has, with its checks. 0.8.0 waits for the HD work (Chris, October 12). The October 15 version of this section
 is in [the October 15 snapshot](status/GOAL_LOOP_2026-10-15.md).
 
@@ -86,8 +86,10 @@ until their generated code is made at build time from the player's own translati
 
 1. #347 (Android HD import): CI on `main` with #315, then its Android phone and lifecycle checks.
 2. #368 in parts, each built and played on the Mac before it merges.
-3. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage, PadMint's `player-check.sh`, and
-   the benchmark tour against 0.7.0. While its release build runs on someone's PC, merge only docs into `main`.
+3. The 0.8.0 candidate ([RELEASE_0.8.0.md](status/RELEASE_0.8.0.md)): the freeze pull request sets the version;
+   then the Windows build on Chris's PC ([WINDOWS_BUILD_0.8.0.md](status/WINDOWS_BUILD_0.8.0.md)), a Linux AppImage
+   from a contributor's own disc (after #374), the app-only IPA and PadMint's `player-check.sh`, the 468-place sweep
+   and the benchmark tour against 0.7.0. While its release build runs on someone's PC, merge only docs into `main`.
 4. Speed, horizon 2: the tour's first run; the natives rounds once they're generated at build time; then profile
    what is left, one measured change per pull request.
 
