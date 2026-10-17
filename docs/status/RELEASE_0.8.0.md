@@ -11,7 +11,7 @@ publishes.
 | --- | --- |
 | Version | 0.8.0, build 7 (`version.json`, set by the freeze pull request) |
 | Candidate commit | The freeze pull request's merge commit, recorded here once it merges: what the Windows build, the AppImage and the IPA are built from |
-| RecompCore | `77d4717d868cec8b4014932bb22978c284a535a7` (through patch 0180: the HD look, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371) |
+| RecompCore | `338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4` (through patch 0182: the HD look and its sea fixes, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371 and 0181 to draft #342) |
 | Previous release | 0.7.0, October 10 (`66b33be`) |
 
 While the candidate is being built and checked, only docs and fixes for what the checks find go into `main`.
@@ -62,10 +62,11 @@ While the candidate is being built and checked, only docs and fixes for what the
 | **The HD look on the sea:** cloud shadows without square steps, and no banding (#379, RecompCore#41) | #371 | Every platform | M3 Max: the straight-edged band across Outset's sea gone, before and after from the same host | Vulkan and Direct3D 12, where it was reported |
 | **Windows: older GPUs without Direct3D 12 draw through Direct3D 11** instead of a black screen: the builder ships `d3dcompiler_47.dll` (#377) | none (a GTX 550 Ti on Discord) | Windows | Builder test; the player's log shows the cause | A PC without Direct3D 12 |
 | Elliott Tate's seventh natives round (libm, collision blocks, rotations, geometry, JASystem) and `cache_ops.py`, behind `--native-entries` and `--cache-ops`, off by default; the replay generated at build time (jslay88, #361) | #179 | Windows, Linux builders | 60,000 leaf cases, no mismatches, on four leaves; 14 minutes of play | A measured build with it on |
+| Two more native sets, linked only when asked: `--native-set4` (colour blends, key-frame animation, collision setup) and `--native-gx` (the GX FIFO writers); no hooks yet, so nothing in them runs (jslay88, #365, #366, through #381) | #179 | Windows, Linux builders | The sources and comparison tests compile; CI | A build with the switches on; hashes from a BlueWake module before any hook |
+| Linux: a Docker layer error is explained as the build cache, and the container build no longer prints a "sensitive data" warning (#382) | #56 | Linux builder | The Linux CI job builds the Dockerfile | none |
 
 Not in it yet: the Android HD import (#347, draft), the iOS menu-switch change (#316), the first cold-cache Picto Box
-photo (#342), Smooth Motion without the flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 5
-and 4 (#365, #366). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
+photo (#342), Smooth Motion without the flicker (#371) and one desktop menu (#368, coming in five parts). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
 [PRIORITIES.md](../PRIORITIES.md).
 
 ## Release notes (draft, for the release page)
@@ -101,6 +102,25 @@ Windows and Linux builds.
 
 Known issues: with Smooth Motion above 60 FPS, clouds and the HD look can flicker on some PCs (#136; a fix is in
 progress in #371). The Wind Temple's rooms R04 and R08 need an opt-in switch to load (#318).
+
+## After publishing
+
+Post on each issue that 0.8.0 has the change and ask the reporter to confirm. Close an issue only when the reporter
+does (AGENTS.md).
+
+| Issue | What to ask |
+| --- | --- |
+| #56 Linux support | Whether the AppImage starts and plays, on their distribution and on the Steam Deck |
+| #57 The Wii U HD look and textures | Whether the HD look and the in-app import work for them |
+| #70 Ultrawide | Whether 21:9 under Mods looks right |
+| #75 Android | Point to ANDROID.md; it stays experimental |
+| #108 A hotkey for the HD look | Whether F2 works |
+| #136 Flickering clouds and waves | Keep open: the Smooth Motion fix is #371, not in 0.8.0 unless it lands first |
+| #188 Gyro aim, #244 swap L and R, #245 the D-pad in menus | Whether each option works with their controller |
+| #263 Each island's own sea chart | Whether every island shows its own map with no variable set |
+| #267 Lenzo's Picto Box photos | Whether Lenzo accepts the photos |
+| #320 The same hotkeys everywhere | Whether the keys match on their platform |
+| #325 Resizing on Linux | Whether resizing and fullscreen keep drawing |
 
 ## Checks before publishing
 
