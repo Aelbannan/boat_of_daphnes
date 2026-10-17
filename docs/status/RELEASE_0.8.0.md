@@ -61,11 +61,12 @@ While the candidate is being built and checked, only docs and fixes for what the
 | **The HD look, softer:** sun shadows off by default (their streaks), gentler ambient occlusion, cloud shadows, bloom and far blur (#321) | #57 | Every platform | Chris's iPad Pro (October 15); irregularthanis's Radeon screenshots on #371 showed the streaks and darkening it removes | A look on Windows and Linux |
 | **The HD look on the sea:** cloud shadows without square steps, and no banding (#379, RecompCore#41) | #371 | Every platform | M3 Max: the straight-edged band across Outset's sea gone, before and after from the same host | Vulkan and Direct3D 12, where it was reported |
 | **Windows: older GPUs without Direct3D 12 draw through Direct3D 11** instead of a black screen: the builder ships `d3dcompiler_47.dll` (#377) | none (a GTX 550 Ti on Discord) | Windows | Builder test; the player's log shows the cause | A PC without Direct3D 12 |
+| Elliott Tate's seventh natives round (libm, collision blocks, rotations, geometry, JASystem) and `cache_ops.py`, behind `--native-entries` and `--cache-ops`, off by default; the replay generated at build time (jslay88, #361) | #179 | Windows, Linux builders | 60,000 leaf cases, no mismatches, on four leaves; 14 minutes of play | A measured build with it on |
 
-Not in it yet: the Android HD import (#347, draft), the softer HD look (#321, on Chris's iPad and awaiting his
-assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box photo (#342), Smooth Motion without the
-flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 4, 5 and 7 (#366, #365, #361).
-Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and [PRIORITIES.md](../PRIORITIES.md).
+Not in it yet: the Android HD import (#347, draft), the iOS menu-switch change (#316), the first cold-cache Picto Box
+photo (#342), Smooth Motion without the flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 5
+and 4 (#365, #366). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
+[PRIORITIES.md](../PRIORITIES.md).
 
 ## Release notes (draft, for the release page)
 

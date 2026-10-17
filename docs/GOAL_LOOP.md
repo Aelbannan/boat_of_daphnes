@@ -54,7 +54,8 @@ runtime architecture docs (#337). The September records and the old ledgers move
 | Android | None: build it yourself, experimental ([ANDROID.md](ANDROID.md)) | The port (#93): Outset at full speed on the Fold 7 | The HD import (#347); other phones; a Bluetooth controller with the D-pad option; #238 |
 
 **The Wind Waker HD look** is in `main`, off by default, on every build; F2 switches it on the desktop
-([WWHD_LOOK.md](WWHD_LOOK.md)). A softer version is draft #321. pdale-boop's draft #371 (RecompCore#40) stops the
+([WWHD_LOOK.md](WWHD_LOOK.md)). The softer default is in (#321), and the square cloud shadows and banding on the sea are fixed
+(#379, RecompCore#41). pdale-boop's draft #371 (RecompCore#40) stops the
 look and the clouds flickering with Smooth Motion above 60 FPS (#136).
 
 **HD textures:** Mods › Wind Waker HD textures › Import from Wind Waker HD… makes a pack from your own HD dump or
@@ -63,12 +64,11 @@ pdale-boop's own dump (3,546 textures); generated images pass on an Android emul
 needed: a Windows import, an authentic WUD/WUX image, and an iPhone or iPad import.
 
 **Speed:** behaviour timing is the Windows and Linux default (#335). The benchmark tour exists now (#360) and gets
-its first run on a disc with the next candidate. Elliott's natives rounds 4, 5 and 7 (#366, #365, #361) are on hold
-until their generated code is made at build time from the player's own translation instead of committed.
+its first run on a disc with the next candidate. Elliott's natives round 7 is in `main` behind `--native-entries` (#361,
+jslay88), its replay generated at build time from the player's own translation; rounds 5 and 4 (#365, #366) follow.
 
 ### Waiting on Chris
 
-- **#321:** whether the softer HD look is right (on Chris's iPad Pro since October 15).
 - **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks; #342
   also needs its conflicts with `main` resolved.
 - **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
@@ -76,7 +76,7 @@ until their generated code is made at build time from the player's own translati
 
 ### Waiting on contributors
 
-- **jslay88:** #361, #365 and #366 generating their `_gen.inc` files at build time, with Elliott credited.
+- **jslay88:** #365 and #366 marked ready (round 7 is in, #361).
 - **pdale-boop:** #368 in five pull requests (Chris builds each on the Mac); #371 rebased on `bluewake-next`;
   a Windows HD import.
 - **LiquidAzir:** a Bluetooth controller with the D-pad option; other phones are welcome from anyone.
@@ -117,7 +117,7 @@ One pull request per row, measured on the benchmark (headless, unpaced, from sav
 
 | Step | Notes |
 | --- | --- |
-| Natives rounds 4, 5 and 7, with Elliott's comparison tests | jslay88's #361, #365 and #366: four round-7 leaves match a lean BlueWake module; on hold until the generated code is made at build time. #179: the tests compare guest state only (#359); real guest differences remain |
+| Natives rounds 4, 5 and 7, with Elliott's comparison tests | Round 7 in `main` behind `--native-entries` (#361): four leaves certified on a lean BlueWake module, the replay generated at build time. Rounds 5 and 4 in #365 and #366. #179: the tests compare guest state only (#359) |
 | Elliott's upload and vertex changes (RecompCore `6f52a68` to `400728a`) | Merged by hand with patch 0157; dungeon maps, HD packs and lava colours checked before and after |
 | A native compiled from the decompilation's source (`__ieee754_fmod`) | In `main`, not hooked (#364); the yes or no against round 7's replayed fmod comes with #361 |
 | The host's per-call checks as one flag the module reads inline | After #242; measure on ARM |
