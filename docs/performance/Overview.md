@@ -169,15 +169,19 @@ BlueWake's game logic, compatibility services, graphics conversion, and native
 presentation run in one process, but they do not necessarily compete on the
 same thread or wait for the same resource.
 
-| Domain | Work being measured | Useful evidence | Architecture owner |
-| --- | --- | --- | --- |
-| Translated game execution | Native translations of DOL and REL instructions, dispatch, and generated helper calls | Game-thread utilization and translated symbols in a CPU profile | [Game module](../architecture/GameModule.md) |
-| Guest-state access | Register synchronization, guest-address resolution, memory helpers, and execution bookkeeping | Hot guest-memory or dispatch helpers and guest checkpoints | [Guest state](../architecture/GuestState.md) |
-| Compatibility services | MMIO, deadlines, callbacks, interrupts, audio, input, disc, and storage work | Service symbols, deadline activity, audio diagnostics, and session events | [Services](../architecture/Services.md) |
-| Host coordination | Module dispatch, host hooks, lifecycle, persistence, and frame coordination | Host symbols, callback frequency, and session timing | [Host](../architecture/Host.md) |
-| GX processing | Gather-pipe and display-list interpretation, graphics-state conversion, and renderer command construction | GX-worker utilization and GXRuntime or Aurora symbols | [Graphics](../architecture/Graphics.md#gx-command-path) |
-| GPU and presentation | Dawn backend submission, native GPU execution, synchronization, display pacing, and Smooth Motion | Backend selection, GPU or present waits, frame-pacing logs, and rendered results | [Graphics](../architecture/Graphics.md#textures-frame-buffers-and-presentation) |
-| Build and code generation | Compiler selection, generated-code transformations, optimization profiles, and code layout | Matched build receipts, module size, compile logs, and repeatable runtime comparisons | [Build](../architecture/Build.md) |
+The metric column names the quantities compared before and after a change. The
+evidence column names the runtime record or profiler used to obtain and explain
+those numbers.
+
+| Domain | Work being measured | Primary performance metrics | Useful evidence | Architecture owner |
+| --- | --- | --- | --- | --- |
+| Translated game execution | Native translations of DOL and REL instructions, dispatch, and generated helper calls | Game frames or retraces per second; game-thread busy percentage; instructions or cycles per retrace; CPU self-time | Game-thread utilization and translated symbols in a CPU profile | [Game module](../architecture/GameModule.md) |
+| Guest-state access | Register synchronization, guest-address resolution, memory helpers, and execution bookkeeping | CPU self-time in access helpers; resolver calls, alias iterations, or memory accesses per retrace | Hot guest-memory or dispatch helpers, optional resolver counters, and guest checkpoints | [Guest state](../architecture/GuestState.md) |
+| Compatibility services | MMIO, deadlines, callbacks, interrupts, audio, input, disc, and storage work | Service CPU self-time; calls, callbacks, interrupts, or deadline checks per retrace | Service symbols, deadline activity, audio diagnostics, and session events | [Services](../architecture/Services.md) |
+| Host coordination | Module dispatch, host hooks, lifecycle, persistence, and frame coordination | Host CPU self-time; dispatches or host turns per retrace; callback rate | Host symbols, callback frequency, and session timing | [Host](../architecture/Host.md) |
+| GX processing | Gather-pipe and display-list interpretation, graphics-state conversion, and renderer command construction | GX-worker busy percentage; game-thread GX wait time; GX CPU self-time; draws per frame | GX-worker utilization and GXRuntime or Aurora symbols | [Graphics](../architecture/Graphics.md#gx-command-path) |
+| GPU and presentation | Dawn backend submission, native GPU execution, synchronization, display pacing, and Smooth Motion | Displayed frames per second; encode and present time; GPU or present wait time; seconds below target | Backend selection, GPU or present waits, frame-pacing logs, and rendered results | [Graphics](../architecture/Graphics.md#textures-frame-buffers-and-presentation) |
+| Build and code generation | Compiler selection, generated-code transformations, optimization profiles, and code layout | Training and compile wall time; module size; resulting instructions per retrace | Matched build receipts, module size, compile logs, and repeatable runtime comparisons | [Build](../architecture/Build.md) |
 
 A low rendered frame rate does not identify the GPU as the cause. For example,
 a saturated game thread can leave both the graphics worker and GPU waiting.
