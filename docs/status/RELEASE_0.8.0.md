@@ -56,6 +56,8 @@ While the candidate is being built and checked, only docs and fixes for what the
 | Picto Box photos under widescreen keep their 4:3 shape, opt-in (`picto_crop=1` on Windows, `BLUEWAKE_PICTO_CROP=1` on Mac and Linux; pdale-boop, #338 with RecompCore#37) | none | Windows, Mac, Linux | Windows and Arch at 16:9, 16:10 and 21:9 | The Mac |
 | Mac builds work with Mono or Homebrew SQLite installed (#367) | none | Mac builder | A full private Mac build with the conflicting paths; the regression fails without the fix | PadMint's `player-check.sh` |
 | The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests | The tour's first run on a disc |
+| **Linux AppImage builds pass their own ABI audit:** `--appimage` builds the app with libc++ and Dawn from source, as CI does (#374; found from irregularthanis's build log on #371) | #56 | Linux builder | Contract test; the pinned Dawn package checked to link libstdc++ | An AppImage from a contributor's own disc passing `appimage-abi` |
+| The HD import script picks the same sources on Windows as on Mac and Linux (pdale-boop, #375) | #57 | Windows | pdale-boop's Windows run matched the native pack in every PNG and report field | none |
 
 Not in it yet: the Android HD import (#347, draft), the softer HD look (#321, on Chris's iPad and awaiting his
 assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box photo (#342), Smooth Motion without the
