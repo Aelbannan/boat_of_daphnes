@@ -29,10 +29,11 @@
 | **Windows** 10 or 11 | [Download the ready-made build](#windows) and choose your disc image |
 | **iPhone or iPad** | [Build your own app](#iphone-and-ipad) on an Apple Silicon Mac, then install it |
 | **Mac** (Apple silicon) | [Build your own app](#mac) from this repository |
-| **Apple TV** | Follow the [tvOS build guide](docs/status/TVOS_BUILD.md) (experimental) |
+| **Apple TV** | Follow the [tvOS build guide](docs/TVOS_BUILD.md) (experimental) |
 | **Linux** (x86-64) | [Build the native version](docs/LINUX.md); a ready-made download is not published yet |
+| **Android** (arm64) | [Build your own APK](docs/ANDROID.md) on a Windows PC (experimental) |
 
-On Mac, iPhone, iPad and Linux, the app you build contains code translated from your disc. **It is yours
+On Mac, iPhone, iPad, Linux and Android, the app you build contains code translated from your disc. **It is yours
 alone: never share or upload it.**
 
 **Questions or bugs?** Ask on [Discord](https://discord.gg/xwHfUD2bxW) or
@@ -267,12 +268,11 @@ following [the Linux guide](docs/LINUX.md). A ready-made Linux download has not 
 <details>
 <summary><strong>Is there an Android version?</strong></summary>
 
-The Android port is still in review ([#93](https://github.com/chrissotraidis/bluewake/pull/93)). It builds
-from your own disc and plays on a Galaxy Z Fold 7. The latest cool-start check at Outset's pier reached
-90.4% of full speed (October 13). Saving/loading and controller handoff have been checked there;
-the next timing comparison, reordered Mods menu and controller D-pad checks remain open.
-Native HD texture import is being added in [draft #347](https://github.com/chrissotraidis/bluewake/pull/347).
-There is no supported Android release yet. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75) for news.
+An experimental one, which you build yourself. The Android port ([#93](https://github.com/chrissotraidis/bluewake/pull/93),
+by LiquidAzir) is in `main` since October 17: [the Android guide](docs/ANDROID.md) builds an APK from your own
+disc on a Windows PC. It has been checked on a Galaxy Z Fold 7, where Outset runs at full speed. There is no
+ready-made APK, because it would hold game code. Follow [#75](https://github.com/chrissotraidis/bluewake/issues/75)
+for news.
 
 </details>
 
@@ -349,9 +349,9 @@ unless you pick specific ones, since they compete with the main textures. You do
 <details>
 <summary><strong>BlueWake.exe does nothing when I open it</strong></summary>
 
-The most common cause is an older processor. The Windows build needs a CPU with AVX2 (Intel Haswell
-from 2013, AMD Ryzen, or newer) and stops before showing any message without it. Check your CPU in
-**Settings › System › About**.
+First check your processor. The Windows build needs a CPU with AVX2 (Intel Haswell from 2013, AMD
+Ryzen, or newer). Without it, BlueWake shows "BlueWake can't run on this processor" and closes. Check
+your CPU in **Settings › System › About**.
 
 If your CPU has AVX2:
 
@@ -369,7 +369,7 @@ Don't delete `%APPDATA%\BlueWake` to troubleshoot: it holds your saves and setti
 - [Build your own BlueWake](docs/BUILD_YOUR_OWN.md): the player's guide for iPhone, iPad and Mac
 - [BlueWake on Windows](docs/WINDOWS.md): playing and building on Windows
 - [BlueWake on Linux](docs/LINUX.md): building and playing on Linux and the Steam Deck
-- [Apple TV build](docs/status/TVOS_BUILD.md) and [device build options](docs/status/DEVICE_BUILD.md)
+- [Apple TV build](docs/TVOS_BUILD.md) and [device build options](docs/DEVICE_BUILD.md)
 - [Mods](docs/MODS.md), [Wind Waker HD textures](docs/WWHD_TEXTURES.md) and the
   [developers' stage select](docs/STAGE_SELECT.md)
 - [The Builder](docs/BUILDER.md): how the build works, and reusing it for other ports
@@ -397,7 +397,8 @@ Don't delete `%APPDATA%\BlueWake` to troubleshoot: it holds your saves and setti
 - [Ian MacFarlane (@iannotian)](https://github.com/iannotian), for the Apple TV version
 
 BlueWake is developed with substantial AI assistance for code, testing, documentation and debugging.
-The [engineering log](docs/status/CURRENT.md) records what has been checked, and on what.
+[The plan](docs/GOAL_LOOP.md) and [the priorities](docs/PRIORITIES.md) record what has been checked, and on what;
+older records are in [docs/archive](docs/archive).
 
 ## License and legal
 

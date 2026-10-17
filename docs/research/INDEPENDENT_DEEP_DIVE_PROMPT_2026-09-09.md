@@ -1,5 +1,7 @@
 # Independent BlueWake deep-dive prompt
 
+> Historical research: the Route B prototype this prompt describes (a native build from the decompilation) was later removed, so the `route_b` paths it names no longer exist. Current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 You are an independent senior engineer reviewing BlueWake. Investigate the repository deeply and return an evidence-backed technical report that another implementation agent can save in the repository and use to redirect its goal-based implementation loop. Challenge the existing approach where the evidence warrants it. We need actionable diagnosis and a credible path to a playable native game, not another recap of passing probes.
 
 ## Assignment and authority
@@ -12,13 +14,13 @@ The goal is an authentic Wind Waker application using the user's GZLE01 data: ma
 
 ## Recover the actual state first
 
-Read applicable repository instructions, `docs/archive/PRD.md`, and the operating rules/core iteration/anti-stall/route-pivot sections of `docs/GOAL_LOOP.md`. Read the first authority banners of `docs/status/CURRENT.md` and `docs/archive/status/BLOCKERS.md` before consulting their extensive historical entries. Then inspect:
+Read applicable repository instructions, `docs/archive/PRD.md`, and the operating rules/core iteration/anti-stall/route-pivot sections of `docs/GOAL_LOOP.md`. Read the first authority banners of `docs/archive/status/CURRENT.md` and `docs/archive/status/BLOCKERS.md` before consulting their extensive historical entries. Then inspect:
 
 - `docs/archive/status/NEXT_MODEL_HANDOFF_2026-09-06.md`
-- `docs/status/ROUTE_B_ACTIVE_VERTEX_BINDING_2026-09-06.md`
-- `docs/status/ROUTE_B_PLAYER_COMMAND_EMISSION_2026-09-06.md`
-- `docs/status/PLAYABILITY_CRITICAL_PATH_2026-09-06.md`
-- `docs/status/GATES.md`, `TECH_DEBT.md`, and `FINISH_LINE.md`
+- `docs/archive/status/ROUTE_B_ACTIVE_VERTEX_BINDING_2026-09-06.md`
+- `docs/archive/status/ROUTE_B_PLAYER_COMMAND_EMISSION_2026-09-06.md`
+- `docs/archive/status/PLAYABILITY_CRITICAL_PATH_2026-09-06.md`
+- `docs/archive/status/GATES.md`, `TECH_DEBT.md`, and `FINISH_LINE.md`
 - The dated independent reviews and execution-route decisions relevant to Route A versus Route B, discovered under `docs/status/`.
 
 README and older plans contain stale milestones. Even the latest handoff omits later WIP visible in the current filesystem. Separate policy authority from factual freshness; reconcile claims against code, diffs, build configuration, and evidence. Do not read every historical log indiscriminately.

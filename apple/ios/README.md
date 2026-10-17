@@ -1,8 +1,11 @@
 # BlueWake for iPadOS and iOS
 
-The iOS host builds the same Route A host as macOS (`runtime/host/src`) against GXRuntime,
-Aurora (Metal through Dawn) and SDL3 for UIKit, plus three iOS-only pieces in `src/`: the entry
-shim, the touch controls and a small DSP support shim. It needs recompcore patches 0056-0065. Audio uses Dolphin's high-level Zelda DSP by default
+The iOS host builds the same host as macOS (`runtime/host/src`) against GXRuntime,
+Aurora (Metal through Dawn) and SDL3 for UIKit, plus iOS-only pieces in `src/`: among them the entry
+shim, the touch controls, the disc and save importers and a small DSP support shim. The runtime is the
+RecompCore commit pinned in [scripts/builder/profiles/bluewake.sh](../../scripts/builder/profiles/bluewake.sh)
+(`RECOMPCORE_SHA`), which the builder fetches; to build the app, see
+[Build your own BlueWake](../../docs/BUILD_YOUR_OWN.md) and [the builder](../../docs/BUILDER.md). Audio uses Dolphin's high-level Zelda DSP by default
 (BLUEWAKE_DSP_MODE=lle selects the interpreter). The console's SRAM is emulated on EXI channel 0
 (runtime/host/src/ipl_sram.c, Dolphin's defaults: English, stereo) and kept in
 Documents/BlueWake/sram.bin, so the game plays in stereo and its Stereo/Mono option persists;
@@ -99,7 +102,7 @@ Runs about 13 minutes in one simulator and prints PASS or the failing clauses.
 ## Controls
 
 The touch shell is SunPad's (`src/BWGameOverlay.mm`; transfer record in
-`docs/SUNPAD_TRANSFER.md`): main stick, C-stick, grouped D-pad, A/B/X/Y/Z, Start, L and R over the
+`docs/archive/SUNPAD_TRANSFER.md`): main stick, C-stick, grouped D-pad, A/B/X/Y/Z, Start, L and R over the
 game view, and a three-dot menu at the top right with touch settings (opacity, size, hide with a
 controller, move controls, reset), a layout editor, aspect ratio, game data and saves, and Report a
 Problem. Opening the menu, a panel, the editor or an alert pauses the game until it closes. Touch
@@ -134,7 +137,7 @@ scripts/ios/build_device.sh DISC.iso --identity "Apple Development: ..." \
 ~~~
 
 Prerequisites, the signing and install steps, optional PGO profiles and what was verified are in
-[docs/status/DEVICE_BUILD.md](../../docs/status/DEVICE_BUILD.md). On the device the first-run screen
+[docs/DEVICE_BUILD.md](../../docs/DEVICE_BUILD.md). On the device the first-run screen
 asks only for the disc (the composite is embedded in the app's `Frameworks`); saves and the files
 made from the disc live in the app's `Documents/BlueWake`, which Finder and the Files app can see.
-What to check on the iPad is in [docs/status/IPAD_STATE_2026-09-24.md](../../docs/status/IPAD_STATE_2026-09-24.md).
+What to check on the iPad is in [docs/archive/status/IPAD_STATE_2026-09-24.md](../../docs/archive/status/IPAD_STATE_2026-09-24.md).

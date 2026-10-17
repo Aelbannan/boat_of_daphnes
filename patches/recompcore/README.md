@@ -15,16 +15,16 @@ the render worker paused while the swapchain changes). BlueWake now builds from
 https://github.com/chrissotraidis/RecompCore, branch `bluewake-next`: 9618e9d plus 0114 (one DSP
 interpreter table layout under the Microsoft ABI, so Exact/LLE audio no longer calls address 0
 on Windows), with the same DolRecomp. The Builder fetches it at the commit pinned in
-`scripts/builder/profiles/bluewake.sh`; see docs/status/DEVICE_BUILD.md.
+`scripts/builder/profiles/bluewake.sh`; see docs/DEVICE_BUILD.md.
 
 Patches 0115-0125 add the ordered save, shutdown and audio fixes, opt-in display
 timing, and a render-worker identity fix reproduced with ThreadSanitizer. The stability baseline
 pin was `99e4748002d42c1a86fdcb33a47cd0e97292acff`. Tests and hardware limits are in
-[the local stability ledger](../../docs/status/LOCAL_STABILITY_2026-10-01.md).
+[the local stability ledger](../../docs/archive/status/LOCAL_STABILITY_2026-10-01.md).
 
 Patch 0126 preserves the published in-memory card contents after a directory-sync
 error, while continuing to report the error. Evidence is in
-[the overnight ledger](../../docs/status/OVERNIGHT_2026-10-02.md).
+[the overnight ledger](../../docs/archive/status/OVERNIGHT_2026-10-02.md).
 
 Patch 0127 resumes a paused, already buffered output before the overflow/drop
 path can prevent recovery; its actual SDL dummy-device regression covers the full queue.
@@ -46,16 +46,16 @@ Patches 0131-0135 reconcile the optional global-memory and interpolation work,
 including span and extended-alias safeguards. Patch 0136 directly imports
 Elliott Tate's dual-texture post-transform correction. Patch 0137 preserves those
 matrices in a versioned frontend save-state extension, accepts legacy states,
-and tests direct/indexed FIFO capture and malformed-state rejection. The current
-build pin is `18ba3b642588a33b9e8eac4aba7f713bb8d3d778`; the profile and dependency
-lock are authoritative. New post-texture save states require this or a newer
+and tests direct/indexed FIFO capture and malformed-state rejection. They first
+shipped in pin `18ba3b642588a33b9e8eac4aba7f713bb8d3d778`; the current pin is in the profile and dependency
+lock. New post-texture save states require this or a newer
 runtime; regular memory-card saves are unchanged. BlueWake lava-scene acceptance
 is still required; donor scene results are not transferred.
 
 Patch 0140 changes session logging only: GX batches between 20 and 50 ms are summed
 into one `[gx-slow-sum]` line every ten seconds, and batches of 50 ms or more keep
 their own `[gx-slow]` line. A player's 104-minute Windows log had 33,712 of the old
-lines. Evidence is in [the stability plan](../../docs/status/STABILITY_PLAN_2026-10-03.md).
+lines. Evidence is in [the stability plan](../../docs/archive/status/STABILITY_PLAN_2026-10-03.md).
 
 Patch 0141 is Elliott Tate's slow-game detector for Smooth Motion (his RecompCore
 `0bb1fef`, Wind-Waker-Recomp patch 0122), with his authorship: the median of the last
@@ -135,3 +135,14 @@ Patch 0177 is jslay88's RecompCore #36: the Picto Box reads its actor ids from t
 receiving zero for every pixel. It needs BlueWake's host MMIO handler from #334. Cold-cache alpha-only
 pipeline compilation remains a separate follow-up (RecompCore#39), not part of this pin.
 Mac recognition and remaining checks: [Picto validation](../../docs/status/PICTO_RECOGNITION_2026-10-15.md).
+
+Patch 0178 is pdale-boop's RecompCore #38, for BlueWake #325: on Vulkan, a resized window keeps its surface and keeps
+drawing. A lost surface is configured again (up to 30 times in a row) instead of released at once, which on Linux
+made the replacement surface fail with `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`; between the game's frames the surface
+follows the window's size, so the picture no longer trails behind a window being dragged. The size following is
+Vulkan only. On every backend a suboptimal texture is now drawn and the surface configured again after it.
+
+Patch 0180 is pdale-boop's RecompCore #37, for BlueWake #338: `aurora_set_copy_crop(width, height, fraction)`. A
+texture copy of exactly that size takes `fraction` of its source's width about the frame's middle and is scaled back
+to its full size, as a 4:3 camera would have taken it; `GXCopyTex` and gxcore's EFB copies both use it. Nothing
+changes until a game calls it: BlueWake does for the Picto Box's 152x104 copy, behind `picto_crop=1` (off by default).

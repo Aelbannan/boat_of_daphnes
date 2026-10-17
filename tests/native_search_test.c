@@ -52,8 +52,9 @@
  *
  * Every case the native runs is compared with the translation run from the
  * same state with the same budget (T). Where the native ran the work whole,
- * every byte of the CPU state (the cycle suffix included) and of the test's
- * memory must equal T's. Where it stopped for the window at a strcmp's
+ * the guest CPU fields the checkpoint hash copies (host pointers only as
+ * present or absent; the cycle suffix included) and the test's memory must
+ * equal T's. Where it stopped for the window at a strcmp's
  * return, two more runs: the translation with a budget that ends exactly
  * there (its state must equal the native's, but for the budget itself), and
  * the translation run on from the native's state with the original budget
@@ -73,6 +74,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include "cpu_state_compare.h"
 
 /* direct_calls.c, linked in for the edge filter's state, names these. */
 BwChunkFn bw_find_chunk(u32 address) {
@@ -558,10 +560,7 @@ static void boundary_trouble(unsigned scenario) {
 }
 
 static void report_cpu(const CPUState* got, const CPUState* want) {
-    for (unsigned b = 0; b < sizeof *got; ++b)
-        if (((const u8*)got)[b] != ((const u8*)want)[b])
-            fprintf(stderr, "  CPU byte %u (gpr %u): got %02X want %02X\n", b, b / 4u, ((const u8*)got)[b],
-                    ((const u8*)want)[b]);
+    bluewake_report_cpu_state(got, want);
 }
 
 static void report_ram(const u8* got, const u8* want) {
@@ -698,7 +697,7 @@ int main(int argc, char** argv) {
             if (!accepted) {
                 declined++;
                 trouble_declined += k.boundary_case;
-                if (memcmp(&native, &untouched, sizeof native) != 0 || !areas_equal(before, native_ram) ||
+                if (bluewake_cpu_state_compare(&native, &untouched) != 0 || !areas_equal(before, native_ram) ||
                     memcmp(alias_before, s_alias_native, ALIAS_BYTES) != 0) {
                     fprintf(stderr, "case %u (%s): declined but changed state\n", i, NAMES[which]);
                     report_cpu(&native, &untouched);
@@ -730,7 +729,7 @@ int main(int argc, char** argv) {
                 whole++;
                 zero_results += native.gpr[3] == 0u;
                 found += which != F_STRCMP && native.gpr[3] != 0u;
-                if (t_count != 1u || (t.pc & ~3u) != RETURN_ADDRESS || memcmp(&native, &t, sizeof native) != 0 ||
+                if (t_count != 1u || (t.pc & ~3u) != RETURN_ADDRESS || bluewake_cpu_state_compare(&native, &t) != 0 ||
                     !areas_equal(native_ram, t_ram) || memcmp(s_alias_module, s_alias_native, ALIAS_BYTES) != 0) {
                     fprintf(stderr, "case %u (%s, seed %08X): mismatch (service asked %u times, at %08X; pc %08X)\n",
                             i, NAMES[which], seed, t_count, t_address, t.pc);
@@ -748,7 +747,7 @@ int main(int argc, char** argv) {
                 budgeted.cycle_budget = -native.downcount;
                 CPUState r = run_module(&budgeted, before, entry, &r_count, &r_address);
                 r.cycle_budget = native.cycle_budget;
-                if (r_count != 0u || memcmp(&native, &r, sizeof native) != 0 ||
+                if (r_count != 0u || bluewake_cpu_state_compare(&native, &r) != 0 ||
                     !areas_equal(native_ram, s_reference_ram)) {
                     fprintf(stderr, "case %u (%s, seed %08X): the translation stopped there differs (service "
                                     "asked %u times, pc %08X)\n",
@@ -760,7 +759,7 @@ int main(int argc, char** argv) {
             }
             /* The translation on from there: where T ends, as T. */
             CPUState r = run_module(&native, native_ram, native.pc, &r_count, &r_address);
-            if (r_count != t_count || r_address != t_address || memcmp(&r, &t, sizeof r) != 0 ||
+            if (r_count != t_count || r_address != t_address || bluewake_cpu_state_compare(&r, &t) != 0 ||
                 !areas_equal(s_reference_ram, t_ram)) {
                 fprintf(stderr, "case %u (%s, seed %08X): the translation on from the native differs (service "
                                 "asked %u/%u times, at %08X/%08X)\n",

@@ -1,13 +1,13 @@
 # Making BlueWake faster
 
 How BlueWake gets faster, in three steps of growing size, and how to prove each step. [GOAL_LOOP.md](GOAL_LOOP.md)
-says which step is being done on which day. Owner: Chris. Updated October 15, 2026; add every result to "Results".
+says which step is being done on which day. Owner: Chris. Updated October 17, 2026; add every result to "Results".
 
 **Current defaults:** #335 is merged with Chris's approval: new Windows/Linux builds use behaviour timing;
 `--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
 The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
-comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
-opt-out; final review/CI of the app-only cached-module validation follow-up remain before merging. Earlier measurements below retain their original dates.
+comparison now reaches full speed at Outset on the Fold 7. The Android builder (#93, merged October 17) inherits
+the timing default and has the same opt-out. Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -21,7 +21,7 @@ biggest cut first, and to measure every change the same way.
 
 | Horizon | When | Change | Expected | Gate |
 | --- | --- | --- | --- | --- |
-| **1. Lean what we have** | 0.6.1 and 0.7.0, days | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; slower on Android in #93, so it needs separate defaults; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
+| **1. Lean what we have** | 0.7.0 and the next two weeks | Lean block copies (`--lean-blocks`, on by default). Elliott's work since October 3: draw fusion, faster single loads and return dispatch, natives rounds 4, 5 and 7. Hidden symbols in the game module (Linux in #218; slower on Android in #93, so it needs separate defaults; Mac and iPhone to try). Smooth Motion keeps its frames on big CPUs and recovers in a second, starts off on four threads or fewer. Say when the renderer falls back. | Measured: 5 to 12% faster from lean blocks, 9 to 10% on slow Linux cores from hidden symbols; fewer visible drops | Outset at least 10% faster, and the game plays the same |
 | **2. Behavior, not cycles** | 0.8, weeks | First timing step in `main`: prepaid blocks, with the budget checked at loops and calls. Further work: natives for loops that cross chunks most (collision, J3D drawing, particles), cached static display lists and the graphics thread on four-core CPUs. | Timing: 7–9% on Mac, 7–11% on Intel desktops, 9% on Deck; results and play evidence below | Timing default on Windows/Linux (#335); other platforms and further changes keep their own measurement and play gates |
 | **3. Follow the decompilation** | Months | Drawing at the GX/J3D API level through Aurora, then matched scenes ported from source | The largest; the HD project's draw batching alone was worth 47 to 53% | Each piece checked against the recompilation |
 
@@ -80,7 +80,7 @@ the same"; correctness fixes keep the strict cycle-exact comparison.
 | `--lean-blocks` on by default for Windows and Linux (and Android, which uses the Windows defaults) | **Accepted by Chris, October 10,** on #208's numbers: 5 to 8% on fast cores, 8 to 12% on slow and four-core CPUs, played the same. `--no-lean-blocks` builds the conservative copies. | Chris |
 | Draw fusion (RecompCore patch 0166) on by default | **On for Windows** (Elliott tested it there) **and Linux** (jkoehler11 on a Steam Deck, #215: a tenth of the draws, the GX worker from 45% to 24%, nothing missing on screen; the Deck's frame rate is set by the game thread, so it stays about 27); off on Mac and iPhone until played on each, and on Android, where it halves the draws but not the game thread's work (#93). `DOL_GX_FUSE` overrides it. | Chris, October 10; Linux October 11 |
 | Lean memory, lean deadlines and the lazy overlap watch | **Defaults since #277** in the Windows/Linux builders and host. #297 is merged: training keeps the full watch only until opening player control, then profiles the lazy path. Apple preparations remain opt-in. | Chris, October 12 |
-| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes, with final review/CI of the app-only validation follow-up pending. | Chris, October 15 (JST) |
+| Behaviour timing as the Windows/Linux default | **Approved by Chris; #335 merged.** Benchmarks plus Deck cutscene/music/sailing and Windows menu, stage, Picto and general-play checks. `--no-behaviour-timing` disables it; `--conservative` keeps plain translation. Mac/iOS remain opt-in. Android #93 inherits this default; its Fold 7 cool-start comparison now passes. | Chris, October 15 (JST) |
 
 ## Results
 
@@ -178,6 +178,10 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
 
+**Written, not yet run on a disc** (jslay88's #360, merged October 17): `scripts/bench_tour.py` does what this
+section describes, and `tests/test_bench_tour.py` checks it with made-up log lines. The first run on a real build is
+due with the next release candidate; then replace this line with the stops that ran and their numbers.
+
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.
 
@@ -220,14 +224,15 @@ with the real stop list. About a day.
 
 One pull request each. They don't recompile the game module, so each is minutes to build.
 
-**2a. Say when the renderer falls back** (lever 4). After Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
+**2a. Say when the renderer falls back** (lever 4). **Done in 0.7.0** (RecompCore patch 0163): the log names the renderer on every desktop build, and on Linux a notice says so on screen for the first 20 seconds when Aurora falls back to OpenGL. The plan was: after Aurora starts, read the backend it actually chose: the `backend` field of the `AuroraInfo` that
 `aurora_initialize` returns in RecompCore's `dol_aurora_initialize` (`GXRuntime/backends/aurora/aurora_backend.cpp`),
 which needs a small getter there, for example `dol_aurora_backend()`. `aurora_get_backend()` is not it: it returns the
 requested backend (usually `BACKEND_AUTO`). On Linux, if it isn't Vulkan, and on Windows, if it isn't D3D12 or Vulkan, write
 `[renderer] fell back to NAME: ...` to the log and show a notice once on screen that names what to install
 (Linux: the Vulkan loader, `libvulkan1` / `vulkan-loader`). The getter goes to RecompCore; the message is host code (`runtime/host/src`, `linux/src`). *Check:* Linux CI; ask fehnomenal or jkoehler11 to confirm with Vulkan missing (#107).
 
-**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). In RecompCore
+**2b. Smooth Motion keeps its frames when the CPU has cores to spare** (lever 3). **Half done in 0.7.0** (patch 0164):
+with 8 threads or more, a slow game keeps its in-between frames; the quicker return after a drop is still to do. In RecompCore
 `GXRuntime/graphics/aurora/lib/gfx/frame_interp.cpp`, `slow_game` and `pace_steps` drop in-between frames
 whenever the game runs slow, and after a slow drop wait 3 s, then double up to `kCalmMostSlow` (2 minutes). Change
 two things. With `std::thread::hardware_concurrency() >= 8`, a slow game alone no longer drops in-between frames;
@@ -437,7 +442,7 @@ BlueWake emulates the GameCube's cycle timing (each block charges cycles, stores
 converts the game's raw GX command stream on the CPU. On the one function measured on September 22
 (`J3DSys::reinitTevStages`), the translation is 5.8 emitted statements per guest instruction: 21% are pc stores
 and 9% cycle bookkeeping. Compiled from the decompilation's source, the same function is 0.91 host instructions
-per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.md), September 22).
+per guest instruction, six to thirty times cheaper ([CURRENT.md](archive/status/CURRENT.md), September 22).
 
 ### Where the decompilation is
 
@@ -447,12 +452,12 @@ per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.
 | October 9 | 79.1% | 87.1% of code, 95.8% of functions | 73.1% | 32,848 of 39,324 (83.5%) |
 
 From [decomp.dev](https://decomp.dev/zeldaret/tww). Add a row each month. The August figure is from
-[DECISIONS.md](status/DECISIONS.md); it was measured differently.
+[DECISIONS.md](archive/status/DECISIONS.md); it was measured differently.
 
 ### Route B, the source port BlueWake already tried
 
 In August and September BlueWake built a native port from the decompilation's source alongside the recompilation
-("route B"; its records are [DECISIONS.md](status/DECISIONS.md) and `docs/status/ROUTE_B_*.md`; the code itself
+("route B"; its records are [DECISIONS.md](archive/status/DECISIONS.md) and `docs/archive/status/ROUTE_B_*.md`; the code itself
 is not in this repository). It drew the original Nintendo logo
 through Aurora and compiled most of the process layer. It stopped on porting effort, not speed: the source assumes
 32-bit big-endian types and pointers, and Dusklight (the Twilight Princess port) needed about 1,500 `TARGET_PC`

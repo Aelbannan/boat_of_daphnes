@@ -6,7 +6,7 @@ GPL-3.0-or-later (forced by Dolphin).
 
 > **Reassessment note (2026-08-13):** This document preserves the original
 > pinned-SHA audit, but its final rejection is superseded by
-> `../FEASIBILITY_REASSESSMENT_2026-08-13.md`. A newer second opinion reports
+> `../archive/FEASIBILITY_REASSESSMENT_2026-08-13.md`. A newer second opinion reports
 > a demonstrated no-runtime-PowerPC-JIT iOS mode in SunPad and existing
 > RecompCore REL address remapping. Those facts make a bounded prototype
 > credible. No Wind Waker module or runtime has yet been tested.

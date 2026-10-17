@@ -7,6 +7,10 @@ set(BLUEWAKE_HOST_SRC "${BLUEWAKE_REPO_ROOT}/runtime/host/src")
 set(BLUEWAKE_ENABLE_DSP_ADAPTER OFF CACHE BOOL "" FORCE)
 option(BUILD_TESTING "Register host tests alongside the training host" OFF)
 include(CTest)
+# Both the training host and packaged Mac app use Aurora's pinned static SQLite.
+# System discovery can mix Mono's old headers with Homebrew's dylib, which the
+# app cannot ship with. This also bypasses those paths in existing CMake caches.
+set(CMAKE_DISABLE_FIND_PACKAGE_SQLite3 TRUE)
 add_subdirectory("${BLUEWAKE_REPO_ROOT}/runtime/host" host)
 set(_donor ${BLUEWAKE_REPO_ROOT}/ref/recompcore)
 set(_dsp ${_donor}/Source/Core/Core/DSP)

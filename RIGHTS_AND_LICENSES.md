@@ -28,10 +28,11 @@ The import retains its attribution. Certification scripts record hashes and
 modify only a player's locally generated source; translated bodies stay private.
 
 BlueWake's source is published here. Mac, iPhone and iPad apps are built by each player from their own
-disc ([docs/BUILD_YOUR_OWN.md](docs/BUILD_YOUR_OWN.md)). One exception: the maintainers publish a
-ready-made Windows build on the Releases page, as Wind Waker Recomp did. It contains code translated
-from the game but no disc image, game assets, saves or console keys, and it needs the player's own
-disc. It will be taken down if the rights holder asks.
+disc ([docs/BUILD_YOUR_OWN.md](docs/BUILD_YOUR_OWN.md)). Two exceptions: the maintainers publish a
+ready-made Windows build on the Releases page, as Wind Waker Recomp did, and may publish a ready-made
+Linux build under the same rules (none has been published yet). These contain code translated from the
+game but no disc image, game assets, saves or console keys, and they need the player's own disc. They
+will be taken down if the rights holder asks.
 
 ## Game content
 
@@ -52,7 +53,7 @@ the GPL.
 
 Better Wind Waker, the widescreen code from Dolphin's game settings and HD texture packs are the work
 of their authors and keep their own terms. The repository carries only the widescreen code's text
-(`mods/widescreen/GZLE01.gecko` and its 16:10 variant) and the option-site descriptions derived from
+(`mods/widescreen/GZLE01.gecko` and its 16:10 and 21:9 variants) and the option-site descriptions derived from
 Better Wind Waker. Personal builds translate both behaviors at those sites from the player's disc;
 the settings select which behavior runs. You add texture packs yourself.
 
@@ -62,6 +63,12 @@ keys are personal data and must never be included in a public release. The
 vendored Wii U surface address library is AboodXD's BFRES-Tool addrlib under
 GPL-3.0-or-later; its license, copyright and pinned source are recorded in
 `scripts/wwhd/vendor/`. Format reader attribution is in `docs/WWHD_TEXTURES.md`.
+
+The native importer in `runtime/host/src/wwhd/` uses the AES and SHA-1 sources
+already tracked in the pinned RecompCore's `Externals/mbedtls` (Mbed TLS 2.28.0,
+Apache-2.0). These sources retain their copyright notices; the apps include
+their license. No console keys are compiled into the importer. Its encrypted
+disc tests generate toy images with deliberately synthetic keys.
 
 ## Stage select names
 
