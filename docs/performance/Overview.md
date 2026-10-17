@@ -9,6 +9,10 @@
 - [Profiling](#profiling)
 - [Benchmarking](#benchmarking)
 - [Training and PGO](#training-and-pgo)
+  - [What a PGO profile is](#what-a-pgo-profile-is)
+  - [Mechanical steps](#mechanical-steps)
+  - [What the profile changes](#what-the-profile-changes)
+  - [Coverage and limits](#coverage-and-limits)
 - [Tuning](#tuning)
 - [Evidence and results](#evidence-and-results)
 
@@ -299,6 +303,52 @@ game module`"]
     Profile --> Final
     Prepared --> Final --> Module
 ```
+
+### What a PGO profile is
+
+In this section, a **profile** is an LLVM instrumentation profile: a database of
+how often instrumented parts of the program executed during the training
+playbacks. The word is also used elsewhere in the repository for two different
+things:
+
+| Meaning | Artifact | Question it answers |
+| --- | --- | --- |
+| PGO instrumentation profile | `*.profraw`, then `composite.profdata` | Which functions and control-flow paths did the training workload execute, and how frequently? |
+| CPU sampling profile | Linux `perf.data`, macOS `sample.txt`, or a platform profiler capture | Where did the running process spend CPU time? |
+| BlueWake build profile | [`scripts/builder/profiles/bluewake.sh`](../../scripts/builder/profiles/bluewake.sh) | Which game, dependency revisions, build hooks, and expected generated-source digest should the builder use? |
+
+Only the first artifact is consumed by Clang for PGO. A `perf.data` capture may
+show that a function is expensive, but it cannot be passed to
+`-fprofile-instr-use`. Conversely, `composite.profdata` records execution
+frequency rather than sampled CPU duration, so it does not by itself say which
+function took the most wall time.
+
+The instrumented module writes one or more binary `*.profraw` files. Each file
+contains counter values associated with the instrumented program's functions
+and control-flow regions, together with the identity information LLVM needs to
+interpret those counters. BlueWake gives the files distinct module and process
+names through `LLVM_PROFILE_FILE`, allowing independent training playbacks to
+write within the same training attempt without overwriting one another.
+
+`llvm-profdata merge` combines those raw files into the indexed
+`composite.profdata` database. Counts from repeated or concurrent playbacks are
+aggregated: a route executed more often contributes more weight. The merged
+profile no longer represents a timeline or an individual scene; it represents
+the total frequency distribution of the complete training workload.
+
+During the final compile, Clang matches profile records to the corresponding
+functions and control-flow structure in the prepared source. Function identity
+and instrumentation hashes prevent arbitrary counter arrays from being applied
+to unrelated code. BlueWake adds a stronger build-level guard by fingerprinting
+the prepared source, compiler, options, runtime, host playback code, and recipe
+before reusing the profile.
+
+For inspection, `llvm-profdata show --all-functions composite.profdata` reports
+the recorded functions, their execution counts, and their counter data. The
+builder uses that view to confirm that translated `func_*` functions actually
+ran and to identify chunks with no recorded execution for optional cold-source
+tiering. The binary profile is a compiler input, not a source file, save state,
+replay, call graph, or packaged runtime asset.
 
 ### Mechanical steps
 
