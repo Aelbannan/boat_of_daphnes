@@ -92,10 +92,11 @@ void aurora_set_fps_overlay(bool) {}
 '''
 
 CHECK_HD = r'''
-void check_hd(int on, int bloom_on) {
+void check_hd(int on, int bloom_on, int sun_on) {
     assert(bluewake_hd_distant_islands == bool(on));
     assert(bloom == bloom_on && far_blur == on && ao == on);
-    assert(g_clouds == on && g_sun == on && g_edge == on && g_torch == on);
+    // The HD look switch leaves sun shadows off (#321): only their own switch turns them on.
+    assert(g_clouds == on && g_sun == sun_on && g_edge == on && g_torch == on);
 }
 '''
 
@@ -158,14 +159,14 @@ class SafeModeHDTest(unittest.TestCase):
                 if (!safe || fail_backup)
                     assert(read_file(g_path) == original);
                 bluewake_hd_look_reload();
-                check_hd(safe ? 0 : 1, safe ? 0 : std::atoi(argv[3]));
+                check_hd(safe ? 0 : 1, safe ? 0 : std::atoi(argv[3]), safe ? 0 : 1);
                 WINDOWS_CHECKS
                 if (safe) {
                     // The safe flag stays set; a later user choice must work.
                     ENABLE
-                    check_hd(1, 1);
+                    check_hd(1, 1, 0);
                     DISABLE
-                    check_hd(0, 0);
+                    check_hd(0, 0, 0);
                 }
             }
             '''.replace("LAUNCH", launch).replace("WINDOWS_CHECKS", windows_checks)
