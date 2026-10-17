@@ -72,6 +72,10 @@ struct Setting {
     // until then each platform reads them as it did.
     const char* joined = nullptr;
     Os whole = Os::None;
+    // Experimental: drawn at the bottom of the Mods tab under "Experimental",
+    // whatever its tab, with this line saying what has not been checked yet.
+    // Off by default. Leaving Experimental is removing this line.
+    const char* experimental = nullptr;
 };
 
 // clang-format off
@@ -201,10 +205,18 @@ inline constexpr Setting kSettings[] = {
     {.key = "DOL_AURORA_ASPECT_FIT", .old_windows = "keep_aspect", .kind = Kind::Bool, .on = Os::Windows,
      .label = "Keep the picture's shape (black bars rather than stretching)", .control = Control::Custom,
      .next_launch = Os::All},
-    // Picto Box photos under widescreen keep their 4:3 shape (#338). Only in the
-    // settings file while it is off by default: no menu entry.
-    {.key = "BLUEWAKE_PICTO_CROP", .old_windows = "picto_crop", .kind = Kind::Bool, .tab = Tab::Mods,
-     .next_launch = Os::All},
+    // Experimental (the Mods tab's last section).
+    {.key = "BLUEWAKE_PICTO_CROP", .old_windows = "picto_crop", .kind = Kind::Bool,
+     .label = "Picto Box photos keep their 4:3 shape in widescreen", .tab = Tab::Mods,
+     .control = Control::Switch, .next_launch = Os::All,
+     .experimental = "Checked on Windows (Direct3D 12) and Linux (Vulkan) at 16:9, 16:10 and 21:9; not yet on a Mac."},
+    {.key = "BLUEWAKE_LOOSE_REL_RETRACES", .kind = Kind::Bool,
+     .label = "A load time for loose RELs (the stage select's Wind Temple R04 and R08 load)", .tab = Tab::Mods,
+     .control = Control::Switch, .next_launch = Os::All,
+     .experimental = "Every stage select place checked headless on Windows and Linux; not yet played through, or on a Mac."},
+    {.key = "BLUEWAKE_HD_SUN_SHADOWS", .kind = Kind::Bool, .label = "Sun shadows outdoors (from the HD look)",
+     .tab = Tab::Mods, .control = Control::Switch,
+     .experimental = "Worked out from what is on screen: something off screen casts nothing, and on open ground they can draw long dark streaks."},
     {.key = "BLUEWAKE_PAUSE_UNFOCUSED", .old_windows = "pause_unfocused", .kind = Kind::Bool,
      .label = "Pause while the window is in the background", .control = Control::Switch},
     {.key = "BLUEWAKE_SHADERS_FIRST", .old_windows = "compile_shaders_first", .kind = Kind::Bool,

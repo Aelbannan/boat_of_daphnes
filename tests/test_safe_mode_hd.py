@@ -192,7 +192,11 @@ class SafeModeHDTest(unittest.TestCase):
                 else:
                     self.assertEqual(backups[0].read_text(), original)
                     for key in overrides:
-                        self.assertNotIn(key + "=", saved)
+                        if key == "BLUEWAKE_HD_SUN_SHADOWS":
+                            # A row of the settings table (Experimental): written, but off.
+                            self.assertNotIn(key + "=1", saved)
+                        else:
+                            self.assertNotIn(key + "=", saved)
                     self.assertIn("UNRELATED_SETTING=kept\n", saved)
                     self.assertIn("BLUEWAKE_HD_TRACE=1\n", saved)
             else:

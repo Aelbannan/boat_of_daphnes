@@ -223,7 +223,7 @@ void apply_now(const bw_settings::Setting& s) {
         set_env("BLUEWAKE_FADE_FRAMES", value != "0" ? "6" : "0");
     if (next_launch(s))
         return;
-    if (std::strcmp(key, "BLUEWAKE_HD_LOOK") == 0)
+    if (std::strncmp(key, "BLUEWAKE_HD_", 12) == 0)  // the HD look and its parts (sun shadows)
         bluewake_hd_look_reload();
     else if (std::strcmp(key, "DOL_AURORA_SHOW_FPS") == 0)
         aurora_set_fps_overlay(value != "0");
@@ -614,7 +614,10 @@ void gameplay_tab() { bw_menu::draw_tab(bw_settings::Tab::Gameplay); }
 
 // Mods: HD textures first, then widescreen and Better Wind Waker, as in the
 // iPhone and iPad Mods menu.
-void mods_tab() { bw_menu::draw_tab(bw_settings::Tab::Mods); }
+void mods_tab() {
+    bw_menu::draw_tab(bw_settings::Tab::Mods);
+    bw_menu::draw_experimental();
+}
 
 void controls_tab() {
     bw_menu::draw_tab(bw_settings::Tab::Controls);
