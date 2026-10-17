@@ -70,7 +70,7 @@ class LinuxContainerMountTest(unittest.TestCase):
     def test_mounts_checkout_metadata_external_output_and_read_only_disc(self):
         """A worktree and external output receive the minimum required access."""
         with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
+            base = Path(temporary).resolve()  # macOS temp folders resolve through /private
             root = base / "checkout"
             git_dir = base / "git/worktrees/checkout"
             out = base / "output"
@@ -86,9 +86,10 @@ class LinuxContainerMountTest(unittest.TestCase):
     def test_output_inside_checkout_needs_no_duplicate_mount(self):
         """The checkout mount already covers its normal build/linux output."""
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "checkout"
+            base = Path(temporary).resolve()  # macOS temp folders resolve through /private
+            root = base / "checkout"
             out = root / "build/linux"
-            disc = Path(temporary) / "disc.iso"
+            disc = base / "disc.iso"
             out.mkdir(parents=True)
             disc.touch()
             with patch.object(BUILD, "ROOT", root), \
@@ -103,7 +104,7 @@ class LinuxContainerRunTest(unittest.TestCase):
     def test_reexecutes_the_original_arguments_and_returns_its_status(self):
         """Every user argument and the container's exit status pass through."""
         with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
+            base = Path(temporary).resolve()  # macOS temp folders resolve through /private
             root = base / "checkout"
             context = root / "scripts/linux"
             out = base / "output"
