@@ -3,7 +3,7 @@
 Opened under docs/GOAL_LOOP.md section 8.1. The trigger is not a crash or a stall in wall
 terms: it is that the bounded-fix program on the shipping route has produced a run of measured
 refutations rather than wins, ending with a body-side candidate refuted by the emitter's own
-structure (docs/status/CURRENT.md, 2026-09-22). This page is the dossier section 8.1 requires.
+structure (docs/archive/status/CURRENT.md, 2026-09-22). This page is the dossier section 8.1 requires.
 
 ## 1. The state, measured
 

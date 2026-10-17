@@ -1,9 +1,9 @@
 # BlueWake next-candidate readiness
 
-**Current migration status:** see [migration status](../MIGRATION_STATUS.md), with details in the
-[reconciliation ledger](FORK_RECONCILIATION_2026-10-02.md). The merged
+**Current migration status:** see [migration status](../../MIGRATION_STATUS.md), with details in the
+[reconciliation ledger](../../status/FORK_RECONCILIATION_2026-10-02.md). The merged
 [PR #37](https://github.com/chrissotraidis/bluewake/pull/37) holds the source consolidation.
-Release rules are in [AGENTS.md](../../AGENTS.md): since October 4 the Windows build (and, once there is
+Release rules are in [AGENTS.md](../../../AGENTS.md): since October 4 the Windows build (and, once there is
 one, a Linux build) is published with game code, and Mac, iPhone and iPad stay on PadMint. The October 1
 snapshot below is historical; its
 then-open checks and PR references do not override the current ledger. The
@@ -41,7 +41,7 @@ Prioritized changes already in the draft:
   instruction work by 0.96% and 0.81%; they do not demonstrate a general FPS improvement.
 
 Detailed evidence and failed experiments: [stability ledger](STABILITY_2026-10-01.md)
-and [integration/platform evidence](../archive/FORK_INTEGRATION.md).
+and [integration/platform evidence](../FORK_INTEGRATION.md).
 
 ## Current platform boundary
 

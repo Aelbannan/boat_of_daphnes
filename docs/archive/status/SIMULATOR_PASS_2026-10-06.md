@@ -79,5 +79,5 @@ The earlier full-track/next-event run was not repeated.
 
 Both experimental host flags remain off by default. No runtime code, setting default, release,
 issue state or official platform-support status changed. Keep Windows checks in
-[WINDOWS_TASKS.md](../WINDOWS_TASKS.md); physical iPad checks are deferred per Chris's instruction.
+[WINDOWS_TASKS.md](../../WINDOWS_TASKS.md); physical iPad checks are deferred per Chris's instruction.
 Private app/module, saves, checkpoints, audio and captures remain local.

@@ -12,6 +12,10 @@ activity, input and audio), and a touch overlay stands in for a controller.
 
 ## Status
 
+In `main` since October 17 (#93, LiquidAzir), as an **experimental** build you make yourself. It is checked on one
+phone, the Fold 7 below; other phones, Bluetooth controllers with the D-pad option, and screen recording (#238) are
+still open. Importing Wind Waker HD textures in the app is draft #347.
+
 Brought up on 2026-09-30 on one device, a Samsung Galaxy Z Fold 7 (Snapdragon 8 Elite, Adreno 830, Android 16),
 from a Redump-verified `.rvz` converted to ISO with Dolphin, built on a Windows 11 PC (i9-13900K) with NDK r29:
 

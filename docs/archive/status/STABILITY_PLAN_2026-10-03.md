@@ -4,7 +4,7 @@ BlueWake now contains Elliott Tate's Wind-Waker-Recomp work through his v0.4.0 r
 filed against his Windows builds (0.2.1 to 0.4.0) mostly describe BlueWake's code as well: the
 runtime, renderer, audio and camera are shared, and Apple builds run the same runtime with Metal.
 This plan sorts those reports, records what the attached session logs show about the "random FPS
-slowdowns", and sets the order of work. The [goal loop](../GOAL_LOOP.md) runs it.
+slowdowns", and sets the order of work. The [goal loop](../../GOAL_LOOP.md) runs it.
 
 ## What the logs show about slowdowns
 

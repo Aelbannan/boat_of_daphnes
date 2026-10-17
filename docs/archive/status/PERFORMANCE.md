@@ -1917,4 +1917,4 @@ fixture uses 0x240000, then original `adjustSize` retains 2,168,352 bytes in its
 final replay. Zelda allocation follows original remaining-system-minus-64-KiB
 partitioning; total MEM1 remains 24 MiB. These are diagnostic memory measurements,
 not an accepted boot budget, speed result or audio-device measurement. See
-[the stopping-point handoff](../archive/status/SESSION_HANDOFF_2026-09-09.md).
+[the stopping-point handoff](SESSION_HANDOFF_2026-09-09.md).

@@ -121,7 +121,7 @@ BlueWake-specific end-to-end installation has not been verified with every tool.
 | [Sideloadly](https://sideloadly.io/) | Mac app: connect the device, drag the IPA in, sign in with your Apple ID |
 | [AltStore](https://altstore.io/) | AltServer on the Mac installs AltStore on the device; add the IPA from AltStore's **My Apps** |
 | [SideStore](https://sidestore.io/) | Like AltStore, but refreshes on the device without the Mac |
-| Xcode | Sign and install from the Builder directly: `--identity`, `--profile` and `--install` ([DEVICE_BUILD.md](status/DEVICE_BUILD.md)) |
+| Xcode | Sign and install from the Builder directly: `--identity`, `--profile` and `--install` ([DEVICE_BUILD.md](DEVICE_BUILD.md)) |
 
 With a free Apple ID, apps expire after seven days; refresh them with the same tool (your saves stay).
 The device needs **Developer Mode** on (Settings › Privacy & Security), and the first launch may ask you to

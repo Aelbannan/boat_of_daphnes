@@ -55,6 +55,6 @@ on the correct final IDs in exactly 233, 482, 731, 572, 1,349, 1,100, 233, and
 ## Next Boundary
 
 Completed by `BW-P4-0086`; see
-`docs/status/ROUTE_B_OPENING_SCENE_COMPOSITION_2026-09-02.md`. The next
+`docs/archive/status/ROUTE_B_OPENING_SCENE_COMPOSITION_2026-09-02.md`. The next
 boundary is paced native macOS presentation of the same original scene. Do
 not widen parser, font, archive, audio, or J3D scope.

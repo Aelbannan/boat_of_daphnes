@@ -1,13 +1,13 @@
 # Making BlueWake faster
 
 How BlueWake gets faster, in three steps of growing size, and how to prove each step. [GOAL_LOOP.md](GOAL_LOOP.md)
-says which step is being done on which day. Owner: Chris. Updated October 15, 2026; add every result to "Results".
+says which step is being done on which day. Owner: Chris. Updated October 17, 2026; add every result to "Results".
 
 **Current defaults:** #335 is merged with Chris's approval: new Windows/Linux builds use behaviour timing;
 `--no-behaviour-timing` opts out and `--conservative` keeps the plain translation. Mac/iOS remain opt-in.
 The Deck and Windows play checks below support that decision. Android's October 14 alternating cool-start
-comparison now reaches full speed at Outset on the Fold 7. Open #93 inherits the timing default and adds the
-opt-out; its merge status is in [PRIORITIES.md](PRIORITIES.md). Earlier measurements below retain their original dates.
+comparison now reaches full speed at Outset on the Fold 7. The Android builder (#93, merged October 17) inherits
+the timing default and has the same opt-out. Earlier measurements below retain their original dates.
 
 ## The plan
 
@@ -178,7 +178,9 @@ phases. Each one ends in a pull request, a row in "Results" above, and the row m
 
 ### Phase 1: the benchmark tour (`scripts/bench_tour.py`)
 
-**Not written yet** (October 15): the script below is a plan. The handoff for doing it is [BENCHMARK_TOUR.md](BENCHMARK_TOUR.md).
+**Written, not yet run on a disc** (jslay88's #360, merged October 17): `scripts/bench_tour.py` does what this
+section describes, and `tests/test_bench_tour.py` checks it with made-up log lines. The first run on a real build is
+due with the next release candidate; then replace this line with the stops that ran and their numbers.
 
 *Goal:* one command that measures a build's speed in several places and proves two builds behave the same. Every
 later phase uses it.
@@ -440,7 +442,7 @@ BlueWake emulates the GameCube's cycle timing (each block charges cycles, stores
 converts the game's raw GX command stream on the CPU. On the one function measured on September 22
 (`J3DSys::reinitTevStages`), the translation is 5.8 emitted statements per guest instruction: 21% are pc stores
 and 9% cycle bookkeeping. Compiled from the decompilation's source, the same function is 0.91 host instructions
-per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.md), September 22).
+per guest instruction, six to thirty times cheaper ([CURRENT.md](archive/status/CURRENT.md), September 22).
 
 ### Where the decompilation is
 
@@ -450,12 +452,12 @@ per guest instruction, six to thirty times cheaper ([CURRENT.md](status/CURRENT.
 | October 9 | 79.1% | 87.1% of code, 95.8% of functions | 73.1% | 32,848 of 39,324 (83.5%) |
 
 From [decomp.dev](https://decomp.dev/zeldaret/tww). Add a row each month. The August figure is from
-[DECISIONS.md](status/DECISIONS.md); it was measured differently.
+[DECISIONS.md](archive/status/DECISIONS.md); it was measured differently.
 
 ### Route B, the source port BlueWake already tried
 
 In August and September BlueWake built a native port from the decompilation's source alongside the recompilation
-("route B"; its records are [DECISIONS.md](status/DECISIONS.md) and `docs/status/ROUTE_B_*.md`; the code itself
+("route B"; its records are [DECISIONS.md](archive/status/DECISIONS.md) and `docs/archive/status/ROUTE_B_*.md`; the code itself
 is not in this repository). It drew the original Nintendo logo
 through Aurora and compiled most of the process layer. It stopped on porting effort, not speed: the source assumes
 32-bit big-endian types and pointers, and Dusklight (the Twilight Princess port) needed about 1,500 `TARGET_PC`

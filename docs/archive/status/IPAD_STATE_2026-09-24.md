@@ -44,7 +44,7 @@ tell.
 - **Hardware run** (next, by the user): install on an iPad and repeat the checks above.
 - **The route decision after it:** the play-scene source port is the only lever that brings the
   heavy view to 60; the alternative is keeping the speed and widening coverage (sailing, Forsaken
-  Fortress, a dungeon). See [GOAL_PROMPT_V56](../archive/GOAL_PROMPT_V56_2026-09-23.md) item 6.
+  Fortress, a dungeon). See [GOAL_PROMPT_V56](../GOAL_PROMPT_V56_2026-09-23.md) item 6.
 - On the 11-inch iPad the default move stick and D-pad sit over the minimap's corner (SunPad's
   default; the layout editor moves them).
 
@@ -52,13 +52,13 @@ tell.
 
 Updated 2026-09-25: the steps that were here assumed this Mac's `build/` and `generated/` trees and
 an unpublished RecompCore commit. A fresh checkout now builds the device app from the disc image
-with one command, `scripts/ios/build_device.sh DISC.iso`; see [DEVICE_BUILD.md](DEVICE_BUILD.md).
+with one command, `scripts/ios/build_device.sh DISC.iso`; see [DEVICE_BUILD.md](../../DEVICE_BUILD.md).
 
 ## Installing on the iPad (not done yet)
 
 The signing certificate, Developer Mode, the provisioning profile for `dev.bluewake.BlueWake`,
 `build_device.sh --identity ... --profile ... --install` and copying the disc to the iPad are in
-[DEVICE_BUILD.md](DEVICE_BUILD.md#signing-and-installing-on-the-ipad).
+[DEVICE_BUILD.md](../../DEVICE_BUILD.md#signing-and-installing-on-the-ipad).
 
 ## What to check on the iPad
 

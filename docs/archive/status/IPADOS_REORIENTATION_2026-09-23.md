@@ -296,7 +296,7 @@ state and install steps are in [IPAD_STATE_2026-09-24.md](IPAD_STATE_2026-09-24.
 
 ## 19. The loop
 
-See [GOAL_PROMPT_V56_2026-09-23.md](../archive/GOAL_PROMPT_V56_2026-09-23.md). One game on the Mac at a time
+See [GOAL_PROMPT_V56_2026-09-23.md](../GOAL_PROMPT_V56_2026-09-23.md). One game on the Mac at a time
 (simulator, macOS host or Dolphin reference, enforced by scripts/one_game_guard.sh), no edits to
 scripts a running job uses, every iteration ends with a run and its evidence, and graphics changes
 are judged against a private Dolphin reference of the same moment. The queue is ordered by what

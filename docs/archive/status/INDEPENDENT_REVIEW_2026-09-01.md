@@ -32,7 +32,7 @@ the wrong first layer of it.** OBSERVED/INFERRED.
   to product speed. Every architecture-scale lever has been tried under the
   project's bit-exact-to-own-baseline acceptance contract and either failed
   correctness (full edge loop: turns −64.5%, user CPU −60.2%, DSP delivery
-  0 of 10,281) or produced sub-15% gains. OBSERVED (`docs/status/PERFORMANCE.md:78-96`,
+  0 of 10,281) or produced sub-15% gains. OBSERVED (`docs/archive/status/PERFORMANCE.md:78-96`,
   `:236-253`, `:3-25`). Route A should receive no further speed work now. It
   should remain the behavioral oracle and become an oracle *generator* for
   Route B (§4).
@@ -95,7 +95,7 @@ decodes to the retail toon dimensions. This retires `ObjectResources`.
 **Tempting action that must not be attempted next:** the ledger's own "next
 smallest action" — composing `AuroraDisc`, `ObjectResources`, and
 `LogoHostPolicy` into a "default macOS Route B application service"
-(`docs/status/CURRENT.md:74-79`, `BLOCKERS.md:103-109`). It would wrap a
+(`docs/archive/status/CURRENT.md:74-79`, `BLOCKERS.md:103-109`). It would wrap a
 production-looking object around a resource owner that cannot serve
 `getObjectRes`, a policy that models a prompt no Mac will ever show, and a
 rewritten phase zero, then have to be unwound at phase one. Also not next:
@@ -838,7 +838,7 @@ seams exist, or any Route A speed shape.
    first-400-line `CURRENT.md` citations; every cited evidence directory
    exists. The Route A FPS figures (6.0 / 13.55) predate the current
    baseline and should be marked stale until remeasured. INFERRED.
-10. `docs/status/COMPATIBILITY.md` is 5 lines; `tests/coverage/catalog.json`
+10. `docs/archive/status/COMPATIBILITY.md` is 5 lines; `tests/coverage/catalog.json`
     is still not a coverage universe. Unchanged since 08-30. OBSERVED.
 11. Commit cadence: today's 40 commits are coherent and pushed, which is
     good. Recommend continuing to push `main` after every green tier
@@ -907,7 +907,7 @@ Commands (all read-only): `git status --short`, `git log`,
 build, no BlueWake process, no Simulator.
 
 Documents read in full: `docs/archive/PRD.md`, `docs/GOAL_LOOP.md`,
-`docs/status/GATES.md`, `TECH_DEBT.md`, `REORIENTATION_2026-08-22.md`,
+`docs/archive/status/GATES.md`, `TECH_DEBT.md`, `REORIENTATION_2026-08-22.md`,
 `REORIENTATION_2026-09-01.md`, `INDEPENDENT_REVIEW_2026-08-25.md`,
 `INDEPENDENT_REVIEW_2026-08-30.md`, `EXECUTION_ROUTE_REVIEW_2026-09-01.md`,
 `EXECUTION_ROUTE_CENSUS_2026-09-01.md`, `ROUTE_B_AUDIO_BOUNDARY_2026-09-01.md`,

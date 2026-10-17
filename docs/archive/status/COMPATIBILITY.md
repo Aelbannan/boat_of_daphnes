@@ -7,7 +7,7 @@ The private original scheduler/Painter experiment now runs 600 frame cycles with
 original audio startup and reaches the opening request. Transition/profile and
 archive handoff remain unfinished; its deliberate end fence is not boot success.
 No product gate advances. Full PRD objective remains unfinished. See the
-[session handoff](../archive/status/SESSION_HANDOFF_2026-09-09.md) for current evidence, limits and next work.
+[session handoff](SESSION_HANDOFF_2026-09-09.md) for current evidence, limits and next work.
 Older continuation directives below are historical while this pause applies.
 
 **Original cold-start integration / TWW 0265–0266:** a strict headless
