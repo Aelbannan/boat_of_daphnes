@@ -13,6 +13,9 @@ answered on Discord from this record.
 | Ultrawide 21:9 without the black bars (#bluewake) | Widescreen 21:9 under Mods (#279, #70) |
 | The Mac build fails on SQLite after a Homebrew or Mono install (#bluewake) | #367: the Mac builds use the pinned static SQLite; no workaround needed |
 | Rebinding an Xbox 360 controller's buttons, and keyboard keys (#help) | Controls › Controller buttons and Keyboard keys on every desktop build |
+| Cutscenes missing sound: the intro, the bird dropping Tetra, the launch to the Forsaken Fortress (#help, October 7) | Fixed in 0.6.0 ([#65](https://github.com/chrissotraidis/bluewake/issues/65), [#97](https://github.com/chrissotraidis/bluewake/issues/97)), confirmed by those reporters. The Forsaken Fortress launch's sound effects weren't checked by name |
+| The Mac build's local training fails on SQLite with Mono installed (#help, 17 messages; workarounds edited CMake caches) | #367 (October 16): no workaround needed; BUILD_YOUR_OWN.md says so |
+| PadMint failing while compiling for iOS (#help, October 5) | The player confirmed it built with PadMint 0.4.8 |
 | Clouds flicker at 60 FPS on AMD, at 120 and 180 elsewhere, with the HD look (#bluewake-dev) | pdale-boop's draft #371 (RecompCore#40); not in `main` yet ([#136](https://github.com/chrissotraidis/bluewake/issues/136)) |
 
 ## Being fixed for 0.8.0
@@ -33,6 +36,7 @@ answered on Discord from this record.
 | CISO and RVZ disc images (an Android tester) | Not supported; Dolphin converts both to ISO. Windows explains this when given an RVZ |
 | Other languages (#bluewake) | [#60](https://github.com/chrissotraidis/bluewake/issues/60); menus could be translated sooner than the game |
 | Analog stick sensitivity (#help; the question was deleted, Chris answered "Yep, we can!") | The camera and aiming stick speeds are under Controls; movement-stick sensitivity isn't. Needs the player's exact ask |
+| The Tingle Tuner (#help, October 5) | Not supported; Chris gave the reason in #announcements |
 | Save states from a controller | [#357](https://github.com/chrissotraidis/bluewake/issues/357), after #368 |
 | A GameCube controller adapter on Windows 11 set up with Zadig (#bluewake-dev) | Unclear what fails; needs the session log's `[pad]` lines |
 | Play on iPhone or iPad without a computer (#bluewake) | Not possible: the app is built from the player's own disc on a Mac, or on Windows through PadMint once #100 lands |
