@@ -146,3 +146,8 @@ Patch 0180 is pdale-boop's RecompCore #37, for BlueWake #338: `aurora_set_copy_c
 texture copy of exactly that size takes `fraction` of its source's width about the frame's middle and is scaled back
 to its full size, as a 4:3 camera would have taken it; `GXCopyTex` and gxcore's EFB copies both use it. Nothing
 changes until a game calls it: BlueWake does for the Picto Box's 152x104 copy, behind `picto_crop=1` (off by default).
+
+Patch 0182 is RecompCore #41: the HD look's cloud shadows take the sea's place from its plane, since positions from
+depth far out on the sea made straight-edged steps (the "square" shadows on Vulkan, a hard band on Metal), with gradient
+noise turned per octave. The cloud, sun-shadow, ambient-occlusion and bloom passes add half an 8-bit step of dither so
+their smooth shades don't band on the sea. 0181 is taken by draft #342.

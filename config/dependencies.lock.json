@@ -112,7 +112,7 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "77d4717d868cec8b4014932bb22978c284a535a7",
+      "sha": "338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
@@ -616,6 +616,13 @@
             "patches/recompcore/0180-Aurora-aurora_set_copy_crop-for-pictures-taken-through-a-widened-camera.patch"
           ],
           "evidence": "pdale-boop's RecompCore#37 (#338): aurora_set_copy_crop(width, height, fraction) makes a texture copy of that size take the middle fraction of its source's width and scale it back, as a 4:3 camera would; both GXCopyTex and gxcore's EFB copies use it. Nothing calls it unless BLUEWAKE_PICTO_CROP=1 (picto_crop=1). Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12, 2560x1080: Picto Box and Deluxe Picto Box photos keep their 4:3 shape at 16:9, 16:10 and 21:9; Arch Linux, Vulkan: the same at all three aspects for the Picto Box and at 16:9 for the Deluxe Picto Box."
+        },
+        "hd_look_sea": {
+          "runtime": "369b7b7e0de46de4bae944a49646b246762759d5",
+          "tracked_patches": [
+            "patches/recompcore/0182-Aurora-HD-look-cloud-shadows-take-the-sea-from-its-plane-and-dither-the-shades.patch"
+          ],
+          "evidence": "RecompCore#41: the HD look's cloud shadows take the sea's place from its plane (only nearer surfaces from depth), with gradient noise turned per octave, and the cloud, sun-shadow, ambient-occlusion and bloom passes dither by half an 8-bit step. M3 Max, Metal, a copied card warped to Outset and Dragon Roost with cloud shadows alone at 0.8: the straight-edged band across Outset's sea is gone; the full HD look renders without shader errors. Vulkan and Direct3D 12, where the panels were reported (#371), not yet checked."
         }
       }
     },

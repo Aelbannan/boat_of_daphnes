@@ -12,9 +12,10 @@ Each piece also has its own variable, which wins over the switch (`=1` on, `=0` 
 much on a small GPU can be left out.
 
 **Known issues** (October 17): with Smooth Motion above 60 FPS, the effects dropped out of most in-between frames
-and the shadows slid against the ground; pdale-boop's draft #371 (RecompCore#40) fixes that. Cloud shadows can look
-square, and the sea shows banding (jslay88, RTX 4090 on Linux, with and without #371). A softer default (sun shadows
-off, gentler ambient occlusion, cloud shadows, bloom and blur) is draft #321.
+and the shadows slid against the ground; pdale-boop's draft #371 (RecompCore#40) fixes that. Fixed in `main`: the
+softer default (#321: sun shadows off, gentler ambient occlusion, cloud shadows, bloom and blur), and cloud shadows
+that looked square and banding on the sea (RecompCore#41: the sea's place from its plane, dithered shades). The last
+is checked on the Mac; Vulkan, where jslay88 saw it, still needs a look.
 
 On Mac, Linux and Windows, safe startup turns the HD look off and clears the eight `BLUEWAKE_HD_*`
 per-effect overrides listed below. F2 or the menu can turn the whole look back on during that session.
