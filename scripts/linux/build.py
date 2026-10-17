@@ -504,15 +504,28 @@ int main(void) {{
     def configure_app(self, build=None):
         """The app (host) build: Aurora on Dawn (Vulkan/OpenGL) with vendored SDL3,
         compiled with clang at the same CPU level as the game module (the FIFO
-        worker's matrix work for Smooth Motion needs AVX2 and FMA to keep up)."""
-        self.app_build = build or self.out / "app"
+        worker's matrix work for Smooth Motion needs AVX2 and FMA to keep up).
+
+        --appimage builds the app as Linux CI does: LLVM libc++, which the AppImage carries, and Dawn
+        built from source with it. The prebuilt Dawn package is compiled against libstdc++, so an app
+        linked with it needs the player's own libstdc++ (GLIBCXX_*), which check_appimage_abi.py
+        rejects. It has its own build folder, so a folder build keeps the faster prebuilt Dawn."""
+        appimage = getattr(self.args, "appimage", False)
+        self.app_build = build or self.out / ("app-appimage" if appimage else "app")
+        cxx_flags = f"-march={self.args.march} -g"
+        runtime = ["-DAURORA_DAWN_PROVIDER=package", "-DAURORA_DAWN_LINKAGE=static"]
+        if appimage:
+            cxx_flags += " -stdlib=libc++"
+            runtime = ["-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++", "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++",
+                       "-DCMAKE_CXX_STANDARD_LIBRARIES=", "-DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE",
+                       "-DCMAKE_DISABLE_FIND_PACKAGE_absl=TRUE", "-DDAWN_USE_GLFW=OFF",
+                       "-DAURORA_DAWN_PROVIDER=vendor", "-DAURORA_DAWN_LINKAGE=static"]
         self.run("app-configure", [
             "cmake", "-S", ROOT / "linux", "-B", self.app_build, "-G", "Ninja",
             "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++",
             "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_TESTING=OFF",
             f"-DCMAKE_C_FLAGS=-march={self.args.march} -g",
-            f"-DCMAKE_CXX_FLAGS=-march={self.args.march} -g",
-            "-DAURORA_DAWN_PROVIDER=package", "-DAURORA_DAWN_LINKAGE=static",
+            f"-DCMAKE_CXX_FLAGS={cxx_flags}", *runtime,
             "-DAURORA_SDL3_PROVIDER=vendor", "-DAURORA_SDL3_LINKAGE=static"])
 
     # --- 4 extract -------------------------------------------------------
