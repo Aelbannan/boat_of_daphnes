@@ -7,6 +7,7 @@
 - [Performance domains](#performance-domains)
 - [Profiling](#profiling)
 - [Benchmarking](#benchmarking)
+- [Training and PGO](#training-and-pgo)
 - [Tuning](#tuning)
 - [Evidence and results](#evidence-and-results)
 
@@ -152,6 +153,102 @@ The command, output contract, default stops, and synthetic parser tests live in
 [`scripts/bench_tour.py`](../../scripts/bench_tour.py) and
 [`tests/test_bench_tour.py`](../../tests/test_bench_tour.py). The original
 implementation task is retained in [The benchmark tour](../BENCHMARK_TOUR.md).
+
+## Training and PGO
+
+Training is BlueWake's local **profile-guided optimization (PGO)** stage. It is
+not machine learning: the builder runs an instrumented copy of the translated
+game module, records LLVM execution counters, and supplies those counts to
+Clang when compiling the final module.
+
+The generated module contains hundreds of thousands of translated blocks. The
+compiler can understand each function's static control flow, but it cannot know
+which translated routes a player will execute frequently. Training supplies
+that frequency information so LLVM can favor observed hot paths when making
+decisions such as inlining, branch layout, and code-size placement.
+
+```mermaid
+flowchart TD
+    Prepared["Stage 5 prepared<br/>translated C"]
+    Fingerprint{"Matching source,<br/>compiler, options,<br/>and recipe?"}
+    Instrument["Compile temporary module<br/>with LLVM counters"]
+    Playback["Run isolated headless<br/>opening and tours"]
+    Raw["Raw .profraw<br/>counter files"]
+    Merge["Validate and merge with<br/>llvm-profdata"]
+    Profile["Private composite.profdata"]
+    Final["Compile final module with<br/>-fprofile-instr-use"]
+    Module["Optimized native<br/>game module"]
+
+    Prepared --> Fingerprint
+    Fingerprint -->|cache miss| Instrument --> Playback --> Raw --> Merge --> Profile
+    Fingerprint -->|verified cache hit| Profile
+    Profile --> Final
+    Prepared --> Final --> Module
+```
+
+### Mechanical steps
+
+| Step | What happens | Why it happens | Output or code reference |
+| --- | --- | --- | --- |
+| Fingerprint | The builder hashes the prepared source, compiler, runtime revision, enabled source transformations, host playback code, and training recipe. | A profile is reused only when its counters still describe the code and playback that produced it. | `OUT/pgo-local/training.json`; Linux [`training_fingerprint`](../../scripts/linux/build.py), Windows [`training_fingerprint`](../../scripts/windows/build.py), and Apple [`fingerprint`](../../scripts/builder/train_local_pgo.py) |
+| Instrumented compile | The prepared composite is compiled once with `-fprofile-instr-generate`. This is a disposable training module, not the final release module. | LLVM inserts counters associated with translated functions and control-flow paths. | Instrumented build under `OUT/pgo-local/`; Linux [`train`](../../scripts/linux/build.py), Windows [`train`](../../scripts/windows/build.py), and Apple [`train_local_pgo.py`](../../scripts/builder/train_local_pgo.py) |
+| Playback | The host loads the instrumented module in an isolated data directory and advances deterministic, headless input routes. Linux and Windows exercise the opening, enabled mod variants, and a multi-scene tour. | Executing representative game paths increments the counters without touching the player's normal card or settings. Headless, unpaced playback shortens the build step. | Per-playback logs, temporary state, and `*.profraw` files under `OUT/pgo-local/` |
+| Merge and validate | `llvm-profdata` merges all raw counter files. The builder rejects an unreadable profile, a failed route, or a profile with no executed translated functions. | The final compiler needs one verified profile rather than independent files from concurrent playbacks. | `OUT/pgo-local/composite.profdata` |
+| Final compile | The prepared composite is compiled again with `-fprofile-instr-use=<profile>`. The profile's hash is included in the compiler input path. | Clang can optimize observed hot code differently, and a changed profile forces Ninja to rebuild the affected module. | Hashed profile under `OUT/profiles/` and the final native game module |
+
+Linux and Windows can run several **independent tour playbacks** concurrently
+to shorten training. This parallelizes collection across separate processes;
+it does not make one instance of the translated game execute on several cores.
+
+### What the profile changes
+
+LLVM attaches the recorded frequencies to the final compilation. Its
+optimization passes may use them to:
+
+- inline frequently exercised calls more selectively;
+- arrange likely branches and hot blocks for the common route;
+- avoid spending the same code-size budget on paths the training never visits;
+- improve instruction layout and related downstream optimization decisions.
+
+BlueWake also applies an explicit tiering policy around the LLVM profile. On
+the supported builders, translated chunks with no recorded function execution
+can be listed in `OUT/composite-cold-sources.txt` and compiled at `-O1`; visited
+chunks use the normal optimization level and PGO counts. This limits compile
+time and module size. It is a BlueWake build policy layered on top of LLVM PGO,
+not a property of the profile format itself.
+
+The local profile consumed by the current builders primarily guides the
+translated game module. The host and graphics stack are separate native
+targets and require their own representative profile where one is configured.
+A headless game-module tour intentionally does not represent rendered Aurora,
+Dawn, GPU, or presentation work.
+
+### Coverage and limits
+
+Training records only what its playback executes. An unvisited boss, cutscene,
+item, dungeon, or mod path has no observed frequency in that local profile.
+That does not make the path unavailable or incorrect; it means the final
+compiler has less runtime evidence for optimizing it.
+
+Training also does not establish a performance result:
+
+- The training tour favors the routes used to build the profile, so it cannot
+  be the only benchmark used to judge that profile.
+- A faster trained build still needs comparison from identical save states,
+  including scenes outside the training tour.
+- PGO is intended to preserve program behavior, but the final build still
+  needs guest checkpoints and the relevant player-visible checks.
+- Adding every possible route can enlarge hot code and reduce instruction-cache
+  locality; broader coverage is not automatically faster.
+
+The complete per-platform build flow, cache behavior, and artifact locations
+are documented in [Build: Train](../architecture/Build.md#6-train). A concrete
+profile-reuse change is [PR #243](https://github.com/chrissotraidis/bluewake/pull/243),
+which keeps the existing module profile when a host-only build does not change
+the translated code it describes.
+
+Profiles are derived from the player's private game build. They remain inside
+the private `OUT` directory and are not committed or uploaded.
 
 ## Tuning
 
