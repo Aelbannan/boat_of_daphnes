@@ -10,7 +10,7 @@ publishes.
 | | |
 | --- | --- |
 | Version | 0.8.0, build 7 (`version.json`, set by the freeze pull request) |
-| Candidate commit | The freeze pull request's merge commit, recorded here once it merges: what the Windows build, the AppImage and the IPA are built from |
+| Candidate commit | `f2611b1357215d1f426af9dbe90c7d7189320c99` (#376's merge, October 17): what the Windows build, the AppImage and the IPA are built from. Check it out with `git checkout --detach f2611b1` |
 | RecompCore | `338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4` (through patch 0182: the HD look and its sea fixes, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371 and 0181 to draft #342) |
 | Previous release | 0.7.0, October 10 (`66b33be`) |
 
@@ -69,6 +69,10 @@ Not in it yet: the Android HD import (#347, draft), the iOS menu-switch change (
 photo (#342), Smooth Motion without the flicker (#371) and one desktop menu (#368, coming in five parts). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
 [PRIORITIES.md](../PRIORITIES.md).
 
+After the freeze: #383 (pdale-boop) fixes `tests/test_safe_mode_hd.py`, which failed at the candidate because it still
+expected the HD look switch to turn sun shadows on (#321 leaves them off). Test only; the candidate's code is
+unchanged.
+
 ## Release notes (draft, for the release page)
 
 BlueWake 0.8.0 brings the Wind Waker HD look, HD textures you make from your own Wind Waker HD game inside the app,
@@ -126,9 +130,10 @@ does (AGENTS.md).
 
 | Check | Who | Result |
 | --- | --- | --- |
-| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | The freeze pull request; the candidate commit is filled in when it merges |
+| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | Done: #376 merged as `f2611b1`, `version.json` 0.8.0 build 7 |
 | Windows build from the candidate on Chris's PC, with the play checks in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) sections 1 and 2 | Chris's PC | not yet |
 | Linux AppImage from a contributor's own disc; `check_appimage_abi.py` at 2.39; the release check | cforain or jkoehler11 | not yet |
-| The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | not yet |
+| The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | IPA: pass at `f2611b1` (M3 Max, October 17). `BlueWake-v0.8.0-ios-unsigned.ipa`, 5.7 MB, SHA-256 `c45a2e94…dd92335`, reports 0.8.0 build 7 and holds no game module; PadMint `audit` (0 address-named functions) and `check_public_assets.sh` pass. `player-check.sh` before tagging: running. After publishing: not yet |
+| Source zip and recipe | Codex, on this Mac | Pass at `f2611b1`: `git archive` with the `bluewake-0.8.0/` prefix (1,213 entries) and `padmint.json` as `BlueWake-v0.8.0-padmint.json`; `check_public_assets.sh` passes both |
 | The 468-place warp sweep with the stage select (`scripts/stage_select_sweep.py`) | pdale-boop or Codex | On `main` `d73ac95` (not the candidate), a Mac, an early file: 446 of 468 arrive, the card unchanged after all 468; the rest are the noted test rooms and crash rooms and late-game cutscenes the file can't reach ([STAGE_SELECT.md](../STAGE_SELECT.md)). Still to do on the candidate, with a late-game file |
 | The benchmark at Outset and Dragon Roost Cavern against 0.7.0 | Codex | not yet |
