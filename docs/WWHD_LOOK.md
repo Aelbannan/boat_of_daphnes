@@ -21,6 +21,18 @@ per-effect overrides listed below. F2 or the menu can turn the whole look back o
 The reset is saved only after the earlier settings file is backed up; if the backup fails, or Mac/Linux
 uses `BLUEWAKE_SETTINGS=none`, startup resets only the session. Normal startup keeps the usual overrides.
 
+## Turning one piece off
+
+Each piece has its own switch, which wins over the main one: `=0` turns it off, `=1` on. The names are
+`BLUEWAKE_HD_AO` (ambient occlusion), `BLUEWAKE_HD_SUN_SHADOWS`, `BLUEWAKE_HD_CLOUD_SHADOWS`, `BLUEWAKE_HD_BLOOM`,
+`BLUEWAKE_HD_FAR_BLUR`, `BLUEWAKE_HD_EDGE_LIGHT`, `BLUEWAKE_HD_TORCH_LIGHT` and `BLUEWAKE_HD_DISTANT_ISLANDS`.
+
+- **Mac and Linux:** add a line such as `BLUEWAKE_HD_AO=0` to the settings file
+  (`~/Library/Application Support/BlueWake/settings.ini` on the Mac, `~/.config/BlueWake/settings.ini` on Linux)
+  while BlueWake isn't running. The menu keeps lines it doesn't manage.
+- **Windows:** set it in PowerShell before starting the game: `$env:BLUEWAKE_HD_AO="0"; .\BlueWake.exe`.
+- Menu switches for each piece are planned with the new desktop menu (#368).
+
 ## Where this comes from
 
 Elliott Tate showed most of the HD look running on the GameCube recompilation in a video on October 3, 2026
