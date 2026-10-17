@@ -1,10 +1,22 @@
-# Next release: candidate record (draft)
+# BlueWake 0.8.0 release record
 
-Prepared on October 11, 2026 for Chris to decide; brought up to date on October 17. Nothing here is frozen: the version, the commit and when to build
-are Chris's call ([GOAL_LOOP.md](../GOAL_LOOP.md), S4). Fill in each check with the device, the commit and what was
-seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](RELEASE_0.7.0.md), October 10.
+The working record for 0.8.0, started as the next-release draft on October 11. Fill in each check with the device, the
+commit and what was seen; a row stays "not yet" until someone runs it. The Windows build is
+[WINDOWS_BUILD_0.8.0.md](WINDOWS_BUILD_0.8.0.md). Previous release: [0.7.0](RELEASE_0.7.0.md), October 10. Only Chris
+publishes.
 
-## What `main` has since 0.7.0
+## Candidate
+
+| | |
+| --- | --- |
+| Version | 0.8.0, build 7 (`version.json`, set by the freeze pull request) |
+| Candidate commit | The freeze pull request's merge commit, recorded here once it merges: what the Windows build, the AppImage and the IPA are built from |
+| RecompCore | `338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4` (through patch 0182: the HD look and its sea fixes, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371 and 0181 to draft #342) |
+| Previous release | 0.7.0, October 10 (`66b33be`) |
+
+While the candidate is being built and checked, only docs and fixes for what the checks find go into `main`.
+
+## What it contains
 
 | Change | Issue | Ships to | Checked so far | Still to check |
 | --- | --- | --- | --- | --- |
@@ -44,17 +56,77 @@ seen; a row stays "not yet" until someone runs it. Previous release: [0.7.0](REL
 | Picto Box photos under widescreen keep their 4:3 shape, opt-in (`picto_crop=1` on Windows, `BLUEWAKE_PICTO_CROP=1` on Mac and Linux; pdale-boop, #338 with RecompCore#37) | none | Windows, Mac, Linux | Windows and Arch at 16:9, 16:10 and 21:9 | The Mac |
 | Mac builds work with Mono or Homebrew SQLite installed (#367) | none | Mac builder | A full private Mac build with the conflicting paths; the regression fails without the fix | PadMint's `player-check.sh` |
 | The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests | The tour's first run on a disc |
+| **Linux AppImage builds pass their own ABI audit:** `--appimage` builds the app with libc++ and Dawn from source, as CI does (#374; found from irregularthanis's build log on #371) | #56 | Linux builder | Contract test; the pinned Dawn package checked to link libstdc++ | An AppImage from a contributor's own disc passing `appimage-abi` |
+| The HD import script picks the same sources on Windows as on Mac and Linux (pdale-boop, #375) | #57 | Windows | pdale-boop's Windows run matched the native pack in every PNG and report field | none |
+| **The HD look, softer:** sun shadows off by default (their streaks), gentler ambient occlusion, cloud shadows, bloom and far blur (#321) | #57 | Every platform | Chris's iPad Pro (October 15); irregularthanis's Radeon screenshots on #371 showed the streaks and darkening it removes | A look on Windows and Linux |
+| **The HD look on the sea:** cloud shadows without square steps, and no banding (#379, RecompCore#41) | #371 | Every platform | M3 Max: the straight-edged band across Outset's sea gone, before and after from the same host | Vulkan and Direct3D 12, where it was reported |
+| **Windows: older GPUs without Direct3D 12 draw through Direct3D 11** instead of a black screen: the builder ships `d3dcompiler_47.dll` (#377) | none (a GTX 550 Ti on Discord) | Windows | Builder test; the player's log shows the cause | A PC without Direct3D 12 |
+| Elliott Tate's seventh natives round (libm, collision blocks, rotations, geometry, JASystem) and `cache_ops.py`, behind `--native-entries` and `--cache-ops`, off by default; the replay generated at build time (jslay88, #361) | #179 | Windows, Linux builders | 60,000 leaf cases, no mismatches, on four leaves; 14 minutes of play | A measured build with it on |
+| Two more native sets, linked only when asked: `--native-set4` (colour blends, key-frame animation, collision setup) and `--native-gx` (the GX FIFO writers); no hooks yet, so nothing in them runs (jslay88, #365, #366, through #381) | #179 | Windows, Linux builders | The sources and comparison tests compile; CI | A build with the switches on; hashes from a BlueWake module before any hook |
+| Linux: a Docker layer error is explained as the build cache, and the container build no longer prints a "sensitive data" warning (#382) | #56 | Linux builder | The Linux CI job builds the Dockerfile | none |
 
-Not in it yet: the Android HD import (#347, draft), the softer HD look (#321, on Chris's iPad and awaiting his
-assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box photo (#342), Smooth Motion without the
-flicker (#371), one desktop menu (#368, coming in five parts) and natives rounds 4, 5 and 7 (#366, #365, #361).
-Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and [PRIORITIES.md](../PRIORITIES.md).
+Not in it yet: the Android HD import (#347, draft), the iOS menu-switch change (#316), the first cold-cache Picto Box
+photo (#342), Smooth Motion without the flicker (#371) and one desktop menu (#368, coming in five parts). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
+[PRIORITIES.md](../PRIORITIES.md).
+
+## Release notes (draft, for the release page)
+
+BlueWake 0.8.0 brings the Wind Waker HD look, HD textures you make from your own Wind Waker HD game inside the app,
+more speed by default on Windows and Linux, the same menus on every computer, and an experimental Android build.
+Every version needs your own USA (GZLE01) disc image. Nothing from the game is included except in the ready-made
+Windows and Linux builds.
+
+- **The Wind Waker HD look**, off by default: islands on the horizon from further away, bloom, the far-distance blur,
+  ambient occlusion, cloud shadows, and edge and torch light, kept gentle so the game keeps its colours. Press **F2**
+  on Windows, Mac and Linux, or turn it on under **Mods** on iPhone and iPad. Each piece can be turned off by itself.
+- **HD textures from your own Wind Waker HD game.** **Mods › Wind Waker HD textures › Import from Wind Waker HD…**
+  makes the texture pack, HD menus and HUD included, from your decrypted HD dump or a USA WUD/WUX image with its keys,
+  on Windows, Mac, Linux, iPhone and iPad. No Python, and nothing from the Wii U game is included in BlueWake.
+- **Faster by default on Windows and Linux.** Behaviour timing: 7 to 11% faster on Intel desktops and 9% on the Steam
+  Deck, together with lighter checks around the game code (thanks to pdale-boop) and Elliott Tate's faster returns
+  and calls.
+- **The same menus and keys on every computer** (thanks to pdale-boop): F1 settings, F2 the HD look, F5 and F8 save
+  and load state, F7 the stage select, F9 the frame rate, F10 Smooth Motion, F11 fullscreen. The Windows menu works
+  with a controller, and Linux gets Restart now and safe mode.
+- **Controls:** the D-pad moves the cursor in Items and Quest Status, gyro aiming with a DualSense, DualShock 4,
+  Switch Pro or Steam Deck, swapping L and R, and 21:9 widescreen.
+- **Fixed:** Lenzo accepts the right Picto Box photos (thanks to jslay88), each island's sea chart shows its own map,
+  the Greatfish merchant stays on his raft (jslay88), and resizing the window on Linux no longer crashes
+  (pdale-boop). On Wayland the game runs at full speed (jslay88).
+- **New, off by default:** the developers' stage select, with 468 places to jump to from your own file (thanks to
+  pdale-boop).
+- **Linux:** portable mode, a working texture-pack folder picker (thanks to jkoehler11), and the build container
+  (thanks to cforain).
+- **Android, experimental:** build it yourself from your own disc on a Windows PC (thanks to LiquidAzir). See
+  docs/ANDROID.md.
+
+Known issues: with Smooth Motion above 60 FPS, clouds and the HD look can flicker on some PCs (#136; a fix is in
+progress in #371). The Wind Temple's rooms R04 and R08 need an opt-in switch to load (#318).
+
+## After publishing
+
+Post on each issue that 0.8.0 has the change and ask the reporter to confirm. Close an issue only when the reporter
+does (AGENTS.md).
+
+| Issue | What to ask |
+| --- | --- |
+| #56 Linux support | Whether the AppImage starts and plays, on their distribution and on the Steam Deck |
+| #57 The Wii U HD look and textures | Whether the HD look and the in-app import work for them |
+| #70 Ultrawide | Whether 21:9 under Mods looks right |
+| #75 Android | Point to ANDROID.md; it stays experimental |
+| #108 A hotkey for the HD look | Whether F2 works |
+| #136 Flickering clouds and waves | Keep open: the Smooth Motion fix is #371, not in 0.8.0 unless it lands first |
+| #188 Gyro aim, #244 swap L and R, #245 the D-pad in menus | Whether each option works with their controller |
+| #263 Each island's own sea chart | Whether every island shows its own map with no variable set |
+| #267 Lenzo's Picto Box photos | Whether Lenzo accepts the photos |
+| #320 The same hotkeys everywhere | Whether the keys match on their platform |
+| #325 Resizing on Linux | Whether resizing and fullscreen keep drawing |
 
 ## Checks before publishing
 
 | Check | Who | Result |
 | --- | --- | --- |
-| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | not yet |
+| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | The freeze pull request; the candidate commit is filled in when it merges |
 | Windows build from the candidate on Chris's PC, with the play checks in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) sections 1 and 2 | Chris's PC | not yet |
 | Linux AppImage from a contributor's own disc; `check_appimage_abi.py` at 2.39; the release check | cforain or jkoehler11 | not yet |
 | The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | not yet |
