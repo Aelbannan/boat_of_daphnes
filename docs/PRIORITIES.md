@@ -58,17 +58,22 @@ earlier, #154, #55, #58, #66, #73. Confirmed and closed: #74, #155, #191, #313, 
 | elbahijeadam | A log from Outset and the open sea | #246 |
 | jay080021 | Their CPU and a bird-scene log; whether the pirate flag has its texture | #59, #69 |
 | A physical iPad | A tap through the ⋯ menu's switches with #316 | #316 |
-| Chris | #342 with RecompCore#39; the Apple default; when to freeze 0.8.0 | [GOAL_LOOP.md](GOAL_LOOP.md#waiting-on-chris) |
+| Chris | #342 with RecompCore#39; the Apple default; publishing 0.8.0 after its checks | [GOAL_LOOP.md](GOAL_LOOP.md#waiting-on-chris) |
+
+A follow-up from the 0.8.0 Mac benchmark (RELEASE_0.8.0.md): the cache-flush fallback, on by default, seems to cost
+about 1 to 3% of game-thread speed at Forest Haven and the sea by the Fortress on an M3 Max. It fixes the sea charts
+and Picto Box previews (#263), so it stays on; measure it on a slower device and look for a cheaper check.
 
 ## Contributors' pull requests
 
 Review within two days ([DIRECTION.md](DIRECTION.md)). Merged on October 17: LiquidAzir's Android port (#93),
 jslay88's Wayland present (#370), benchmark tour (#360), native-test comparison (#359) and fmod shim (#364),
-pdale-boop's Picto Box crop (#338, with RecompCore#37), and cforain's runtime docs (#337). The earlier merge history
+pdale-boop's Picto Box crop (#338, with RecompCore#37) and HD import script order (#375), cforain's runtime docs
+(#337), and jslay88's natives rounds 7, 5 and 4 with Elliott Tate (#361, and #365 and #366 through #381), off by default. The earlier merge history
 is in the [October 15 snapshot](status/PRIORITIES_2026-10-15.md#contributors-pull-requests).
 
 Open now:
 
 - **#368** (pdale-boop, one desktop menu): agreed to split into five pull requests; Chris builds each on the Mac.
-- **#371** (pdale-boop, Smooth Motion without the flicker, RecompCore#40): draft; needs rebasing on `bluewake-next`.
-- **#365, #366** (jslay88, natives rounds 5 and 4): drafts on top of round 7 (#361, merged), replays generated at build time.
+- **#371** (pdale-boop, Smooth Motion without the flicker, RecompCore#40): draft, still in progress (pdale-boop, October 17).
+- **#380** (cforain, a guide to measuring performance): draft; asked to add it to AGENTS.md's list.

@@ -10,7 +10,7 @@ publishes.
 | | |
 | --- | --- |
 | Version | 0.8.0, build 7 (`version.json`, set by the freeze pull request) |
-| Candidate commit | The freeze pull request's merge commit, recorded here once it merges: what the Windows build, the AppImage and the IPA are built from |
+| Candidate commit | `f2611b1357215d1f426af9dbe90c7d7189320c99` (#376's merge, October 17): what the Windows build, the AppImage and the IPA are built from. Check it out with `git checkout --detach f2611b1` |
 | RecompCore | `338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4` (through patch 0182: the HD look and its sea fixes, the Picto Box fixes, the resize fix and the copy crop; 0179 belongs to draft #371 and 0181 to draft #342) |
 | Previous release | 0.7.0, October 10 (`66b33be`) |
 
@@ -55,7 +55,7 @@ While the candidate is being built and checked, only docs and fixes for what the
 | **Full speed on Wayland:** mailbox present, so KWin 6.8 no longer holds the game at about 70% (jslay88, #370; `BLUEWAKE_VSYNC=1` for FIFO) | #56, #215 | Linux | CachyOS, KWin 6.8, RTX 4090 at 120 Hz: retraces held 59.9 | GNOME; the Steam Deck's gamescope |
 | Picto Box photos under widescreen keep their 4:3 shape, opt-in (`picto_crop=1` on Windows, `BLUEWAKE_PICTO_CROP=1` on Mac and Linux; pdale-boop, #338 with RecompCore#37) | none | Windows, Mac, Linux | Windows and Arch at 16:9, 16:10 and 21:9 | The Mac |
 | Mac builds work with Mono or Homebrew SQLite installed (#367) | none | Mac builder | A full private Mac build with the conflicting paths; the regression fails without the fix | PadMint's `player-check.sh` |
-| The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests | The tour's first run on a disc |
+| The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests. First run on a disc: the candidate's Mac build (M3 Max, rendered), all five stops loaded with no dips, 31 checkpoints, the card unchanged (below) | A comparison against 0.7.0 |
 | **Linux AppImage builds pass their own ABI audit:** `--appimage` builds the app with libc++ and Dawn from source, as CI does (#374; found from irregularthanis's build log on #371) | #56 | Linux builder | Contract test; the pinned Dawn package checked to link libstdc++ | An AppImage from a contributor's own disc passing `appimage-abi` |
 | The HD import script picks the same sources on Windows as on Mac and Linux (pdale-boop, #375) | #57 | Windows | pdale-boop's Windows run matched the native pack in every PNG and report field | none |
 | **The HD look, softer:** sun shadows off by default (their streaks), gentler ambient occlusion, cloud shadows, bloom and far blur (#321) | #57 | Every platform | Chris's iPad Pro (October 15); irregularthanis's Radeon screenshots on #371 showed the streaks and darkening it removes | A look on Windows and Linux |
@@ -68,6 +68,10 @@ While the candidate is being built and checked, only docs and fixes for what the
 Not in it yet: the Android HD import (#347, draft), the iOS menu-switch change (#316), the first cold-cache Picto Box
 photo (#342), Smooth Motion without the flicker (#371) and one desktop menu (#368, coming in five parts). Their remaining checks and decisions are in [GOAL_LOOP.md](../GOAL_LOOP.md) and
 [PRIORITIES.md](../PRIORITIES.md).
+
+After the freeze: #383 (pdale-boop) fixes `tests/test_safe_mode_hd.py`, which failed at the candidate because it still
+expected the HD look switch to turn sun shadows on (#321 leaves them off). Test only; the candidate's code is
+unchanged.
 
 ## Release notes (draft, for the release page)
 
@@ -126,9 +130,12 @@ does (AGENTS.md).
 
 | Check | Who | Result |
 | --- | --- | --- |
-| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | The freeze pull request; the candidate commit is filled in when it merges |
+| Freeze: `version.json`, the candidate commit here | Chris decides; Codex does it | Done: #376 merged as `f2611b1`, `version.json` 0.8.0 build 7 |
 | Windows build from the candidate on Chris's PC, with the play checks in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md) sections 1 and 2 | Chris's PC | not yet |
 | Linux AppImage from a contributor's own disc; `check_appimage_abi.py` at 2.39; the release check | cforain or jkoehler11 | not yet |
-| The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | not yet |
-| The 468-place warp sweep with the stage select (`scripts/stage_select_sweep.py`) | pdale-boop or Codex | On `main` `d73ac95` (not the candidate), a Mac, an early file: 446 of 468 arrive, the card unchanged after all 468; the rest are the noted test rooms and crash rooms and late-game cutscenes the file can't reach ([STAGE_SELECT.md](../STAGE_SELECT.md)). Still to do on the candidate, with a late-game file |
-| The benchmark at Outset and Dragon Roost Cavern against 0.7.0 | Codex | not yet |
+| The app-only IPA, PadMint's `audit`, and PadMint's `scripts/player-check.sh` before tagging and after publishing | Codex, on this Mac | IPA: pass at `f2611b1` (M3 Max, October 17). `BlueWake-v0.8.0-ios-unsigned.ipa`, 5.7 MB, SHA-256 `c45a2e94…dd92335`, reports 0.8.0 build 7 and holds no game module; PadMint `audit` (0 address-named functions) and `check_public_assets.sh` pass. `player-check.sh` before tagging: pass (PadMint `main` `b9f4c3d`, 0.5.3; Apple Python 3.9.6, an empty PadMint folder, a fresh clone of `f2611b1`, this IPA as the app): translated, trained, compiled, signed and verified a personal IPA in 6 h 17 min, slow because `padmint build` compiles with 2 jobs (players' `padmint make` uses the cores). After publishing: not yet |
+| Source zip and recipe | Codex, on this Mac | Pass at `f2611b1`: `git archive` with the `bluewake-0.8.0/` prefix (1,213 entries) and `padmint.json` as `BlueWake-v0.8.0-padmint.json`; `check_public_assets.sh` passes both |
+| The 468-place warp sweep with the stage select (`scripts/stage_select_sweep.py`) | pdale-boop or Codex | On `main` `d73ac95` (not the candidate), a Mac, an early file: 446 of 468 arrive, the card unchanged after all 468; the rest are the noted test rooms and crash rooms and late-game cutscenes the file can't reach ([STAGE_SELECT.md](../STAGE_SELECT.md)). On the candidate `f2611b1` (Mac build, M3 Max, October 17, the same early file): 446 of 468 arrive and the card is unchanged after all 468. The other 22 are the names file's crash rooms, hangs and story cutscenes, plus Ganon's room cutscene and the ending, which an early file can't reach. A late-game file is still to do |
+| The benchmark at Outset and Dragon Roost Cavern against 0.7.0 | Codex | Done on the Mac (M3 Max, October 17), `bench_tour.py` on both builds made the same way (`build.sh DISC --platform macos --jobs 8`/`6`, local training), alternating, with other work running (load average 7 to 9). **Checkpoints match** between 0.7.0 and the candidate in every pair: the same game state along the route. Headless speed, three pairs: Outset, Windfall and Dragon Roost Cavern within about 1% of 0.7.0 (−2.4% to +1.4%); Forest Haven −0.3% to −3.6% and the sea by the Fortress −1.2% to −4.7%. With `BLUEWAKE_CACHE_FLUSH_FALLBACK=0` (two runs) the candidate is +1.0% to +2.4% at the first three stops, even at Forest Haven and −2.1%/+1.6% by the Fortress, so most of the loss at the busy stops looks like the cost of the cache-flush fallback (on by default since #263's fix). Rendered, both hold 30 game frames a second at every stop. Not run on a slower Mac, an iPhone or an iPad |
+| The draft release | Codex prepares; Chris publishes | A v0.8.0 **draft** targeting `f2611b1` (no tag until it's published) with the IPA, the source zip, the recipe and `SHA256SUMS`; GitHub's digests match the files here. The notes are drafted in Chris's voice. Still to add: the Windows zip and the AppImage, then `check_public_assets.sh` on them and a new `SHA256SUMS` |
+| Mac build from the candidate | Codex, on this Mac | Pass: `scripts/builder/build.sh DISC --platform macos --jobs 8` at `f2611b1`, with local training; the module compiled in 90 minutes; the app packaged and signed ad hoc. Played only by the tour and the sweep above; ten minutes with a controller is still to do |
