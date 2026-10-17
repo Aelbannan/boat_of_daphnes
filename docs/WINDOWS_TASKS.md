@@ -20,11 +20,11 @@ The merged Picto recognition integration (#341) includes #334 and RecompCore#36.
 photos on pdale-boop's Windows PC. Mac evidence and the separate first-use shader-cache follow-up
 (RecompCore#39, not pinned) are in [the validation record](status/PICTO_RECOGNITION_2026-10-15.md).
 Gallery alignment (#346, merged as `dc45b43`) is checked separately below; the opt-in crop (#338 / RecompCore#37)
-still needs a runtime decision. Native HD import remains draft #315: Windows/Linux CI, audit and attribution
-passed at `3b13534`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
+is in `main` (October 17), off by default. Native HD import is in `main` too (#315, October 17): Windows/Linux CI,
+audit and attribution passed at `ee8758c`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
 kept the earlier pack; after a restart all 3,546 textures loaded). Windows interactive import is still
 unchecked; Android #347's API 36 app import and recovery results do not replace that check
-([current status](GOAL_LOOP.md#where-things-stand-on-october-15)).
+([current status](GOAL_LOOP.md#where-things-stand-on-october-17)).
 
 
 | Change | Issue | What to check | Result |
@@ -55,9 +55,9 @@ unchecked; Android #347's API 36 app import and recovery results do not replace 
 | Picto Box photos under widescreen keep their 4:3 shape (`picto_crop=1` in `settings.ini`, off by default) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn, with `picto_crop=1` added to `settings.ini` (`BLUEWAKE_PICTO_CROP=1` also works): the log's `[aspect]` line ends "Picto Box photos cropped to 4:3", and a new photo, from the Picto Box and the Deluxe Picto Box, keeps the shape of what was in the middle of the viewfinder instead of the whole wide view squeezed. Without it, photos are as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`, and the gallery fix) at 2560x1080: photos from both Picto Boxes with the crop at 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build with RecompCore#37's commit: new photos from the Picto Box with `BLUEWAKE_PICTO_CROP=1` at all three, and from the Deluxe Picto Box at 16:9; without it, 16:9 photos are squeezed. Mac: not built or run yet |
 | The Picto Box gallery under widescreen: photos as wide as their frames, and in them (#346, merged `dc45b43`) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn: in the Picto Box gallery the middle photo sits in its frame, and so do the ones beside it, at rest and while sliding. At 21:9 a photo is as wide as its frame (it was squeezed to 77% of it). | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`) at 2560x1080: 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build: 16:9, 16:10 and 21:9. M3 Max/Metal, fresh module, host `14bc288` / runtime `57123c6`: all three photos align at each aspect; left/right navigation endpoints captured, not frame-by-frame animation. All three runs exit 0 with copied cards unchanged ([evidence](status/PICTO_RECOGNITION_2026-10-15.md#gallery-alignment)). |
 
-### Draft native HD importer (#315)
+### The native HD importer (#315, merged October 17)
 
-This is not in `main` or a download yet. On a build of #315, use
+In `main`, not yet in a download. On a build of `main`, use
 **F1 › Mods › Wind Waker HD textures › Import from Wind Waker HD…** with
 your own decrypted folder, then a USA WUD/WUX image and its keys:
 

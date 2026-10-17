@@ -63,7 +63,7 @@ once the observer is installed.
 
 ## Pictobox preview (#13), on the same build
 
-From the list in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md#in-main-waiting-for-a-windows-build). A test card from
+From the list in [WINDOWS_TASKS.md](../WINDOWS_TASKS.md). A test card from
 my playthrough (Windfall dock, `sea 11 0`): quest log 1 with the regular Pictobox, quest log 2 the same save
 with the Deluxe one.
 

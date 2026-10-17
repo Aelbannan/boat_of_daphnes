@@ -17,10 +17,10 @@ many textures the chosen pack has, and a way to add a pack:
 - **iPhone and iPad:** ⋯ › Mods › **Install Texture Pack…**, which copies the
   pack into the app.
 
-## Import in the app (draft #315)
+## Import in the app
 
-The native importer is in [draft #315](https://github.com/chrissotraidis/bluewake/pull/315),
-not the 0.7.0 download. Its entry is **Mods › Wind Waker HD textures › Import
+The native importer is in `main` since October 17 ([#315](https://github.com/chrissotraidis/bluewake/pull/315)),
+not yet in a download (0.7.0 doesn't have it). Its entry is **Mods › Wind Waker HD textures › Import
 from Wind Waker HD…**: F1 on Mac, Linux and Windows, or ⋯ on iPhone and iPad.
 Android integration is in [draft #347](https://github.com/chrissotraidis/bluewake/pull/347). The app needs no Python.
 
