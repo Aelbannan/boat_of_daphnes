@@ -169,10 +169,20 @@ endif()
 if(BLUEWAKE_NATIVE_ENTRIES)
   # The hooks native_entries.py inserts call these; its certification decides
   # which are hooked. The natives use the direct-call, gather-pipe and vector code.
+  # The seventh set's replay (native_*_gen.inc) is generated from this build's
+  # composite. It is translated game code, so it is not in the repository.
   if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
     message(FATAL_ERROR "Native entries need BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
   endif()
-  target_sources(${MODULE_NAME} PRIVATE native_fifo.c native_bg.c native_mtxcalc.c native_search.c)
+  foreach(GROUP libm bgblk rot calc geom jas)
+    if(NOT EXISTS "${BLUEWAKE_NATIVE_GEN_DIR}/native_${GROUP}_gen.inc")
+      message(FATAL_ERROR
+        "Native entries need ${BLUEWAKE_NATIVE_GEN_DIR}/native_${GROUP}_gen.inc from native_leaf_gen.py")
+    endif()
+  endforeach()
+  target_sources(${MODULE_NAME} PRIVATE native_fifo.c native_bg.c native_mtxcalc.c native_search.c
+    native_libm.c native_bgblk.c native_rot.c native_calc.c native_geom.c native_jas.c)
+  target_include_directories(${MODULE_NAME} BEFORE PRIVATE "${BLUEWAKE_NATIVE_GEN_DIR}")
   target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
   target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_ENTRIES=1)
 endif()
