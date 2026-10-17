@@ -74,16 +74,9 @@ int main() {
     assert(bw_desktop::env("DOL_AURORA_RENDER_SCALE") == "4");
     assert(bw_fps_position(bw_desktop::env("DOL_AURORA_FPS_POSITION").c_str()) == FPS_OVERLAY_BOTTOM_RIGHT);
     assert(bw_desktop::env("DOL_AURORA_SHOW_FPS") == "0");
-    // The pairs: as one switch where the table reads them whole (Windows), as
-    // each half says elsewhere.
-    if (bw_settings::includes(bw_settings::find("BLUEWAKE_FAST_FORWARD")->whole, bw_settings::kThisOs))
-        assert(bw_desktop::env("BLUEWAKE_FADE_FRAMES") == "0");
-    else
-        assert(bw_desktop::env("BLUEWAKE_FADE_FRAMES") == "6");
-    if (bw_settings::includes(bw_settings::find("BLUEWAKE_JUMP_BUTTON")->whole, bw_settings::kThisOs))
-        assert(bw_desktop::env("BLUEWAKE_JUMP_BUTTON") == "1" && bw_desktop::env("BLUEWAKE_SPRINT_SPEED") == "1.84");
-    else
-        assert(bw_desktop::env("BLUEWAKE_JUMP_BUTTON") == "0" && bw_desktop::env("BLUEWAKE_SPRINT_SPEED") == "1.84");
+    // The pairs, half on: both halves off, on every platform.
+    assert(bw_desktop::env("BLUEWAKE_FAST_FORWARD") == "0" && bw_desktop::env("BLUEWAKE_FADE_FRAMES") == "0");
+    assert(bw_desktop::env("BLUEWAKE_JUMP_BUTTON") == "0" && bw_desktop::env("BLUEWAKE_SPRINT_SPEED") == "1");
     bw_desktop::set_env("DOL_AURORA_SHOW_FPS", "1");
     bw_desktop::save();
     std::string saved = read_file(path);

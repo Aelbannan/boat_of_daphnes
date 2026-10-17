@@ -263,31 +263,24 @@ bool needs_restart() {
 // --- the file ---------------------------------------------------------------
 
 namespace {
-// A switch that used to be two settings, read as one where the table says
-// (settings_table.h's joined and whole), as Windows always held them: Fast
-// transitions decides and its fades follow it; Jump & Sprint is on with either
-// half on, at the sprint speed chosen. A half the launch chose stays as it is.
-void read_joined() {
-    for (const bw_settings::Setting& s : bw_settings::kSettings) {
-        if (s.joined == nullptr || !bw_settings::includes(s.whole, bw_settings::kThisOs))
-            continue;
-        const bool launched_half = g_launch.count(s.joined) != 0;
-        if (std::strcmp(s.key, "BLUEWAKE_FAST_FORWARD") == 0) {
-            if (!launched_half)
-                put_env(s.joined, env_on(s.key, bw_settings::default_on(s)) ? "6" : "0");
-        } else if (std::strcmp(s.key, "BLUEWAKE_JUMP_BUTTON") == 0) {
-            const double speed = std::atof(env(s.joined, "1").c_str());
-            const bool on = env_on(s.key, bw_settings::default_on(s)) || speed > 1.01;
-            double choice = std::atof(env("BLUEWAKE_SPRINT_CHOICE", "0").c_str());
-            if (choice < 1.1 || choice > 2.0)
-                choice = speed > 1.01 && speed <= 2.0 ? std::max(speed, 1.1) : 1.5;
-            char text[16];
-            std::snprintf(text, sizeof text, "%.2f", choice);
-            if (g_launch.count(s.key) == 0)
-                put_env(s.key, on ? "1" : "0");
-            if (!launched_half)
-                put_env(s.joined, on ? text : "1");
-        }
+// Fast transitions and Jump & Sprint were two settings each (settings_table.h).
+// A file holding one half on and the other off turns both off, on every
+// platform: nothing it had off comes on, and the player turns the switch on
+// again in the menu. A half the launch chose, or one the file doesn't name,
+// stays as it is.
+void turn_off_half_pairs() {
+    const auto named = [](const char* key) { return !env(key, "").empty() && g_launch.count(key) == 0; };
+    if (named("BLUEWAKE_FAST_FORWARD") && named("BLUEWAKE_FADE_FRAMES") &&
+        env_on("BLUEWAKE_FAST_FORWARD", false) != env_on("BLUEWAKE_FADE_FRAMES", false)) {
+        put_env("BLUEWAKE_FAST_FORWARD", "0");
+        put_env("BLUEWAKE_FADE_FRAMES", "0");
+        g_dirty = true;
+    }
+    if (named("BLUEWAKE_JUMP_BUTTON") && named("BLUEWAKE_SPRINT_SPEED") &&
+        env_on("BLUEWAKE_JUMP_BUTTON", false) != (std::atof(env("BLUEWAKE_SPRINT_SPEED", "1").c_str()) > 1.01)) {
+        put_env("BLUEWAKE_JUMP_BUTTON", "0");
+        put_env("BLUEWAKE_SPRINT_SPEED", "1");
+        g_dirty = true;
     }
 }
 }  // namespace
@@ -308,6 +301,7 @@ void load(const std::string& path, const std::string& read_instead) {
         const bool converted = bw_settings::convert_old_windows(lines, bw_platform::default_pack_folder());
         for (const auto& [key, value] : lines)
             read_line(key, value);
+        turn_off_half_pairs();
         std::fprintf(stderr, "[settings] %d settings from %s\n", static_cast<int>(lines.size()), path.c_str());
         if (converted) {
             // The old file is kept beside the new one, once; if it can't be
@@ -324,7 +318,6 @@ void load(const std::string& path, const std::string& read_instead) {
             }
         }
     }
-    read_joined();
     if (!g_launch.empty()) {
         std::string names;
         for (const auto& [key, value] : g_launch)

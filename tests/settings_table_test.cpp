@@ -99,14 +99,6 @@ int main() {
         assert(filled_on(s, Os::Windows) == !listed(kNotFilled, s.key));
         assert(filled_on(s, Os::Mac) == listed(kFilledEverywhere, s.key));
         assert(filled_on(s, Os::Linux) == filled_on(s, Os::Mac));
-        // The two switches that were two settings each, read as one on Windows
-        // as they always were there, as each half says elsewhere (undecided).
-        if (std::strcmp(s.key, "BLUEWAKE_FAST_FORWARD") == 0)
-            assert(std::strcmp(s.joined, "BLUEWAKE_FADE_FRAMES") == 0 && s.whole == Os::Windows);
-        else if (std::strcmp(s.key, "BLUEWAKE_JUMP_BUTTON") == 0)
-            assert(std::strcmp(s.joined, "BLUEWAKE_SPRINT_SPEED") == 0 && s.whole == Os::Windows);
-        else
-            assert(s.joined == nullptr && s.whole == Os::None);
     }
     assert(find("BLUEWAKE_NOT_A_SETTING") == nullptr);
     assert(default_on(*find("BLUEWAKE_MOUSE_CAMERA")) && !default_on(*find("BLUEWAKE_HD_LOOK")));

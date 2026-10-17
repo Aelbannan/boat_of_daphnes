@@ -65,13 +65,6 @@ struct Setting {
     // it rather than its own: Windows fills every default, as its settings
     // always have; Mac and Linux only where the game's own differs.
     Os fill = Os::Windows;
-    // A switch that used to be two settings: its old other half (the fades of
-    // Fast transitions, the sprint's speed of Jump & Sprint), and where a file or
-    // a launch holding them half on is read as one switch. Elsewhere each half
-    // is read as it is. Which way is right everywhere is still to be decided;
-    // until then each platform reads them as it did.
-    const char* joined = nullptr;
-    Os whole = Os::None;
     // Experimental: drawn at the bottom of the Mods tab under "Experimental",
     // whatever its tab, with this line saying what has not been checked yet.
     // Off by default. Leaving Experimental is removing this line.
@@ -116,11 +109,13 @@ inline constexpr Setting kSettings[] = {
     {.key = "BLUEWAKE_FOREST_WATER_30_MINUTES", .old_windows = "forest_water_30_minutes", .kind = Kind::Bool,
      .label = "30-minute Forest Water timer", .tab = Tab::Gameplay, .control = Control::Switch,
      .note = "Applies the next time you collect Forest Water. Both options are off by default."},
+    // Fast transitions and Jump & Sprint were two settings each (the fades, the
+    // sprint's speed). A file holding one half on loads with both off, on every
+    // platform (desktop_settings.cpp); the menu's switch sets both halves.
     {.key = "BLUEWAKE_FADE_FRAMES", .old_windows = "fast_transitions", .kind = Kind::Int, .tab = Tab::Gameplay},
     {.key = "BLUEWAKE_FAST_FORWARD", .old_windows = "fast_transitions", .kind = Kind::Bool,
      .on = Os::Linux | Os::Mac, .label = "Fast transitions (short fades, no waiting in the black)",
-     .tab = Tab::Gameplay, .control = Control::Switch, .group = "Doors and exits", .next_launch = Os::Windows,
-     .joined = "BLUEWAKE_FADE_FRAMES", .whole = Os::Windows},
+     .tab = Tab::Gameplay, .control = Control::Switch, .group = "Doors and exits", .next_launch = Os::Windows},
     {.key = "BLUEWAKE_QUICK_DOORS", .old_windows = "quick_doors", .kind = Kind::Bool, .on = Os::Linux | Os::Mac,
      .label = "Quick doors (no walk-in or door closing behind Link)", .tab = Tab::Gameplay,
      .control = Control::Switch, .next_launch = Os::Windows},
@@ -132,7 +127,7 @@ inline constexpr Setting kSettings[] = {
     {.key = "BLUEWAKE_JUMP_BUTTON", .old_windows = "movement_extras", .kind = Kind::Bool,
      .label = "Jump & Sprint (Space or the left bumper jumps; Shift or the left stick click sprints)",
      .tab = Tab::Gameplay, .control = Control::Custom, .group = "Jump & Sprint", .next_launch = Os::Windows,
-     .fill = Os::All, .joined = "BLUEWAKE_SPRINT_SPEED", .whole = Os::Windows},
+     .fill = Os::All},
     {.key = "BLUEWAKE_SPRINT_SPEED", .old_windows = "sprint_speed", .kind = Kind::Float, .fallback = "1",
      .tab = Tab::Gameplay, .next_launch = Os::Windows, .fill = Os::All},
     {.key = "BLUEWAKE_SPRINT_CHOICE", .old_windows = "sprint_speed", .kind = Kind::Float, .fallback = "1.5",
