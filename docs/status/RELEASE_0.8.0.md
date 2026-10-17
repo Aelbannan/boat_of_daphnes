@@ -58,6 +58,9 @@ While the candidate is being built and checked, only docs and fixes for what the
 | The benchmark tour (`scripts/bench_tour.py`, jslay88, #360); the native-entry tests compare guest state only (#359); a source-compiled `__ieee754_fmod`, not hooked (#364) | #179 | Tooling | Tests | The tour's first run on a disc |
 | **Linux AppImage builds pass their own ABI audit:** `--appimage` builds the app with libc++ and Dawn from source, as CI does (#374; found from irregularthanis's build log on #371) | #56 | Linux builder | Contract test; the pinned Dawn package checked to link libstdc++ | An AppImage from a contributor's own disc passing `appimage-abi` |
 | The HD import script picks the same sources on Windows as on Mac and Linux (pdale-boop, #375) | #57 | Windows | pdale-boop's Windows run matched the native pack in every PNG and report field | none |
+| **The HD look, softer:** sun shadows off by default (their streaks), gentler ambient occlusion, cloud shadows, bloom and far blur (#321) | #57 | Every platform | Chris's iPad Pro (October 15); irregularthanis's Radeon screenshots on #371 showed the streaks and darkening it removes | A look on Windows and Linux |
+| **The HD look on the sea:** cloud shadows without square steps, and no banding (#379, RecompCore#41) | #371 | Every platform | M3 Max: the straight-edged band across Outset's sea gone, before and after from the same host | Vulkan and Direct3D 12, where it was reported |
+| **Windows: older GPUs without Direct3D 12 draw through Direct3D 11** instead of a black screen: the builder ships `d3dcompiler_47.dll` (#377) | none (a GTX 550 Ti on Discord) | Windows | Builder test; the player's log shows the cause | A PC without Direct3D 12 |
 
 Not in it yet: the Android HD import (#347, draft), the softer HD look (#321, on Chris's iPad and awaiting his
 assessment), the iOS menu-switch change (#316), the first cold-cache Picto Box photo (#342), Smooth Motion without the
@@ -72,8 +75,8 @@ Every version needs your own USA (GZLE01) disc image. Nothing from the game is i
 Windows and Linux builds.
 
 - **The Wind Waker HD look**, off by default: islands on the horizon from further away, bloom, the far-distance blur,
-  ambient occlusion, cloud and sun shadows, and edge and torch light. Press **F2** on Windows, Mac and Linux, or turn
-  it on under **Mods** on iPhone and iPad. Each piece can be turned off by itself.
+  ambient occlusion, cloud shadows, and edge and torch light, kept gentle so the game keeps its colours. Press **F2**
+  on Windows, Mac and Linux, or turn it on under **Mods** on iPhone and iPad. Each piece can be turned off by itself.
 - **HD textures from your own Wind Waker HD game.** **Mods › Wind Waker HD textures › Import from Wind Waker HD…**
   makes the texture pack, HD menus and HUD included, from your decrypted HD dump or a USA WUD/WUX image with its keys,
   on Windows, Mac, Linux, iPhone and iPad. No Python, and nothing from the Wii U game is included in BlueWake.
