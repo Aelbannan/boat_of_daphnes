@@ -1221,6 +1221,15 @@ int main(void) {
         return exe
 
     # --- 10 package ----------------------------------------------------------
+    def d3d_compiler(self):
+        """The Windows SDK's redistributable d3dcompiler_47.dll (x64), or None."""
+        sdks = [self.env.get("WindowsSdkDir", ""),
+                str(Path(self.env.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Windows Kits/10")]
+        for sdk in sdks:
+            if sdk and (Path(sdk) / "Redist/D3D/x64/d3dcompiler_47.dll").is_file():
+                return Path(sdk) / "Redist/D3D/x64/d3dcompiler_47.dll"
+        return None
+
     def package(self, module):
         app = self.out / "BlueWake"
         (app / "game").mkdir(parents=True, exist_ok=True)
@@ -1247,6 +1256,15 @@ int main(void) {
         else:
             print("note: the Visual C++ runtime DLLs were not found to copy; the app needs the "
                   "Visual C++ Redistributable on other PCs")
+        # Direct3D 11, for GPUs without Direct3D 12 or Vulkan (a GTX 550 Ti): Dawn loads its shader
+        # compiler from beside the app, not from System32, so without this file those PCs fall through
+        # to the Null renderer and play with a black screen. The Windows SDK's redistributable copy.
+        compiler = self.d3d_compiler()
+        if compiler is not None:
+            shutil.copy2(compiler, app / "d3dcompiler_47.dll")
+        else:
+            print("note: the Windows SDK's d3dcompiler_47.dll was not found to copy; GPUs without "
+                  "Direct3D 12 will show a black screen")
         shutil.copy2(self.out / "game/main.dol", app / "game/main.dol")
         rels = app / "game/rels"
         shutil.rmtree(rels, ignore_errors=True)
