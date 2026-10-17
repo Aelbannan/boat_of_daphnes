@@ -233,5 +233,41 @@ class DependencyPreflightTest(unittest.TestCase):
                 builder.check_appimage_tools()
 
 
+class AppImageRuntimeTest(unittest.TestCase):
+    """The AppImage's host uses LLVM libc++, as CI's checked AppImage does.
+
+    The prebuilt Dawn package links libstdc++, so a host built with it needs the
+    player's libstdc++ and check_appimage_abi.py rejects the AppImage
+    (GLIBCXX_3.4.32 on a container build, reported on #371)."""
+
+    def configure(self, appimage):
+        builder = BUILD.Builder(argparse.Namespace(out=Path("build/linux"), appimage=appimage,
+                                                   march="x86-64-v3"))
+        seen = []
+        builder.run = lambda name, argv, **kw: seen.append([str(a) for a in argv])
+        builder.configure_app()
+        return builder, seen[0]
+
+    def test_appimage_builds_with_libcxx_and_dawn_from_source(self):
+        builder, argv = self.configure(True)
+        self.assertIn("-DCMAKE_CXX_FLAGS=-march=x86-64-v3 -g -stdlib=libc++", argv)
+        for flag in ("-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++", "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++",
+                     "-DAURORA_DAWN_PROVIDER=vendor"):
+            self.assertIn(flag, argv)
+        self.assertNotIn("-DAURORA_DAWN_PROVIDER=package", argv)
+        self.assertEqual(builder.app_build, Path("build/linux/app-appimage"))
+        # The same runtime as the CI job whose AppImage passes the ABI check.
+        workflow = (BUILD.ROOT / ".github/workflows/linux-host.yml").read_text()
+        for flag in ("-DCMAKE_CXX_FLAGS=-stdlib=libc++", "-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++",
+                     "-DAURORA_DAWN_PROVIDER=vendor"):
+            self.assertIn(flag, workflow)
+
+    def test_folder_build_keeps_the_prebuilt_dawn(self):
+        builder, argv = self.configure(False)
+        self.assertIn("-DAURORA_DAWN_PROVIDER=package", argv)
+        self.assertFalse(any("-stdlib=libc++" in a for a in argv))
+        self.assertEqual(builder.app_build, Path("build/linux/app"))
+
+
 if __name__ == "__main__":
     unittest.main()

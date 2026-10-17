@@ -252,6 +252,11 @@ Clang 18 by default, includes optional Clang 22 tools, and retains Ubuntu's
 libc++ 18 with either compiler.
 The completed AppImage is automatically audited for prohibited private files,
 accidental libstdc++ linkage and a maximum `GLIBC_2.39` requirement.
+To pass that audit, `--appimage` builds the app with LLVM libc++, which the
+AppImage carries, and builds Dawn from source with it, as Linux CI does (the
+prebuilt Dawn package links libstdc++). It uses its own `app-appimage` build
+folder, so the first AppImage build takes longer; folder builds keep the
+prebuilt Dawn.
 
 The outputs are:
 
