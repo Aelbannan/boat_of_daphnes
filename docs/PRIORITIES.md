@@ -60,6 +60,10 @@ earlier, #154, #55, #58, #66, #73. Confirmed and closed: #74, #155, #191, #313, 
 | A physical iPad | A tap through the ⋯ menu's switches with #316 | #316 |
 | Chris | #342 with RecompCore#39; the Apple default; publishing 0.8.0 after its checks | [GOAL_LOOP.md](GOAL_LOOP.md#waiting-on-chris) |
 
+A follow-up from the 0.8.0 Mac benchmark (RELEASE_0.8.0.md): the cache-flush fallback, on by default, seems to cost
+about 1 to 3% of game-thread speed at Forest Haven and the sea by the Fortress on an M3 Max. It fixes the sea charts
+and Picto Box previews (#263), so it stays on; measure it on a slower device and look for a cheaper check.
+
 ## Contributors' pull requests
 
 Review within two days ([DIRECTION.md](DIRECTION.md)). Merged on October 17: LiquidAzir's Android port (#93),
