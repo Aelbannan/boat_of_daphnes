@@ -4,6 +4,7 @@
 
 - [Introduction](#introduction)
 - [Performance workflow](#performance-workflow)
+- [Tool roles and platform coverage](#tool-roles-and-platform-coverage)
 - [Performance domains](#performance-domains)
 - [Profiling](#profiling)
 - [Benchmarking](#benchmarking)
@@ -66,6 +67,86 @@ The fixed-scene harness is
 [`scripts/bench_tour.py`](../../scripts/bench_tour.py). Linux and Steam Deck CPU
 sampling is automated by
 [`scripts/linux/profile_deck.sh`](../../scripts/linux/profile_deck.sh).
+
+## Tool roles and platform coverage
+
+The benchmark harness and CPU profiler are independent tools with a useful
+handoff between them. Neither invokes the other:
+
+```mermaid
+flowchart LR
+    Inputs["Same build, state,<br/>scene and settings"]
+    Tour["bench_tour.py<br/>controlled workload"]
+    Summary["summary.json<br/>speed, busy time,<br/>checkpoints"]
+    Choose["Choose the slow or<br/>changed scene"]
+    Profile["Platform profiler<br/>sample native stacks"]
+    Hotspots["Platform profile<br/>hot symbols and threads"]
+    Diagnose["Correlate runtime result<br/>with native ownership"]
+
+    Inputs --> Tour --> Summary --> Choose
+    Inputs --> Profile
+    Choose --> Profile --> Hotspots --> Diagnose
+    Summary --> Diagnose
+```
+
+[`bench_tour.py`](../../scripts/bench_tour.py) controls **what the game does**.
+It launches a BlueWake executable with an isolated card and settings, loads one
+state, visits fixed scenes, reads BlueWake's shared session instrumentation, and
+compares guest checkpoints. It answers questions such as “did this build make
+Outset faster?” and “did the sampled guest state remain the same?” It does not
+sample native call stacks, so it cannot name the function responsible for a
+change.
+
+[`profile_deck.sh`](../../scripts/linux/profile_deck.sh) measures **where one
+Linux process spends CPU time**. It launches one state, attaches Linux `perf`,
+and produces `perf.data` plus a flat symbol report. It can identify translated
+chunks, host helpers, services, or graphics functions consuming time, but it
+does not run the multi-scene tour or compare two builds.
+
+They can therefore be used separately:
+
+- Run only the benchmark when a before-and-after result and guest-state check
+  are sufficient.
+- Run only the profiler when a reproducible slow scene is already known and
+  the question is where its CPU time goes.
+- Use both when developing an optimization: benchmark first to identify the
+  affected scene and size of the change, then profile the same build and state
+  to explain it. Re-run the benchmark after the change for the acceptance
+  result.
+
+The tools correlate through their inputs and BlueWake's runtime instruments,
+not through a shared artifact. A `summary.json` cannot be opened as a CPU
+profile, and `perf.data` does not contain the tour's checkpoint comparison.
+
+Training is a third, separate workflow. It runs instrumented headless playbacks
+to create `.profraw` and `.profdata` inputs for a later compile; the benchmark
+and platform profiler measure the resulting executable. Neither measurement
+tool generates or modifies the PGO profile. The benchmark decides whether the
+trained build helped, while the native profile can explain which compiled paths
+changed cost. [Training and PGO](#training-and-pgo) describes that build loop.
+
+### Platform matrix
+
+BlueWake's session-log counters, environment-controlled states, and guest
+checkpoints are shared runtime facilities. Process launching and native CPU
+sampling are platform-specific, so the automation is not equally complete on
+every target.
+
+| Platform | Repeatable workload and comparison | Native CPU sampling | Current boundary |
+| --- | --- | --- | --- |
+| Linux desktop and SteamOS | [`bench_tour.py`](../../scripts/bench_tour.py) can invoke the Linux executable or AppImage in rendered, headless, or both modes. | [`profile_deck.sh`](../../scripts/linux/profile_deck.sh) wraps Linux `perf` for headless or rendered captures. | This is the complete automated path described here. A rendered capture must run in a desktop or game session with access to the display. |
+| Windows | `bench_tour.py` is written to launch the Windows executable, set the pacing controls, and request the headless renderer when selected; rendered mode leaves the normal renderer in place. | Windows Performance Recorder/Analyzer can sample the process, but the repository has no equivalent wrapper that correlates its output with the tour. | The script explicitly records that Windows headless mode has not been confirmed. Results need a Windows desktop-session run. |
+| macOS | BlueWake exposes the same session instrumentation and state controls. [`profile_play.sh`](../../scripts/profile_play.sh) drives one fixed developer route and uses macOS `sample`. | `sample` or Instruments can inspect the native process; `profile_play.sh` produces a `sample.txt` ownership report for its fixed route. | `bench_tour.py` has no `.app`-bundle launcher or validated general macOS workflow yet. `profile_play.sh` depends on development-tree artifacts and is not a portable replacement for the tour. |
+| iPhone, iPad, and Apple TV | The runtime can emit the shared measurements, but `bench_tour.py` cannot directly launch, seed, and collect files from a sandboxed device app. | Instruments can profile a device process manually. | A device transport and lifecycle adapter is still needed before the desktop tour can control these targets. |
+| Android (in progress) | [`scripts/android/measure.py`](../../scripts/android/measure.py) copies a private card through `adb`, controls one fixed measurement window, and records speed, busy time, instructions, and cycles per retrace in rendered or headless mode. | The same script uses `simpleperf stat` for counters. A sampled call-graph wrapper equivalent to `profile_deck.sh` is not currently provided. | Android has a dedicated device workflow rather than `bench_tour.py`; its thermal and CPU-frequency checks are part of result validity. See [Android: Measure](../ANDROID.md#measure). |
+
+Adding another platform does not require changing the benchmark's meaning. It
+requires an adapter that can install or locate the build, provide private input
+files, set the same runtime controls, start and stop the app, retrieve its log,
+and invoke that platform's profiler. The resulting measurements should retain
+the same scene, settling interval, pacing, and checkpoint contract before they
+are used to compare builds on that platform. Numbers from different hardware
+or operating systems describe those environments and are not direct A/B data.
 
 ## Performance domains
 
