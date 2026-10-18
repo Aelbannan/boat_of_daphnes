@@ -139,8 +139,10 @@ alias storage`"]
 services
 VI, PI, DI,
 SI, audio,
-DSP, GX`"]
+        DSP, GX`"]
     end
+
+    CPU ~~~ Space ~~~ Native
 
     Host -->|"dispatch"| Code
     Code -->|"yield"| Host
@@ -246,6 +248,8 @@ through the GPU`"]
         NativeWork --> Graphics
     end
 
+    Guest ~~~ Native
+
     Host --> GuestWork
     Host --> NativeWork
 ```
@@ -265,7 +269,7 @@ for explaining handoffs between the host and translated module. They are not
 fields or named states in the implementation.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Ready["Ready for dispatch"]
     Executing["`Executing translated
 code`"]
@@ -393,6 +397,8 @@ control`"]
         Runtime --> Callbacks
     end
 
+    Architectural ~~~ Execution ~~~ Bridge
+
     State --> Arch
     State --> Exec
     State --> Runtime
@@ -503,7 +509,7 @@ placed in the fixed above-arena boot area, above `ArenaHi`; it does not point
 into that reserved interval.
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph MEM1["`MEM1 native backing
 — 32 MiB
 cached ranges
@@ -751,7 +757,7 @@ different mechanisms:
 A concrete external-interrupt example follows this path:
 
 ```mermaid
-flowchart LR
+flowchart TD
     Interrupted["`Interrupted guest
 state`"]
     Save["`Save return context

@@ -532,7 +532,8 @@ and open the PR`"]
     Revise["`Reject or refine
 the hypothesis`"]
 
-    Question --> Control --> Benchmark --> Profile --> Investigate --> Change --> Candidate --> Compare
+    Question --> Control --> Benchmark --> Profile --> Investigate
+    Investigate --> Change --> Candidate --> Compare
     Compare -->|yes| Record
     Compare -->|no| Revise --> Question
 ```

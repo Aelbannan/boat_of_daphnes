@@ -144,7 +144,7 @@ dispatch at the nearest VI, DSP, audio, decrementer, or interrupt deadline.
 When the module yields, the host advances device cursors and rebudgets.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Charge["`Translated code
 charges cycles`"]
     Domain["`Cycle domain
