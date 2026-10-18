@@ -36,7 +36,7 @@ flowchart TD
     Host["BlueWake host"]
     Module["Game module"]
     Guest["Guest state"]
-    Services["Compatibility services"]
+    Services["Services"]
     Graphics["Graphics stack"]
     Disc["Disc data"]
     Player["Player data"]
@@ -88,7 +88,7 @@ flowchart TD
         Host["BlueWake host"]
         Module["Native game module"]
         Guest["Guest state"]
-        Services["Compatibility services"]
+        Services["Services"]
         Graphics["Graphics stack"]
 
         Host <-->|"Module ABI"| Module
