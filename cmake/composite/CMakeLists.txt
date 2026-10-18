@@ -18,8 +18,6 @@ option(BLUEWAKE_NATIVE_SKIN "Use certified native skinning" OFF)
 option(BLUEWAKE_NATIVE_VEC "Use certified native vector functions" OFF)
 option(BLUEWAKE_NATIVE_MATH "Use certified native matrix functions" OFF)
 option(BLUEWAKE_NATIVE_ENTRIES "Use Wind Waker Recomp's certified native entries (scripts/windows/native_entries.py)" OFF)
-option(BLUEWAKE_NATIVE_GX "Use Wind Waker Recomp's GX FIFO writer natives (the fifth set)" OFF)
-option(BLUEWAKE_NATIVE_SET4 "Use Wind Waker Recomp's fourth native set (colour, animation, collision setup)" OFF)
 option(BLUEWAKE_DIRECT_CALLS "Use explicitly prepared direct-call chunks" OFF)
 option(BLUEWAKE_FIXED_CPU "Use explicitly prepared fixed-address guest CPU chunks" OFF)
 option(BLUEWAKE_FIXED_MEM1 "Use module-owned guest RAM (requires fixed CPU)" OFF)
@@ -171,50 +169,12 @@ endif()
 if(BLUEWAKE_NATIVE_ENTRIES)
   # The hooks native_entries.py inserts call these; its certification decides
   # which are hooked. The natives use the direct-call, gather-pipe and vector code.
-  # The seventh set's replay (native_*_gen.inc) is generated from this build's
-  # composite. It is translated game code, so it is not in the repository.
   if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
     message(FATAL_ERROR "Native entries need BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
   endif()
-  foreach(GROUP libm bgblk rot calc geom jas)
-    if(NOT EXISTS "${BLUEWAKE_NATIVE_GEN_DIR}/native_${GROUP}_gen.inc")
-      message(FATAL_ERROR
-        "Native entries need ${BLUEWAKE_NATIVE_GEN_DIR}/native_${GROUP}_gen.inc from native_leaf_gen.py")
-    endif()
-  endforeach()
-  target_sources(${MODULE_NAME} PRIVATE native_fifo.c native_bg.c native_mtxcalc.c native_search.c
-    native_libm.c native_bgblk.c native_rot.c native_calc.c native_geom.c native_jas.c)
-  target_include_directories(${MODULE_NAME} BEFORE PRIVATE "${BLUEWAKE_NATIVE_GEN_DIR}")
+  target_sources(${MODULE_NAME} PRIVATE native_fifo.c native_bg.c native_mtxcalc.c native_search.c)
   target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
   target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_ENTRIES=1)
-endif()
-
-if(BLUEWAKE_NATIVE_GX)
-  # The fifth set (native_gx.c). Hooks stay out of the translation until
-  # native_entries.py records hashes for this tree, so an uncertified build
-  # links the objects and never calls them. The replay is generated from this
-  # build's composite, same folder as the seventh set.
-  if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
-    message(FATAL_ERROR "Native GX needs BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
-  endif()
-  if(NOT EXISTS "${BLUEWAKE_NATIVE_GEN_DIR}/native_gx_gen.inc")
-    message(FATAL_ERROR
-      "Native GX needs ${BLUEWAKE_NATIVE_GEN_DIR}/native_gx_gen.inc from native_gx_gen.py")
-  endif()
-  target_sources(${MODULE_NAME} PRIVATE native_gx.c)
-  target_include_directories(${MODULE_NAME} BEFORE PRIVATE "${BLUEWAKE_NATIVE_GEN_DIR}")
-  target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-  target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_GX=1)
-endif()
-
-if(BLUEWAKE_NATIVE_SET4)
-  # The fourth set. Hooks stay out until hashes are recorded for this tree.
-  if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
-    message(FATAL_ERROR "The fourth native set needs BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
-  endif()
-  target_sources(${MODULE_NAME} PRIVATE native_kankyo.c native_anim.c native_cc.c)
-  target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-  target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_SET4=1)
 endif()
 
 if(BLUEWAKE_DIRECT_CALLS)
@@ -258,12 +218,6 @@ if(BLUEWAKE_FIXED_MEM1)
 endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "" OUTPUT_NAME "${MODULE_NAME}" UNITY_BUILD OFF C_VISIBILITY_PRESET hidden)
-# Extra sources a builder adds (the Android builder's training-module profile
-# flush, android/src/profile_flush.c); empty otherwise.
-set(COMPOSITE_EXTRA_SOURCES "" CACHE STRING "Extra sources compiled into the module")
-if(COMPOSITE_EXTRA_SOURCES)
-  target_sources(${MODULE_NAME} PRIVATE ${COMPOSITE_EXTRA_SOURCES})
-endif()
 target_compile_definitions(${MODULE_NAME} PRIVATE MODULE_GAME_ID="${GAME_ID}" DOLRECOMP_CPU_HEADER="core/cpu.h")
 target_include_directories(${MODULE_NAME} PRIVATE "${COMPOSITE_DIR}" "${GXRUNTIME_DIR}/include" "${ABI_DIR}")
 if(APPLE)
@@ -292,44 +246,6 @@ if(WIN32)
       -include "${CMAKE_CURRENT_SOURCE_DIR}/../../windows/compat/bw_getenv_cache.h")
 else()
   target_link_libraries(${MODULE_NAME} PRIVATE m)
-endif()
-# ELF (Linux, Steam Deck): the module is a shared object built -fPIC,
-# and the chunks declared each other's symbols with default visibility, so every
-# reference was an address loaded from the GOT that then stayed live in a
-# register across the chunk's one large function. That doubled the register
-# allocator's work: a chunk took 11.7 s here against 5.9 s for the same source
-# compiled for Windows, whose DLLs have no GOT. hidden_externs.h declares the
-# module's own symbols hidden, so each reference is a direct PC-relative operand.
-# Android leaves it out: on ARM64 the game thread then ran about 5% more
-# instructions at Outset's pier (172 M a retrace against 163 M, #93), and players
-# feel that every frame while they wait for the compile once.
-if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
-  set(CHUNK_C_SOURCES ${CHUNK_INPUTS})
-  list(FILTER CHUNK_C_SOURCES INCLUDE REGEX "\\.c$")
-  set_property(SOURCE ${CHUNK_C_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
-      -include "${CMAKE_CURRENT_SOURCE_DIR}/hidden_externs.h")
-endif()
-
-# ELF: the module's pointer tables need about 2.2 million relative relocations,
-# 24 bytes each as RELA (about 51 MB, and as many fix-ups at every launch).
-# RELR stores runs of them as bitmaps. The loader needs glibc 2.36 for it, and
-# -z pack-relative-relocs records that requirement in the module, so an older
-# glibc refuses to load it rather than running it unrelocated. Only when the
-# glibc it is built against has it: the module is built on the machine that
-# runs it, and a release built on an older baseline (#214) leaves it off.
-if(NOT WIN32 AND NOT APPLE)
-  include(CheckCSourceCompiles)
-  include(CheckLinkerFlag)
-  check_c_source_compiles("
-#include <features.h>
-#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 36)
-#error no DT_RELR
-#endif
-int main(void) { return 0; }" BLUEWAKE_GLIBC_HAS_DT_RELR)
-  check_linker_flag(C "LINKER:-z,pack-relative-relocs" BLUEWAKE_LINKER_PACKS_RELR)
-  if(BLUEWAKE_GLIBC_HAS_DT_RELR AND BLUEWAKE_LINKER_PACKS_RELR)
-    target_link_options(${MODULE_NAME} PRIVATE "LINKER:-z,pack-relative-relocs")
-  endif()
 endif()
 target_compile_options(${MODULE_NAME} PRIVATE -O${COMPOSITE_OPTIMIZATION_LEVEL} -ffp-contract=off)
 

@@ -62,14 +62,9 @@ cmake-build-*/
 *.swp
 *~
 
-# Left behind by GXRuntime host tests run from the repository root
-gxruntime-memory-card-*.dolcard*
-# Android: personal builds (translated game code) and signing
-*.apk
-*.so
-*.keystore
-*.jks
+# The online play server's npm packages.
+server/anchor/node_modules/
+server/anchor/.wrangler/
 
-# Replay of the builder's own translation (native_leaf_gen.py, native_gx_gen.py).
-# The builder writes it into the build folder. A hand run uses this directory.
-cmake/composite/*_gen.inc
+# Where the developer tools find your disc and source checkouts (scripts/bod_paths.py)
+/local_paths.json

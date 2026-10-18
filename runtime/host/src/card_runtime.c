@@ -25,49 +25,8 @@ void bluewake_card_runtime_suspend_writes(bool suspend) {
     g_card_suspended = suspend;
     pthread_mutex_unlock(&g_card_mutex);
 }
-static bool g_card_writes_refused;
-static const char* g_card_refused_why;
 static u64 g_card_write_calls;
 static u64 g_card_write_bytes;
-
-static void say_saving_is_off(CPUState* cpu, bool search);
-
-// BLUEWAKE_STAGE_SELECT_SAVES=1 (--stage-select-saves): the player has chosen
-// to keep saving whatever the stage select does to their file.
-bool bluewake_card_runtime_saving_kept(void) {
-    static int kept = -1;
-    if (kept < 0) {
-        const char* value = getenv("BLUEWAKE_STAGE_SELECT_SAVES");
-        kept = value != NULL && value[0] == '1';
-    }
-    return kept != 0;
-}
-
-// With g_card_mutex held.
-static void refuse_writes_locked(CPUState* cpu, const char* why) {
-    if (bluewake_card_runtime_saving_kept()) {
-        static bool said;
-        if (!said)
-            fprintf(stderr, "[card] saving stays on (BLUEWAKE_STAGE_SELECT_SAVES): %s\n", why);
-        said = true;
-        return;
-    }
-    if (!g_card_writes_refused) {
-        g_card_writes_refused = true;
-        g_card_refused_why = why;
-        fprintf(stderr, "[card] saving is off until BlueWake restarts: %s\n", why);
-    }
-    if (cpu != NULL)
-        say_saving_is_off(cpu, true);
-}
-
-void bluewake_card_runtime_refuse_writes(CPUState* cpu, const char* why) {
-    pthread_mutex_lock(&g_card_mutex);
-    refuse_writes_locked(cpu, why);
-    pthread_mutex_unlock(&g_card_mutex);
-}
-
-bool bluewake_card_runtime_writes_refused(void) { return g_card_writes_refused; }
 
 u64 bluewake_card_runtime_write_calls(void) { return g_card_write_calls; }
 u64 bluewake_card_runtime_write_bytes(void) { return g_card_write_bytes; }
@@ -205,132 +164,6 @@ bool bluewake_card_runtime_intercepts(u32 address) {
     }
 }
 
-// With saving off, the card answers as one that has been taken out: the calls
-// that look for it (probe, check, mount) and the ones that change it (format,
-// create, write, set status; each synchronous wrapper and asynchronous form).
-// Tried on the pause menu's save screen (2026-10-11): refusing only the writes
-// made it retry by itself every few seconds (with "no card") or call the card
-// damaged (with an I/O error); with no card to find it says "There is no
-// Memory Card in Slot A" and waits for the player, as with a card pulled out.
-static const char* card_call_refused(u32 address) {
-    switch (address) {
-    case 0x8031D400u:
-    case 0x8031D438u:
-        return "CARDProbe";
-    case 0x8031CD50u:
-    case 0x8031D2E0u:
-        return "CARDCheck";
-    case 0x8031DAFCu:
-    case 0x8031DC9Cu:
-        return "CARDMount";
-    case 0x8031E5C8u:
-        return "CARDFormat";
-    case 0x8031EA48u:
-    case 0x8031EC68u:
-        return "CARDCreate";
-    case 0x8031F348u:
-    case 0x8031F45Cu:
-        return "CARDWrite";
-    case 0x8031F7C8u:
-    case 0x8031F93Cu:
-        return "CARDSetStatus";
-    default:
-        return NULL;
-    }
-}
-
-// The calls that mount or check the card, which the game makes before it saves.
-static bool card_call_mounts(u32 address) {
-    switch (address) {
-    case 0x8031CD50u:
-    case 0x8031D2E0u:
-    case 0x8031DAFCu:
-    case 0x8031DC9Cu:
-        return true;
-    default:
-        return false;
-    }
-}
-
-// The calls that look for the card.
-static bool card_call_looks(u32 address) {
-    switch (address) {
-    case 0x8031D400u:
-    case 0x8031D438u:
-    case 0x8031CD50u:
-    case 0x8031D2E0u:
-    case 0x8031DAFCu:
-    case 0x8031DC9Cu:
-        return true;
-    default:
-        return false;
-    }
-}
-
-// The game's two "no Memory Card" messages (the English message table, loaded
-// in MEM1), said as what they mean while saving is off: written over in place
-// when saving goes off, no longer than they were and padded with zeros, and
-// again whenever the game looks for the card (a reset loads the table anew).
-// `seen_at` is where every run so far had the table; the rest of MEM1 is
-// searched when it isn't there.
-static const struct {
-    const char* text;
-    const char* instead;
-    u32 seen_at;
-} k_no_card_texts[] = {
-    {"The game cannot be saved.\n\nThere is no Memory Card in Slot A.\nPlease check to be sure that a Memory\n"
-     "Card has been inserted properly.",
-     "The game cannot be saved.\n\nSaving is off because the stage\nselect was used. Restart BlueWake\n"
-     "to save again.",
-     0x80E0ECCAu},
-    {"There is no Memory Card in Slot A.\n\nPlease check to confirm that a Memory\nCard is inserted properly.",
-     "Saving is off because the stage\nselect was used. Restart BlueWake\nto save again.",
-     0x80E0E63Cu},
-};
-
-// The game's text, ending where its message does, in MEM1: NULL when it isn't
-// there. Without `search`, only where it was seen: a search of all of MEM1 takes
-// milliseconds, too long for the game's frequent probes.
-static u8* find_game_text(CPUState* cpu, const char* text, u32 seen_at, bool search) {
-    const size_t length = strlen(text);
-    if (cpu->ram == NULL || length + 1u > cpu->ram_size)
-        return NULL;
-    const u32 hint = seen_at - 0x80000000u;
-    if (hint < cpu->ram_size && length < cpu->ram_size - hint && memcmp(cpu->ram + hint, text, length) == 0 &&
-        cpu->ram[hint + length] == 0u)
-        return cpu->ram + hint;
-    if (!search)
-        return NULL;
-    u8* const end = cpu->ram + cpu->ram_size - length - 1u;
-    for (u8* at = cpu->ram; at < end && (at = memchr(at, text[0], (size_t)(end - at))) != NULL; ++at)
-        if (memcmp(at, text, length) == 0 && at[length] == 0u)
-            return at;
-    return NULL;
-}
-
-// A save state is the game's memory, so the messages said this way ride along
-// in every state taken after saving went off: finding them means the game in
-// memory came from such a session, whatever this one has done.
-static bool saving_was_off(CPUState* cpu) {
-    for (size_t k = 0; k < sizeof k_no_card_texts / sizeof k_no_card_texts[0]; ++k)
-        if (find_game_text(cpu, k_no_card_texts[k].instead, k_no_card_texts[k].seen_at, true) != NULL)
-            return true;
-    return false;
-}
-
-static void say_saving_is_off(CPUState* cpu, bool search) {
-    for (size_t k = 0; k < sizeof k_no_card_texts / sizeof k_no_card_texts[0]; ++k) {
-        u8* at = find_game_text(cpu, k_no_card_texts[k].text, k_no_card_texts[k].seen_at, search);
-        if (at == NULL)
-            continue;
-        const size_t length = strlen(k_no_card_texts[k].text);
-        memset(at, 0, length);
-        memcpy(at, k_no_card_texts[k].instead, strlen(k_no_card_texts[k].instead));
-        fprintf(stderr, "[card] the game's no-card message at 0x%08X now says saving is off\n",
-                0x80000000u + (u32)(at - cpu->ram));
-    }
-}
-
 static bool dispatch_card(CPUState* cpu) {
     static unsigned probe_reports;
     switch (cpu->pc) {
@@ -403,26 +236,8 @@ bool bluewake_card_runtime_dispatch(CPUState* cpu) {
         return false;
     pthread_mutex_lock(&g_card_mutex);
     bool handled;
-    // On a mount or check only, which the game does before it saves and seldom
-    // otherwise (twice in a 26,000-retrace new game and save); it probes far
-    // more often, and the search of MEM1 has no place there.
-    if (!g_card_writes_refused && !bluewake_card_runtime_saving_kept() && card_call_mounts(cpu->pc) &&
-        saving_was_off(cpu))
-        refuse_writes_locked(cpu, "the game in memory is from a session that used the stage select");
     if (g_card_suspended && bluewake_card_runtime_intercepts(cpu->pc)) {
         cpu->gpr[3] = (u32)DOL_CARD_RESULT_BUSY;
-        cpu->pc = cpu->lr & ~3u;
-        handled = true;
-    } else if (g_card_writes_refused && card_call_refused(cpu->pc) != NULL) {
-        // Answered before it starts, so the asynchronous forms never call back.
-        static unsigned refusals;
-        if (card_call_looks(cpu->pc))
-            say_saving_is_off(cpu, card_call_mounts(cpu->pc));
-        if (refusals++ < 8u)
-            fprintf(stderr, "[card] %s: no card, saving is off (%s)\n", card_call_refused(cpu->pc),
-                    g_card_refused_why);
-        // CARDProbe answers whether a card is there; the rest with a result.
-        cpu->gpr[3] = cpu->pc == 0x8031D400u ? 0u : (u32)DOL_CARD_RESULT_NO_CARD;
         cpu->pc = cpu->lr & ~3u;
         handled = true;
     } else {

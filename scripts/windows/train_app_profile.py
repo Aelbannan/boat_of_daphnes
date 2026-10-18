@@ -4,7 +4,7 @@
   python scripts/windows/train_app_profile.py DISC.iso [--out build/windows]
 
 Run after scripts/windows/build.py (it uses that build's game files and game
-module, build/windows/game and build/windows/composite). BlueWake.exe is built
+module, build/windows/game and build/windows/composite). boat-of-daphnes.exe is built
 instrumented (build/windows/app-pgogen: the builder's app options plus
 -fprofile-instr-generate), then plays what the builder's training plays - a new
 game's opening to player control on Outset, Link running, and the tour of the
@@ -14,7 +14,7 @@ worker run as they do in play. The counts are merged (sparse) into
 windows/pgo/app.profdata, which build.py then compiles the app with, with
 ThinLTO.
 
-The profile counts the app's own code only (BlueWake.exe: the host, Aurora,
+The profile counts the app's own code only (boat-of-daphnes.exe: the host, Aurora,
 the GX front end): no game code or data. A window opens for about ten minutes;
 a new card in its own folder, the player's saves are never touched. Run it
 again when the app's hot code changes a lot: functions changed since are

@@ -1,0 +1,25 @@
+description Player interaction with the real hook 51 (module 2026.10.18 on): a scripted player (server/anchor/test/pvp_mate.mjs, "Mate") stands 120 units ahead of Link; Link walks into it, swings his sword at it, and Mate hits back every 3 s. Logs: [pvp] lines, PVP_HIT sent/received; shots show the bump and the knockback.
+# Start the server and Mate first (the scenario does not):
+#   cd server/anchor; npx wrangler dev --port 8799 --local
+#   node test/pvp_mate.mjs ws://127.0.0.1:8799 pvp-hook4 150 no_damage 3 0 120
+start state outset
+size 1280x960
+cvar gNetwork.Anchor.Host 127.0.0.1:8799
+cvar gNetwork.Anchor.Room pvp-hook4
+cvar gNetwork.Anchor.Name Scenario Link
+cvar gNetwork.Anchor.Team red
+cvar gNetwork.Anchor.Enabled 1
+wait 300
+shot
+stick 127 -70 90
+shot
+wait 30
+press B 8
+wait 30
+press B 8
+wait 30
+press B 8
+wait 20
+shot
+wait 200
+shot

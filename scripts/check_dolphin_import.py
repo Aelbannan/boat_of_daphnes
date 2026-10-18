@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the in-app Dolphin save importer against ww_save.py, byte for byte.
 
-Builds tests/dolphin_save_import_cli.c (with apple/ios/src/dolphin_save_import.c)
+Builds tests/dolphin_save_import_cli.c (with runtime/host/src/dolphin_save_import.c)
 using clang, then for every .gci in SAVES and every BlueWake card given, puts
 quest log 1 into each slot with both the C code and build/device-setup/ww_save.py
 and compares the resulting cards. It also checks a raw Dolphin memory card
@@ -64,7 +64,7 @@ def main():
     cli = os.path.join(work, 'cli')
     subprocess.run(['clang', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
                     '-o', cli, os.path.join(ROOT, 'tests/dolphin_save_import_cli.c'),
-                    os.path.join(ROOT, 'apple/ios/src/dolphin_save_import.c')], check=True)
+                    os.path.join(ROOT, 'runtime/host/src/dolphin_save_import.c')], check=True)
 
     def c_inject(card, src, s, d, out):
         subprocess.run([cli, 'inject', card, src, str(s), str(d), out], check=True, stdout=subprocess.DEVNULL)

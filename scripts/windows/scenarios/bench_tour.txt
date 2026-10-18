@@ -1,0 +1,24 @@
+description The speed benchmark's tour (written by scripts/windows/bench.py; edit STOPS there).
+start state forest-card
+card user/GZLE01.card
+size 1280x720
+env BLUEWAKE_WALL_PACE 0
+env BLUEWAKE_PERF_LOG 1
+env DOL_AURORA_FRAME_INTERP 0
+env BLUEWAKE_TEST_POKE 1+:0x803C4C2C=0x43340000/4
+env BLUEWAKE_GUEST_CHECKPOINT_INTERVAL 300
+cvar gSettings.Graphics.InterpolationFPS 30
+wait 10
+warp sea:44:0
+wait 900
+warp sea:11:1
+wait 900
+teleport sea 11 -569 89 -198007 -32768
+wait 900
+warp M_NewD2:0:0
+wait 900
+warp sea:41:0
+wait 900
+warp sea:1:100
+wait 900
+end

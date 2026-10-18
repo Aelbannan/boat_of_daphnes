@@ -13,13 +13,6 @@ import struct
 import sys
 from pathlib import Path
 
-
-def write_lf(path, text):
-    """Write text with LF line ends on every platform. Path.write_text's
-    newline argument needs Python 3.10, and macOS's own python3 is 3.9."""
-    with open(path, "w", newline="\n") as f:
-        f.write(text)
-
 FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
 RETAIL_MEM1_START = 0x80000000
@@ -172,15 +165,26 @@ def find_rel_binary(rels_bin_dir, module_id):
     return None
 
 
-def read_rel_exec_range(rel_data, start, end, linked_base):
+def rel_linked_base(entry_point, exec_offsets):
+    """The address a REL is linked at. DolRecomp's entry point is the module's first function, which in a game
+    REL is the start of its lowest executable section (base = entry - that offset); a randomizer's new RELs
+    (d_a_switch_op, d_a_dungeon_flag_sw) put other code first, and every base is a multiple of 64 KiB."""
+    base = entry_point - min(exec_offsets)
+    if base % 0x10000 == 0:
+        return base
+    return entry_point & ~0xFFFF
+
+
+def read_rel_exec_range(rel_data, start, end, base):
+    """The bytes of [start, end) of a REL linked at `base` (a section's address is base + its file offset),
+    which must lie in one executable section."""
     nsec = struct.unpack_from(">I", rel_data, 0xC)[0]
     sio = struct.unpack_from(">I", rel_data, 0x10)[0]
+    lo = start - base
     for i in range(nsec):
         raw_off, size = struct.unpack_from(">II", rel_data, sio + i * 8)
-        exec_flag = raw_off & 1
         offset = raw_off & ~1
-        if exec_flag and size > 0 and linked_base <= start and end <= linked_base + size:
-            lo = offset + (start - linked_base)
+        if raw_off & 1 and size > 0 and offset <= lo and lo + (end - start) <= offset + size:
             return rel_data[lo : lo + (end - start)]
     raise ValueError(f"REL exec range [{start:#010x},{end:#010x}) not found")
 
@@ -411,7 +415,7 @@ def main():
         ]
         if not exec_offsets:
             continue
-        base = e["entry_point"] - min(exec_offsets)
+        base = rel_linked_base(e["entry_point"], exec_offsets)
         rel_section_maps[mid] = {"base": base, "sections": rel_linked_sections(rel_data, base)}
     try:
         validate_rel_linked_namespace(rel_section_maps)
@@ -441,7 +445,9 @@ def main():
             if rel_data is None:
                 print(f"ERROR: no .rel binary for mid={mid}", file=sys.stderr)
                 sys.exit(1)
-            data = read_rel_exec_range(rel_data, start, end, owner["entry_point"])
+            # A REL with several executable sections (a randomizer-patched one gains section 7): the
+            # module's base is the one computed above, from its lowest executable section.
+            data = read_rel_exec_range(rel_data, start, end, rel_section_maps[mid]["base"])
         chunk_hashes.append(fnv1a64(data))
 
     # --- Emit generated_composite.h ---
@@ -727,13 +733,13 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
         "    }", "}", ""])
     composite_text = composite_text[:miss_at] + extra_lookup + composite_text[miss_at + len(miss):]
     composite_text = composite_text.replace(anchor, file_scope + mod_types + anchor, 1)
-    # LF line ends everywhere (write_lf): the output is byte-identical on Windows, whose
+    # newline=chr(10) everywhere: the output is byte-identical on Windows, whose
     # text mode would otherwise write CRLF and change the verified digest.
-    write_lf(out_dir / "generated_composite.h", composite_text)
+    (out_dir / "generated_composite.h").write_text(composite_text, newline=chr(10))
     if not (out_dir / "mod_variants.inc").exists():
-        write_lf(out_dir / "mod_variants.inc",
-                 "// No mods: see scripts/mods/build_mod_variants.py." + chr(10) +
-                 "#define MODULE_MOD_COUNT 0u" + chr(10))
+        (out_dir / "mod_variants.inc").write_text(
+            "// No mods: see scripts/mods/build_mod_variants.py." + chr(10) +
+            "#define MODULE_MOD_COUNT 0u" + chr(10), newline=chr(10))
 
     # Copy chunk .c files into out_dir so that their relative include of
     # ../generated.h resolves to our composite header (NOT the original).
@@ -741,7 +747,7 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
     gen_h_path = out_dir / "generated.h"
     if gen_h_path.exists() or gen_h_path.is_symlink():
         gen_h_path.unlink()
-    write_lf(gen_h_path, base_text)
+    gen_h_path.write_text(base_text, newline=chr(10))
 
     def copy_chunks(src_dir, dest_name, patterns=("*.c",)):
         dest = out_dir / dest_name
@@ -805,7 +811,7 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
     for h_val in chunk_hashes:
         tbl.append(f"    0x{h_val:016X}ull,")
     tbl.append("};")
-    write_lf(out_dir / "module_tables.inc", chr(10).join(tbl) + chr(10))
+    (out_dir / "module_tables.inc").write_text(chr(10).join(tbl) + chr(10), newline=chr(10))
 
     # --- Emit rel_modules.inc ---
     rm_lines = []
@@ -826,7 +832,7 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
         ]
         if not exec_offsets:
             continue
-        linked_base = e["entry_point"] - min(exec_offsets)
+        linked_base = rel_linked_base(e["entry_point"], exec_offsets)
         secs = parse_rel_sections(
             rel_data, info["section_count"], info["section_info_offset"], linked_base
         )
@@ -850,7 +856,7 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
         )
     rm_lines.append("};")
     rm_lines.append(f"#define MODULE_REL_MODULE_COUNT {len(rel_module_info)}u")
-    write_lf(out_dir / "rel_modules.inc", chr(10).join(rm_lines) + chr(10))
+    (out_dir / "rel_modules.inc").write_text(chr(10).join(rm_lines) + chr(10), newline=chr(10))
 
     # Emit relocated file-backed data separately from the existing code-only
     # section metadata. Keeping this additive preserves the v3 module ABI.
@@ -890,7 +896,7 @@ static inline DOLRECOMP_UNUSED int dolrecomp_run_blocks(CPUState* ctx, u32 max_b
         lifecycle_count += 1
     data_lines.append("};")
     data_lines.append(f"#define MODULE_REL_LIFECYCLE_COUNT {lifecycle_count}u")
-    write_lf(out_dir / "rel_data.inc", chr(10).join(data_lines) + chr(10))
+    (out_dir / "rel_data.inc").write_text(chr(10).join(data_lines) + chr(10), newline=chr(10))
 
     # --- Determinism audit ---
     output_files = ["generated_composite.h", "module_tables.inc", "rel_modules.inc", "rel_data.inc"]

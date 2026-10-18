@@ -1,0 +1,10 @@
+description The soft reset from a normal boot (the save-state version fails heapSizeCheck on its foreign heaps): boot, load the file, play, hold B+X+Start; back at the title, no console reset.
+start boot
+size 1280x960
+wait 300
+press B+X+start 60
+wait 600
+shot
+wait 400
+shot
+end

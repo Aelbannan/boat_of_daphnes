@@ -1,5 +1,5 @@
 # BlueWake for Windows (x86-64): the unchanged host, GXRuntime/Aurora (Dawn on
-# Direct3D 12 or Vulkan, SDL3) and the donor DSP, as apple/ios/CMakeLists.txt
+# Direct3D 12 or Vulkan, SDL3) and the donor DSP.
 # builds them for iOS. The only Windows-specific sources are the entry shim,
 # which fills in default paths beside the executable, and the POSIX
 # compatibility layer in compat/.
@@ -8,15 +8,18 @@
 # docs/WINDOWS.md.
 cmake_minimum_required(VERSION 3.25)
 project(bluewake_windows LANGUAGES C CXX)
+# Every executable and DLL names its debug file without the folder it was built in (lld-link's %_PDB%), so no
+# build path is written into a release.
+add_link_options("LINKER:/PDBALTPATH:%_PDB%")
 
 if(NOT WIN32)
     message(FATAL_ERROR "windows/ builds BlueWake for Windows only")
 endif()
 
 get_filename_component(BLUEWAKE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-# RecompCore's checkout: ref/recompcore, or another (a worktree) for a build
-# beside the usual one.
-set(BLUEWAKE_RECOMPCORE ${BLUEWAKE_REPO_ROOT}/ref/recompcore CACHE PATH "The RecompCore checkout to build with")
+# The runtime: vendored in runtime/recompcore (runtime/VENDORED.md), or another
+# copy for a build beside the usual one.
+set(BLUEWAKE_RECOMPCORE ${BLUEWAKE_REPO_ROOT}/runtime/recompcore CACHE PATH "The RecompCore tree to build with")
 set(GXRUNTIME_DIR ${BLUEWAKE_RECOMPCORE}/GXRuntime)
 set(BLUEWAKE_HOST_SRC ${BLUEWAKE_REPO_ROOT}/runtime/host/src)
 set(BLUEWAKE_COMPAT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/compat)
@@ -45,7 +48,56 @@ set(BLUEWAKE_COMPAT_FORCE_INCLUDE "SHELL:-include ${BLUEWAKE_COMPAT_DIR}/bw_posi
 target_compile_options(gxruntime PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE}
     "SHELL:-include ${BLUEWAKE_COMPAT_DIR}/bw_getenv_cache.h")
 
+# Archive reading for mods (.zip, .rar, .7z): libarchive, vendored in runtime/third_party/libarchive
+# (VENDORED.md), over Aurora's zlib and RecompCore's liblzma. That one is Dolphin's own CMake: it
+# expects Dolphin's warning macro, and its command-line tool helpers (tuklib's terminal width, exit and
+# program name code) are left out because the library never calls them.
+function(dolphin_disable_warnings target)
+    target_compile_options(${target} PRIVATE -w)
+endfunction()
+add_subdirectory(${BLUEWAKE_RECOMPCORE}/Externals/liblzma liblzma_build EXCLUDE_FROM_ALL)
+get_target_property(_lzma_sources lzma SOURCES)
+list(FILTER _lzma_sources EXCLUDE REGEX "tuklib_(mbstr_fw|mbstr_width|exit|open_stdxxx|progname)[.]c$")
+set_property(TARGET lzma PROPERTY SOURCES ${_lzma_sources})
+add_subdirectory(${BLUEWAKE_REPO_ROOT}/runtime/third_party/libarchive libarchive_build EXCLUDE_FROM_ALL)
+# Compressed disc images (.rvz, .wia, .gcz, .ciso) unpacked natively: bzip2 and Zstandard decoders, vendored; zlib and liblzma as above.
+add_subdirectory(${BLUEWAKE_REPO_ROOT}/runtime/third_party/bzip2 bzip2_build EXCLUDE_FROM_ALL)
+add_subdirectory(${BLUEWAKE_REPO_ROOT}/runtime/third_party/zstd zstd_build EXCLUDE_FROM_ALL)
+# WinUSB driver install for the GameCube adapter: libwdi (LGPL-3.0), vendored in runtime/third_party/libwdi.
+add_subdirectory(${BLUEWAKE_REPO_ROOT}/runtime/third_party/libwdi libwdi_build EXCLUDE_FROM_ALL)
+
+# The Tingle Tuner's Game Boy Advance: mGBA (MPL-2.0), vendored in runtime/third_party/mgba (VENDORED.md), as the
+# library only (no frontends, no zlib/lzma/png), the way Dolphin builds it. Only the GBA core is wanted.
+set(LIBMGBA_ONLY ON)
+set(USE_LZMA OFF)
+set(M_CORE_GB OFF)
+set(M_CORE_GBA ON)
+add_subdirectory(${BLUEWAKE_REPO_ROOT}/runtime/third_party/mgba mgba_build EXCLUDE_FROM_ALL)
+target_compile_definitions(mgba PUBLIC ENABLE_VFS ENABLE_DIRECTORIES M_CORE_GBA)
+target_compile_options(mgba PRIVATE -w)
+# mGBA links libm by name unless the compiler is MSVC; this clang is not (the C runtime has the math functions).
+get_target_property(_mgba_libs mgba LINK_LIBRARIES)
+list(REMOVE_ITEM _mgba_libs m)
+set_property(TARGET mgba PROPERTY LINK_LIBRARIES "${_mgba_libs}")
+get_target_property(_mgba_ilibs mgba INTERFACE_LINK_LIBRARIES)
+list(REMOVE_ITEM _mgba_ilibs m)
+set_property(TARGET mgba PROPERTY INTERFACE_LINK_LIBRARIES "${_mgba_ilibs}")
+
+# emibios (LGPL-3.0-or-later, runtime/third_party/emibios): the free GBA BIOS, compiled in as a C array.
+file(READ ${BLUEWAKE_REPO_ROOT}/runtime/third_party/emibios/gba_bios.bin _emibios_hex HEX)
+string(LENGTH "${_emibios_hex}" _emibios_hex_len)
+math(EXPR _emibios_size "${_emibios_hex_len} / 2")
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _emibios_c "${_emibios_hex}")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/emibios_data.c.tmp
+    "/* generated from runtime/third_party/emibios/gba_bios.bin */
+const unsigned char bluewake_emibios[] = {${_emibios_c}};
+const unsigned bluewake_emibios_size = ${_emibios_size}u;
+")
+file(COPY_FILE ${CMAKE_CURRENT_BINARY_DIR}/emibios_data.c.tmp ${CMAKE_CURRENT_BINARY_DIR}/emibios_data.c ONLY_IF_DIFFERENT)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${BLUEWAKE_REPO_ROOT}/runtime/third_party/emibios/gba_bios.bin)
+
 set(BLUEWAKE_HOST_SOURCES
+    ${CMAKE_CURRENT_BINARY_DIR}/emibios_data.c
     ${BLUEWAKE_HOST_SRC}/main.c
     ${BLUEWAKE_HOST_SRC}/aram_dma.c
     ${BLUEWAKE_HOST_SRC}/audio_capture.c
@@ -63,43 +115,93 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/pad_event_schedule.c
     ${BLUEWAKE_HOST_SRC}/pad_waypoint.c
     ${BLUEWAKE_HOST_SRC}/pad_wire.c
+    ${BLUEWAKE_HOST_SRC}/gc_adapter.c
+    ${BLUEWAKE_HOST_SRC}/gc_adapter_proto.c
     ${BLUEWAKE_HOST_SRC}/rel_scratch_allocator.c
     ${BLUEWAKE_HOST_SRC}/scheduler_contract.c
     ${BLUEWAKE_HOST_SRC}/fast_load.c
-    ${BLUEWAKE_HOST_SRC}/dpad_menus.c
-    ${BLUEWAKE_HOST_SRC}/jump_button.c
-    ${BLUEWAKE_HOST_SRC}/climb.c
     ${BLUEWAKE_HOST_SRC}/save_state.c
-    ${BLUEWAKE_HOST_SRC}/sprint.c
     ${BLUEWAKE_HOST_SRC}/quick_doors.c
     ${BLUEWAKE_HOST_SRC}/haptics.c
     ${BLUEWAKE_HOST_SRC}/draw_tags.c
     ${BLUEWAKE_HOST_SRC}/forest_water.c
-    ${BLUEWAKE_HOST_SRC}/hd_look.c
     ${BLUEWAKE_HOST_SRC}/audio_watch.c
+    ${BLUEWAKE_HOST_SRC}/voice_pitch.c
+    ${BLUEWAKE_HOST_SRC}/audio_volume.c
+    ${BLUEWAKE_HOST_SRC}/autosave.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
+    ${BLUEWAKE_HOST_SRC}/prof.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
-    ${BLUEWAKE_HOST_SRC}/mouse_camera.c
-    ${BLUEWAKE_HOST_SRC}/texture_pack_menu.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/formats.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/addrlib.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/hd.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/imaging.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/sha256.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/ui.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/pack.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/output_staging.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/import_job.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/disc_image.cpp
-    ${BLUEWAKE_HOST_SRC}/wwhd/wiiu_disc.cpp)
+    ${BLUEWAKE_HOST_SRC}/rando_seed.c
+    ${BLUEWAKE_HOST_SRC}/rando_host.c
+    ${BLUEWAKE_HOST_SRC}/rando_ui.c
+    ${BLUEWAKE_HOST_SRC}/ui_pad.c
+    ${BLUEWAKE_HOST_SRC}/host_input.c
+    ${BLUEWAKE_HOST_SRC}/widescreen.c
+    ${BLUEWAKE_HOST_SRC}/test_control.c
+    ${BLUEWAKE_HOST_SRC}/treasure_glow.c
+    ${BLUEWAKE_HOST_SRC}/player_model.c
+    ${BLUEWAKE_HOST_SRC}/guest_coro.c
+    ${BLUEWAKE_HOST_SRC}/puppet.c
+    ${BLUEWAKE_HOST_SRC}/puppet_pvp.c
+    ${BLUEWAKE_HOST_SRC}/bunny_hood.c
+    ${BLUEWAKE_HOST_SRC}/text_swap.c
+    ${BLUEWAKE_HOST_SRC}/cosmetics.c
+    ${BLUEWAKE_HOST_SRC}/game_state.c
+    ${BLUEWAKE_HOST_SRC}/jabun_guard.c
+    ${BLUEWAKE_HOST_SRC}/dev_tools.c
+    ${BLUEWAKE_HOST_SRC}/team_sync.c
+    ${BLUEWAKE_HOST_SRC}/switch_sync.c
+    ${BLUEWAKE_HOST_SRC}/mod_archive.c
+    ${BLUEWAKE_HOST_SRC}/mods_host.c
+    ${BLUEWAKE_HOST_SRC}/gba_link.c
+    ${BLUEWAKE_HOST_SRC}/ship/cvar.cpp)
+
+# The randomizer's host tables (scripts/rando/variant_sites.py writes rando_sites.inc in the build's rando folder); without
+# them the seed code is compiled with no sites and the randomizer mod cannot play a seed.
+set(BLUEWAKE_RANDO_SITES "" CACHE FILEPATH "Generated rando_sites.inc of the randomizer variant (empty: none)")
+if(BLUEWAKE_RANDO_SITES)
+    set_source_files_properties(${BLUEWAKE_HOST_SRC}/rando_seed.c PROPERTIES
+        COMPILE_DEFINITIONS "BLUEWAKE_RANDO_SITES_INC=\"${BLUEWAKE_RANDO_SITES}\""
+        OBJECT_DEPENDS "${BLUEWAKE_RANDO_SITES}")
+endif()
 
 # The manifest (DPI awareness, long paths, UTF-8 code page) is merged into the
 # one the linker embeds.
 add_executable(BlueWake
     src/win_entry.c
     src/win_disc.c
-    ${BLUEWAKE_REPO_ROOT}/apple/ios/src/disc_import.c
+    ${BLUEWAKE_HOST_SRC}/disc_import.c
+    ${BLUEWAKE_HOST_SRC}/disc_unpack.c
     src/win_settings.cpp
+    src/input_editor.cpp
+    src/gba_window.cpp
+    src/adapter_driver.cpp
+    src/dev_windows.cpp
+    src/ship_menu.cpp
+    src/cosmetics_editor.cpp
+    src/link_colors.cpp
+    src/model_colors.cpp
+    src/gx_texture.cpp
+    src/png_decode.cpp
+    src/anchor.cpp
+    src/anchor_client.cpp
+    src/anchor_content.cpp
+    src/item_found.cpp
+    src/notifications.cpp
+    src/item_tracker.cpp
+    src/check_tracker.cpp
+    src/input_viewer.cpp
+    src/mods.cpp
+    src/rarc.cpp
+    src/hud_colors.cpp
+    src/randomizer_menu.cpp
+    src/rando_pack.cpp
+    src/rando_saves.cpp
+    src/rando_flow.cpp
+    src/fs_art.cpp
+    src/fs_blo.cpp
+    src/fs_font.cpp
     src/win_crash.cpp
     src/bluewake.rc
     resources/BlueWake.manifest
@@ -108,18 +210,20 @@ add_executable(BlueWake
 # owns main() and hands over after setting the defaults.
 set_source_files_properties(${BLUEWAKE_HOST_SRC}/main.c PROPERTIES
     COMPILE_DEFINITIONS "main=bluewake_host_main")
-target_link_libraries(BlueWake PRIVATE gxruntime GXRuntime::aurora xxhash ZLIB::ZLIB bluewake_posix_compat winmm bcrypt comctl32 comdlg32)
-include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_disc_crypto.cmake")
-target_link_libraries(BlueWake PRIVATE bluewake_wwhd_disc_crypto)
+target_link_libraries(BlueWake PRIVATE bluewake_bzip2 bluewake_zstd ZLIB::ZLIB LibLZMA::LibLZMA mgba gxruntime GXRuntime::aurora xxhash bluewake_posix_compat bluewake_archive winmm bcrypt comctl32 comdlg32 winhttp setupapi)
+if(WDI_AVAILABLE)
+    target_link_libraries(BlueWake PRIVATE wdi)
+    target_compile_definitions(BlueWake PRIVATE BLUEWAKE_HAS_LIBWDI=1)
+endif()
 if(TARGET imgui)
     target_link_libraries(BlueWake PRIVATE imgui)
 endif()
-set_target_properties(BlueWake PROPERTIES LINKER_LANGUAGE CXX OUTPUT_NAME BlueWake)
+set_target_properties(BlueWake PROPERTIES LINKER_LANGUAGE CXX OUTPUT_NAME boat-of-daphnes)
 target_include_directories(BlueWake PRIVATE
     ${BLUEWAKE_COMPAT_INCLUDES}
     ${BLUEWAKE_HOST_SRC}
-    ${BLUEWAKE_REPO_ROOT}/apple/ios/src
     ${GXRUNTIME_DIR}/include
+    ${BLUEWAKE_RECOMPCORE}/Externals/picojson
     ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp)
 target_compile_options(BlueWake PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:${BLUEWAKE_COMPAT_FORCE_INCLUDE}>)
@@ -127,7 +231,8 @@ target_compile_definitions(BlueWake PRIVATE
     DOLRECOMP_CPU_HEADER="core/cpu.h"
     BLUEWAKE_ENABLE_DEVELOPER_TRACING=$<BOOL:${BLUEWAKE_WINDOWS_DEVELOPER_TRACING}>
     BLUEWAKE_EDGE_CENSUS=0
-    BLUEWAKE_WINDOWS=1)
+    BLUEWAKE_WINDOWS=1
+    BLUEWAKE_APP_NAME="Boat-Of-Daphnes")
 # The game's translated code recurses on the host stack as the guest does on
 # the GameCube's; macOS gives the main thread 8 MB, Windows only 1 MB.
 target_link_options(BlueWake PRIVATE "LINKER:/STACK:67108864")
@@ -141,7 +246,7 @@ endif()
 
 # The donor DSP (Dolphin's DSP interpreter and its high-level Zelda ucode, from
 # RecompCore) compiled from source, with only the Common services it needs
-# (apple/ios/src/dsp_common_shim.cpp), as on iOS.
+# (dsp/dsp_common_shim.cpp).
 set(_donor ${BLUEWAKE_RECOMPCORE})
 set(_dsp ${_donor}/Source/Core/Core/DSP)
 add_library(bluewake_dsp_donor STATIC
@@ -167,13 +272,13 @@ add_library(bluewake_dsp_donor STATIC
     ${_donor}/Source/Core/Core/HW/DSPHLE/UCodes/UCodes.cpp
     ${_donor}/Source/Core/Core/HW/DSPHLE/UCodes/Zelda.cpp
     ${_donor}/Source/Core/Core/HW/DSPHLE/UCodes/ZeldaUCodesTable.cpp
-    ${BLUEWAKE_REPO_ROOT}/apple/ios/src/dsp_common_shim.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/dsp/dsp_common_shim.cpp)
 target_include_directories(bluewake_dsp_donor PUBLIC
     ${_donor}/Source/Core ${_donor}/Source ${_donor}/Externals
     ${_donor}/Externals/xxhash/xxHash
-    ${BLUEWAKE_REPO_ROOT}/apple/ios/dsp_generated)
+    ${CMAKE_CURRENT_SOURCE_DIR}/dsp/generated)
 # No _M_X86_64: that selects Dolphin's x64 DSP JIT, and BlueWake runs the DSP
-# interpreter everywhere (DSPEmitterNull), as on iOS.
+# interpreter everywhere (DSPEmitterNull).
 target_compile_definitions(bluewake_dsp_donor PUBLIC
     _ARCH_64=1 FMT_EXCEPTIONS=0
     __STDC_CONSTANT_MACROS __STDC_LIMIT_MACROS
@@ -204,19 +309,36 @@ target_link_libraries(BlueWake PRIVATE bluewake_dsp_adapter)
 
 # Tools the builder runs on the player's disc.
 add_executable(bluewake_disc_extract
-    ${BLUEWAKE_REPO_ROOT}/scripts/ios/disc_extract.c
-    ${BLUEWAKE_REPO_ROOT}/apple/ios/src/disc_import.c)
+    ${BLUEWAKE_REPO_ROOT}/scripts/windows/disc_extract.c
+    ${BLUEWAKE_HOST_SRC}/disc_import.c)
 target_include_directories(bluewake_disc_extract PRIVATE
-    ${BLUEWAKE_COMPAT_INCLUDES} ${BLUEWAKE_REPO_ROOT}/apple/ios/src)
+    ${BLUEWAKE_COMPAT_INCLUDES} ${BLUEWAKE_HOST_SRC})
 target_compile_options(bluewake_disc_extract PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
 target_link_libraries(bluewake_disc_extract PRIVATE bluewake_posix_compat bcrypt)
+
+# The disc unpacker as a command line, for testing it on images: bluewake_disc_unpack IN OUT. Not part of the default build:
+# python scripts/windows/build_app_only.py --target bluewake_disc_unpack.
+add_executable(bluewake_disc_unpack EXCLUDE_FROM_ALL
+    ${BLUEWAKE_REPO_ROOT}/tests/disc_unpack_cli.c
+    ${BLUEWAKE_HOST_SRC}/disc_unpack.c
+    ${BLUEWAKE_HOST_SRC}/disc_import.c)
+target_include_directories(bluewake_disc_unpack PRIVATE ${BLUEWAKE_COMPAT_INCLUDES} ${BLUEWAKE_HOST_SRC})
+target_compile_options(bluewake_disc_unpack PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
+target_link_libraries(bluewake_disc_unpack PRIVATE bluewake_bzip2 bluewake_zstd ZLIB::ZLIB LibLZMA::LibLZMA bluewake_posix_compat bcrypt)
+
+# The GameCube adapter's protocol (reports, origin, rumble, replay files) replayed from reports byte by byte; no
+# device. Defined always but not part of the default build: python scripts/windows/build_app_only.py --target
+# bluewake_gc_adapter_proto_test, then run build/windows/app/bluewake_gc_adapter_proto_test.exe.
+add_executable(bluewake_gc_adapter_proto_test EXCLUDE_FROM_ALL
+    ${BLUEWAKE_REPO_ROOT}/tests/gc_adapter_proto_test.c ${BLUEWAKE_HOST_SRC}/gc_adapter_proto.c)
+target_include_directories(bluewake_gc_adapter_proto_test PRIVATE ${BLUEWAKE_HOST_SRC})
 
 if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
     # Run manually against two private own-disc modules; no game code in CI.
     add_executable(bluewake_fast_blocks_test EXCLUDE_FROM_ALL ${BLUEWAKE_REPO_ROOT}/tests/fast_blocks_test.c)
     target_include_directories(bluewake_fast_blocks_test PRIVATE
         ${GXRUNTIME_DIR}/include
-        ${BLUEWAKE_REPO_ROOT}/ref/recompcore/Source/Core/Core/PowerPC/StaticRecomp)
+        ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp)
     target_compile_definitions(bluewake_fast_blocks_test PRIVATE _CRT_SECURE_NO_WARNINGS)
     # Assertion-based scheduler checks also run in Release configurations.
     add_executable(bluewake_cycle_domain_test
@@ -231,7 +353,7 @@ if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
         ${BLUEWAKE_REPO_ROOT}/cmake/composite/dispatch_loop.c)
     add_executable(bluewake_edge_intercepts_test
         ${BLUEWAKE_REPO_ROOT}/tests/edge_intercepts_test.c
-        ${BLUEWAKE_HOST_SRC}/edge_intercepts.c ${BLUEWAKE_HOST_SRC}/game_options.c ${BLUEWAKE_HOST_SRC}/card_runtime.c)
+        ${BLUEWAKE_HOST_SRC}/edge_intercepts.c ${BLUEWAKE_HOST_SRC}/game_options.c ${BLUEWAKE_HOST_SRC}/rando_seed.c ${BLUEWAKE_HOST_SRC}/card_runtime.c)
     foreach(TEST_NAME cycle_domain interrupt_sources delivery_digest composite_dispatch_loop edge_intercepts)
         set(TEST_TARGET bluewake_${TEST_NAME}_test)
         target_include_directories(${TEST_TARGET} PRIVATE
@@ -377,7 +499,7 @@ if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
     set_target_properties(bluewake_module_cpu_contract_test PROPERTIES LINKER_LANGUAGE CXX)
     target_include_directories(bluewake_module_cpu_contract_test PRIVATE
         ${GXRUNTIME_DIR}/include
-        ${BLUEWAKE_REPO_ROOT}/ref/recompcore/Source/Core/Core/PowerPC/StaticRecomp)
+        ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp)
     add_test(NAME bluewake_module_cpu_contract_test COMMAND bluewake_module_cpu_contract_test)
 
     foreach(_variant IN ITEMS plain global)
@@ -391,8 +513,13 @@ if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
         endif()
         add_test(NAME bluewake_guest_memory_${_variant}_test COMMAND bluewake_guest_memory_${_variant}_test)
     endforeach()
+    # Run by hand against archives of your own: bluewake_mod_archive_test FILE.zip FILE.rar FILE.7z
+    add_executable(bluewake_mod_archive_test
+        ${BLUEWAKE_REPO_ROOT}/tests/mod_archive_test.c ${BLUEWAKE_HOST_SRC}/mod_archive.c)
+    target_include_directories(bluewake_mod_archive_test PRIVATE ${BLUEWAKE_HOST_SRC})
+    target_link_libraries(bluewake_mod_archive_test PRIVATE bluewake_archive)
     add_executable(bluewake_windows_disc_test ${BLUEWAKE_REPO_ROOT}/tests/windows_disc_test.c)
-    target_include_directories(bluewake_windows_disc_test PRIVATE ${BLUEWAKE_HOST_SRC} ${BLUEWAKE_REPO_ROOT}/apple/ios/src)
+    target_include_directories(bluewake_windows_disc_test PRIVATE ${BLUEWAKE_HOST_SRC})
     target_compile_options(bluewake_windows_disc_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
     target_link_libraries(bluewake_windows_disc_test PRIVATE bluewake_posix_compat comctl32 comdlg32)
     target_compile_definitions(bluewake_windows_disc_test PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
@@ -436,7 +563,6 @@ if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
     set_tests_properties(bluewake_frontend_test PROPERTIES TIMEOUT 30)
 
     include("${BLUEWAKE_REPO_ROOT}/cmake/fifo_trace_worker_test.cmake")
-    include("${BLUEWAKE_REPO_ROOT}/cmake/mouse_motion_test.cmake")
 
     add_executable(bluewake_renderer_shared_flags_test ${BLUEWAKE_REPO_ROOT}/tests/renderer_shared_flags_test.cpp)
     target_compile_definitions(bluewake_renderer_shared_flags_test PRIVATE GXRUNTIME_HAS_AURORA_RECOMP=1)
@@ -460,12 +586,9 @@ set_tests_properties(bluewake_desktop_controller_test PROPERTIES TIMEOUT 15)
 add_executable(bluewake_face_button_swap_test ${BLUEWAKE_REPO_ROOT}/tests/face_button_swap_test.c)
 target_include_directories(bluewake_face_button_swap_test PRIVATE ${BLUEWAKE_HOST_SRC})
 add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_test)
-add_executable(bluewake_dpad_menus_test ${BLUEWAKE_REPO_ROOT}/tests/dpad_menus_test.c)
-target_include_directories(bluewake_dpad_menus_test PRIVATE ${BLUEWAKE_HOST_SRC})
-add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
-add_executable(bluewake_gyro_aim_test ${BLUEWAKE_REPO_ROOT}/tests/gyro_aim_test.c)
-target_include_directories(bluewake_gyro_aim_test PRIVATE ${BLUEWAKE_HOST_SRC})
-add_test(NAME bluewake_gyro_aim_test COMMAND bluewake_gyro_aim_test)
+
+
+add_test(NAME bluewake_gc_adapter_proto_test COMMAND bluewake_gc_adapter_proto_test)
 
 
 add_executable(bluewake_audio_sink_test ${GXRUNTIME_DIR}/graphics/aurora/tests/audio_sink_test.cpp)
@@ -491,10 +614,38 @@ add_test(NAME bluewake_pipeline_shutdown_test COMMAND bluewake_pipeline_shutdown
 set_tests_properties(bluewake_pipeline_shutdown_test PROPERTIES TIMEOUT 45)
 
 
-add_executable(bluewake_settings_state_test ${BLUEWAKE_REPO_ROOT}/tests/settings_state_test.cpp)
-target_compile_features(bluewake_settings_state_test PRIVATE cxx_std_17)
-target_include_directories(bluewake_settings_state_test PRIVATE ${GXRUNTIME_DIR}/graphics/aurora/include)
-add_test(NAME bluewake_settings_state_test COMMAND bluewake_settings_state_test)
+# The randomizer's host functions on a fake CPUState (the unit includes rando_seed.c and its own small site table) and
+# the seed pack loader on a synthetic pack (BLUEWAKE_TEST_SEED_JSON=a real seed.json adds a check on it).
+add_executable(bluewake_rando_seed_test ${BLUEWAKE_REPO_ROOT}/tests/rando_seed_test.c)
+target_include_directories(bluewake_rando_seed_test PRIVATE ${BLUEWAKE_HOST_SRC} ${GXRUNTIME_DIR}/include
+    ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp)
+target_compile_definitions(bluewake_rando_seed_test PRIVATE
+    "BLUEWAKE_RANDO_SITES_INC=\"${BLUEWAKE_REPO_ROOT}/tests/rando_seed_test_sites.inc\"")
+target_compile_options(bluewake_rando_seed_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME bluewake_rando_seed_test COMMAND bluewake_rando_seed_test)
+add_executable(bluewake_dvd_new_file_test ${BLUEWAKE_REPO_ROOT}/tests/dvd_new_file_test.c)
+target_include_directories(bluewake_dvd_new_file_test PRIVATE ${GXRUNTIME_DIR}/include ${BLUEWAKE_COMPAT_INCLUDES})
+target_compile_options(bluewake_dvd_new_file_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
+target_link_libraries(bluewake_dvd_new_file_test PRIVATE gxruntime bluewake_posix_compat)
+set_target_properties(bluewake_dvd_new_file_test PROPERTIES LINKER_LANGUAGE CXX)
+add_test(NAME bluewake_dvd_new_file_test COMMAND bluewake_dvd_new_file_test)
+add_executable(bluewake_rando_pack_test ${BLUEWAKE_REPO_ROOT}/tests/rando_pack_test.cpp src/rando_pack.cpp
+    ${BLUEWAKE_HOST_SRC}/rando_seed.c)
+target_include_directories(bluewake_rando_pack_test PRIVATE ${BLUEWAKE_HOST_SRC} src ${BLUEWAKE_RECOMPCORE}/Externals/picojson
+    ${GXRUNTIME_DIR}/include ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp ${BLUEWAKE_COMPAT_INCLUDES})
+target_compile_features(bluewake_rando_pack_test PRIVATE cxx_std_17)
+add_test(NAME bluewake_rando_pack_test COMMAND bluewake_rando_pack_test)
+add_executable(bluewake_rando_saves_test ${BLUEWAKE_REPO_ROOT}/tests/rando_saves_test.cpp src/rando_saves.cpp src/rando_pack.cpp
+    ${BLUEWAKE_HOST_SRC}/rando_seed.c)
+target_include_directories(bluewake_rando_saves_test PRIVATE ${BLUEWAKE_HOST_SRC} src ${BLUEWAKE_RECOMPCORE}/Externals/picojson
+    ${GXRUNTIME_DIR}/include ${BLUEWAKE_RECOMPCORE}/Source/Core/Core/PowerPC/StaticRecomp ${BLUEWAKE_COMPAT_INCLUDES})
+target_compile_features(bluewake_rando_saves_test PRIVATE cxx_std_17)
+add_test(NAME bluewake_rando_saves_test COMMAND bluewake_rando_saves_test)
+
+add_executable(bluewake_cvar_test ${BLUEWAKE_REPO_ROOT}/tests/cvar_test.cpp ${BLUEWAKE_HOST_SRC}/ship/cvar.cpp)
+target_include_directories(bluewake_cvar_test PRIVATE ${BLUEWAKE_RECOMPCORE}/Externals/picojson)
+target_compile_features(bluewake_cvar_test PRIVATE cxx_std_17)
+add_test(NAME bluewake_cvar_test COMMAND bluewake_cvar_test)
 
 
 add_executable(bluewake_launch_marker_test ${BLUEWAKE_REPO_ROOT}/tests/launch_marker_test.c)
@@ -516,16 +667,6 @@ target_link_libraries(bluewake_save_state_test PRIVATE ZLIB::ZLIB bluewake_posix
 add_test(NAME bluewake_save_state_test COMMAND bluewake_save_state_test)
 
 include("${BLUEWAKE_REPO_ROOT}/cmake/host_state_save_test.cmake")
-include("${BLUEWAKE_REPO_ROOT}/cmake/dvd_completion_test.cmake")
-include("${BLUEWAKE_REPO_ROOT}/cmake/cache_flush_fallback_test.cmake")
-include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_import_job_test.cmake")
-include("${BLUEWAKE_REPO_ROOT}/cmake/wwhd_disc_image_test.cmake")
-target_include_directories(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
-target_compile_options(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
-target_link_libraries(bluewake_cache_flush_fallback_test PRIVATE bluewake_posix_compat)
-target_include_directories(bluewake_dvd_completion_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
-target_compile_options(bluewake_dvd_completion_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
-target_link_libraries(bluewake_dvd_completion_test PRIVATE ZLIB::ZLIB bluewake_posix_compat)
 include("${BLUEWAKE_REPO_ROOT}/cmake/haptics_test.cmake")
 target_include_directories(bluewake_host_state_save_failure_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
 target_compile_options(bluewake_host_state_save_failure_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})

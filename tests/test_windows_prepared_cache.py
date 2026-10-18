@@ -76,42 +76,13 @@ class PreparedBlockSelectionTest(unittest.TestCase):
                                        unsupported + "    ctx->gpr[4] += 1u;")
                 self.assertEqual(fast.transform(source), (source, 0))
 
-    def test_lean_mode_copies_refund_blocks_and_leaves_through_the_original(self):
-        refund = """    if (cycle_block_prepaid &&
-        ctx->cycle_deadline_budget > 0 &&
-        (s64)ctx->cycle_observation_suffix > ctx->cycle_deadline_budget) {
-        ctx->downcount += (s64)ctx->cycle_observation_suffix;
-        cycle_block_prepaid = false;
-    }
-"""
-        source = CHUNK.replace("    ctx->gpr[3] += 1u;\n", "    ctx->gpr[3] += 1u;\n" + refund)
-        self.assertEqual(fast.transform(source), (source, 0))   # conservative: no copy
-        converted, blocks = fast.transform(source, lean=True)
-        self.assertEqual(blocks, 1)
-        self.assertIn(fast.LEAN_MARK, converted)
-        self.assertNotIn(fast.MARK, converted)
-        copy = converted[converted.index("bwfast_0:"):]
-        # The refund leaves the copy for the original block's next instruction.
-        self.assertIn("goto bwslow_0_1;", copy)
-        self.assertIn("bwslow_0_1: ;", converted[:converted.index("bwfast_0:")])
-        self.assertNotIn("cycle_block_prepaid ?", copy)
-        self.assertEqual(fast.transform(converted, lean=True), (converted, 0))   # repeatable
-
-    def test_a_chunk_prepared_in_one_mode_is_refused_by_the_other(self):
-        conservative, _ = fast.transform(CHUNK)
-        lean, _ = fast.transform(CHUNK, lean=True)
-        with self.assertRaises(ValueError):
-            fast.transform(conservative, lean=True)
-        with self.assertRaises(ValueError):
-            fast.transform(lean)
-
 
 class PreparedCacheTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for script in ("scripts/ios/composite_manifest.py", "scripts/windows/fast_blocks.py",
+        for script in ("scripts/windows/composite_manifest.py", "scripts/windows/fast_blocks.py",
                        "scripts/windows/global_guest_cpu.py", "scripts/windows/chunk_headers.py",
                        "cmake/composite/inline_fp.h", "cmake/composite/gather_pipe.h",
                        "cmake/composite/gather_pipe.c", "cmake/composite/gather_pipe_batch.h",
@@ -124,8 +95,7 @@ class PreparedCacheTest(unittest.TestCase):
                        "scripts/windows/native_skin.py", "cmake/composite/native_skin.c", "cmake/composite/native_skin.h",
                        "scripts/mods/prepare_native_math.py", "cmake/composite/native_math.c", "cmake/composite/native_math.h",
                        "cmake/composite/native_work_pool.c", "cmake/composite/native_work_pool.h",
-                       "scripts/windows/lean_memory.py", "scripts/windows/native_entries.py",
-                       "scripts/windows/return_ranges.py", "scripts/windows/chunk_pool.py"):
+                       "scripts/windows/lean_memory.py", "scripts/windows/native_entries.py"):
             dst = self.root / script
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / script, dst)
@@ -279,31 +249,6 @@ label_80004004:
         self.assertNotIn('BLUEWAKE_NATIVE_GAME_MATH_PREPARED', (source.parent.parent / 'generated.h').read_text())
         self.assertFalse((source.parent.parent / 'native_game_math.json').exists())
 
-    def test_rebuild_into_a_prepared_folder_keeps_it(self):
-        # A second build into the same folder with the same options: generate() finds the prepared tree
-        # current, and preparation must not run again on it. native_game_math.py refuses its own hooks
-        # once a later step has rewritten the chunk (here the prepaid block copies).
-        body = '\nlabel_80000100:\n    ctx->gpr[3] = 1;\n'
-        digest = hashlib.sha256(' '.join(body.split()).encode()).hexdigest()
-        script = self.root / "scripts/windows/native_game_math.py"
-        text = script.read_text()
-        begin = text.index('FRAGMENTS = {')
-        end = text.index('def canonical(', begin)
-        script.write_text(text[:begin] + f"FRAGMENTS = {{'fixture': (0x80000100, 0x80000100, 0x80000104, '{digest}')}}\n"
-                          "ENTRIES = {0x80000100: ('fixture',)}\n\n" + text[end:], newline="\n")
-        (self.base / 'chunks_dol/chunk_80000100.c').write_text(
-            '#include "../generated.h"\n' + body + '\nlabel_80000104:\n\nreturn_dispatch_80000100:\n' + CHUNK,
-            newline="\n")
-        self.digest = bw.tree_digest(self.base)
-        self.args.native_game_math = self.args.prepared_blocks = True
-        self.cycle()
-        source = self.out / 'composite-src/chunks_dol/chunk_80000100.c'
-        self.assertIn('bluewake_native_game_math_try', source.read_text())
-        self.assertIn(MARK, source.read_text())
-        before = bw.tree_digest(self.out / "composite-src")
-        self.cycle()
-        self.assertEqual(before, bw.tree_digest(self.out / "composite-src"))
-
     def test_native_skin_reuse_and_disable(self):
         body = '\nlabel_00000100:\n    ctx->gpr[3] = 1;\n'
         digest = hashlib.sha256(' '.join(body.split()).encode()).hexdigest()
@@ -413,21 +358,6 @@ label_80004004:
         self.cycle()
         self.assertEqual(self.chunk().read_text(), CHUNK)
         self.assertFalse(json.loads((self.out / "prepared-blocks.json").read_text())["enabled"])
-
-    def test_lean_blocks_switch_regenerates_in_the_chosen_mode(self):
-        self.args.prepared_blocks = True
-        self.cycle()
-        self.assertIn(MARK, self.chunk().read_text())
-        self.args.lean_blocks = True
-        self.cycle()
-        text = self.chunk().read_text()
-        self.assertIn(fast.LEAN_MARK, text)
-        self.assertNotIn(MARK, text)
-        self.assertTrue(json.loads((self.out / "prepared-blocks.json").read_text())["lean_blocks"])
-        self.args.lean_blocks = False
-        self.cycle()
-        self.assertIn(MARK, self.chunk().read_text())
-        self.assertNotIn(fast.LEAN_MARK, self.chunk().read_text())
 
     def test_fixed_cpu_can_be_selected_combined_reused_and_disabled(self):
         self.cycle()

@@ -43,7 +43,7 @@ static int card_test_rename(const char* from, const char* to) {
 }
 #undef rename
 #define rename card_test_rename
-#include "../ref/recompcore/GXRuntime/src/memory_card.c"
+#include "../runtime/recompcore/GXRuntime/src/memory_card.c"
 #undef rename
 #undef fflush
 #ifndef _WIN32

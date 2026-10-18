@@ -30,43 +30,26 @@ from wwhd.ui import LAYOUT_SPRITES, OPENING_PANELS, fit_sprite, font_sprites, op
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOWS = sys.platform == "win32"
-LINUX = sys.platform.startswith("linux")
 if WINDOWS:
-    # The Windows app's data folder (windows/src/win_entry.c): settings.ini,
-    # disc.txt (the disc it remembers) and Load\Textures.
-    SUPPORT = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "BlueWake"
-    SETTINGS = SUPPORT / "settings.ini"
-elif LINUX:
-    # The Linux app (docs/LINUX.md): disc.txt and the game files in
-    # $XDG_DATA_HOME/BlueWake, settings.ini in $XDG_CONFIG_HOME/BlueWake.
-    SUPPORT = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "BlueWake"
-    SETTINGS = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "BlueWake/settings.ini"
+    # The Windows app keeps its data beside the executable (windows/src/win_entry.c):
+    # boat-of-daphnes.json (the settings), disc.txt (the disc it remembers) and
+    # mods\textures (texture packs, read with their subfolders). Default: the
+    # folder scripts\windows\build.py makes; BLUEWAKE_DATA_DIR as for the app.
+    SUPPORT = Path(os.environ.get("BLUEWAKE_DATA_DIR") or ROOT / "build/windows/boat-of-daphnes")
 else:
-    # The Mac app reads Application Support/BlueWake/settings.ini; the Wind
-    # Waker Recomp folder is only read while BlueWake has no settings yet.
-    SUPPORT = Path.home() / "Library/Application Support/BlueWake"
-    SETTINGS = SUPPORT / "settings.ini"
+    SUPPORT = Path.home() / "Library/Application Support/Wind Waker Recomp"
 
 
 def default_gc_disc() -> Path:
-    """The GameCube ISO the app already plays: on Windows and Linux the .iso or
-    .gcm it remembers (on Windows, an .rvz it unpacked once to GZLE01.iso in its
-    data folder); on a Mac the disc in BlueWake.app, or Wind Waker Recomp's."""
-    if WINDOWS or LINUX:
+    """The GameCube ISO the app already plays: on Windows the .iso or .gcm it
+    remembers (an .rvz it unpacked once to GZLE01.iso in its data folder)."""
+    if WINDOWS:
         try:
             remembered = Path((SUPPORT / "disc.txt").read_text(encoding="utf-8").strip())
             if remembered.suffix.lower() in (".iso", ".gcm") and remembered.is_file():
                 return remembered
         except (OSError, ValueError):
             pass
-    else:
-        for candidate in (
-            Path("/Applications/BlueWake.app/Contents/Resources/Game/GZLE01.iso"),
-            Path.home() / "Applications/BlueWake.app/Contents/Resources/Game/GZLE01.iso",
-            Path.home() / "Library/Application Support/Wind Waker Recomp/GZLE01.iso",
-        ):
-            if candidate.is_file():
-                return candidate
     return SUPPORT / "GZLE01.iso"
 
 
@@ -223,9 +206,7 @@ def index_gc(path: Path, errors: list):
 def hd_files(path: Path, args):
     suffixes = (".szs", ".sarc", ".pack", ".bfres")
     if path.is_dir():
-        # POSIX order on every OS: Windows paths compare without case, which picked a different (identical)
-        # copy of 68 textures than the Mac, Linux and the native importer (#315).
-        for p in sorted(path.rglob("*"), key=lambda p: p.as_posix()):
+        for p in sorted(path.rglob("*")):
             if p.is_file() and p.suffix.lower() in suffixes:
                 if args.only and not any(s.lower() in p.as_posix().lower() for s in args.only):
                     continue
@@ -258,12 +239,26 @@ def file_sha256(path: Path) -> str:
 
 
 def install(pack: Path, settings: Path, windows: bool = WINDOWS):
-    text = settings.read_text() if settings.exists() else ""
+    text = settings.read_text(encoding="utf-8") if settings.exists() else ""
     if windows:
-        # BlueWake for Windows: its own keys (windows/src/win_settings.cpp), the
-        # HD texture pack turned on and loaded from this folder.
-        kept = [line for line in text.splitlines() if not re.match(r"(hd_textures|texture_pack)=", line)]
-        new = "\n".join(kept + ["hd_textures=1", "texture_pack=" + str(pack.resolve())]) + "\n"
+        # boat-of-daphnes: the CVar file (windows/src/win_settings.cpp), with
+        # texture packs turned on. The app loads every pack under mods\textures.
+        try:
+            root = json.loads(text) if text.strip() else {}
+        except ValueError:
+            raise FormatError(f"{settings} is not valid JSON; fix or delete it first")
+        node = root
+        for key in ("CVars", "gSettings", "Mods"):
+            if not isinstance(node, dict):
+                raise FormatError(f"{settings} is not a settings file")
+            node = node.setdefault(key, {})
+        if not isinstance(node, dict):
+            raise FormatError(f"{settings} is not a settings file")
+        node["TexturePacks"] = 1
+        new = json.dumps(root, indent=4) + "\n"
+        textures = (settings.parent / "mods" / "textures").resolve()
+        if textures != pack.resolve() and textures not in pack.resolve().parents:
+            print(f"Note: the app loads texture packs from {textures}; move the pack there.", file=sys.stderr)
     else:
         value = "DOL_AURORA_TEXTURE_PACK=" + str(pack.resolve())
         if re.search(r"^DOL_AURORA_TEXTURE_PACK=.*$", text, flags=re.M):
@@ -392,7 +387,7 @@ def build(args) -> dict:
                     t.name.lower() == "c_nintendo_e"}
         fallback = (add_fallback(staging, [t["file"] for t in accepted], args.fallback_pack, excluded)
                     if getattr(args, "fallback_pack", None) else None)
-        tool_sources = [Path(__file__), *sorted((ROOT / "scripts/wwhd").rglob("*.py"), key=lambda p: p.as_posix()),
+        tool_sources = [Path(__file__), *sorted((ROOT / "scripts/wwhd").rglob("*.py")),
                         ROOT / "scripts/wwhd/requirements.txt", ROOT / "scripts/wwhd/yaz0_native.c"]
         report = {"format": 1, "name": "Wind Waker HD (local disc import)",
                   "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -410,7 +405,7 @@ def build(args) -> dict:
                   "limits": "Compatible BFRES artwork, audited shared-artwork variants, inventory/collection/chart icons, HUD hearts and swimming meter, adapted English title/opening layouts, font-derived English action/menu text, counters and A/B/X/Y symbols, and adapted key/cursor sprites; HD shaders, models, lighting and other redesigned HUD are not imported."}
         (staging / "import-report.json").write_text(json.dumps(report, indent=2) + "\n")
         (staging / "README.txt").write_text("Private artwork extracted from your own Wind Waker HD disc.\n"
-                                          "Choose this folder in Mods > Wind Waker HD textures, then restart.\n"
+                                          "Select this folder as the HD texture pack, then restart.\n"
                                           "Do not distribute this folder with app builds or source releases.\n")
         staging.replace(output)
         if args.install:
@@ -428,10 +423,11 @@ def main():
     p.add_argument("--disc-key", type=Path, help="WUD disc key file (default: game.key beside image)")
     p.add_argument("--common-key", type=Path, help="common key file to decrypt the disc's own ticket")
     p.add_argument("--title-key", type=Path, help="disc-specific decrypted title key file, instead of common key")
-    p.add_argument("--output", type=Path, default=SUPPORT / "Load/Textures/WWHD", help="new output folder")
+    p.add_argument("--output", type=Path, default=SUPPORT / ("mods/textures/WWHD" if WINDOWS else "Load/Textures/WWHD"),
+                   help="new output folder")
     p.add_argument("--fallback-pack", type=Path, help="existing pack for keys not replaced by the HD disc")
     p.add_argument("--install", action="store_true", help="select the completed pack for the app's next launch")
-    p.add_argument("--settings", type=Path, default=SETTINGS)
+    p.add_argument("--settings", type=Path, default=SUPPORT / ("boat-of-daphnes.json" if WINDOWS else "settings.ini"))
     p.add_argument("--only", action="append", help="limit to HD resource paths containing this text (for development)")
     args = p.parse_args()
     try:
@@ -443,7 +439,8 @@ def main():
           + (f"Added {report['fallback']['texture_count']} fallback replacements.\n" if report['fallback'] else "")
           + f"Pack: {args.output.expanduser().resolve()}\n"
           + ("Selected for the next app launch.\n" if args.install else
-             "Run again with --install, or choose this folder in Mods > Wind Waker HD textures.\n"))
+             "Run again with --install to select it.\n" if WINDOWS else
+             "Choose this folder in Display > HD texture pack.\n"))
     return 0
 
 

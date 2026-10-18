@@ -1,0 +1,46 @@
+// The Anchor online play server (a Cloudflare Worker): a Room Durable Object for each room, and a Lobby Durable
+// Object listing the rooms that ask to be listed. See README.md here for running and deploying it.
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "boat-of-daphnes-anchor",
+	"main": "src/index.js",
+	"compatibility_date": "2026-09-01",
+	"observability": {
+		"enabled": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "ROOM",
+				"class_name": "Room"
+			},
+			{
+				"name": "LOBBY",
+				"class_name": "Lobby"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"Room",
+				"Lobby"
+			]
+		}
+	],
+	// Custom player content, by hash (src/content.js). Make the namespace with
+	// `npx wrangler kv namespace create CONTENT` and put its id here; `wrangler dev` uses a local one whatever the id.
+	"kv_namespaces": [
+		{
+			"binding": "CONTENT",
+			"id": "00000000000000000000000000000000"
+		}
+	],
+	"vars": {
+		// The game's protocol versions this server accepts (comma-separated).
+		"PROTOCOLS": "1"
+	}
+	// To serve it on your own domain, add a route, for example:
+	// "routes": [{ "pattern": "anchor.example.com", "custom_domain": true }]
+}

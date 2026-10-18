@@ -3,10 +3,13 @@
 //
 // A BlueWake app-only build needs the player-generated module. The launcher asks for the
 // player's own disc image (GameCube USA, GZLE01 revision 0): an .iso or .gcm
-// is used where it is; a Dolphin image (.rvz, .wia, .gcz, .ciso, .nfs) is
-// unpacked into a new private import folder with nodtool when available.
+// is used where it is (an .nkit.iso too: the importer reads the files through the
+// image's own file table); a Dolphin image (.rvz, .wia, .gcz) or a .ciso is unpacked
+// into a new private import folder by the app itself (runtime/host/src/disc_unpack.c;
+// GameCube images are not encrypted), and nodtool.exe, when the builder left it beside
+// the app, is the fallback for the rest (.nfs, .wbfs).
 // The disc is checked (its id, and main.dol's SHA-1 for revision 0) and
-// prepared once, by the iOS app's own importer (apple/ios/src/disc_import.c):
+// prepared once, by the disc importer (runtime/host/src/disc_import.c):
 // main.dol and the 415 RELs, into another fresh import folder. disc.txt remembers
 // the disc and game.txt the completed preparation; prior folders are retained.
 #ifndef WIN32_LEAN_AND_MEAN
@@ -25,6 +28,7 @@
 #include <string.h>
 
 #include "disc_import.h"
+#include "disc_unpack.h"
 #include "win_disc.h"
 #include "atomic_file.h"
 
@@ -54,7 +58,7 @@ static void box(const char* text, UINT flags) {
         return;
     wchar_t message[4096];
     wide(text, message, 4096);
-    MessageBoxW(NULL, message, L"BlueWake", flags);
+    MessageBoxW(NULL, message, L"boat-of-daphnes", flags);
 }
 
 // A line of text from a file (the remembered disc), without its line end.
@@ -132,13 +136,14 @@ static const char* extension(const char* path) {
     return dot != NULL && (slash == NULL || dot > slash) ? dot : "";
 }
 
-// Dolphin's compressed and other formats, which nodtool unpacks to an ISO.
+// Dolphin's compressed and other formats, which are unpacked to an ISO: by the extension, or by the file's first bytes
+// (a renamed file).
 static int needs_unpacking(const char* path) {
     static const char* const kinds[] = {".rvz", ".wia", ".gcz", ".ciso", ".nfs", ".wbfs"};
     for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++)
         if (_stricmp(extension(path), kinds[i]) == 0)
             return 1;
-    return 0;
+    return bluewake_disc_container(path) != BW_DISC_PLAIN;
 }
 
 // --- a progress window while the work runs on another thread ----------------
@@ -197,9 +202,17 @@ static int with_progress(Work* work, const wchar_t* title) {
     RegisterClassW(&cls);
     const UINT dpi = GetDpiForSystem();
     const int width = MulDiv(440, dpi, 96), height = MulDiv(130, dpi, 96);
-    HWND w = CreateWindowExW(0, cls.lpszClassName, L"BlueWake", WS_POPUP | WS_CAPTION | WS_VISIBLE,
-                             (GetSystemMetrics(SM_CXSCREEN) - width) / 2, (GetSystemMetrics(SM_CYSCREEN) - height) / 2,
-                             width, height, NULL, NULL, cls.hInstance, NULL);
+    int left = (GetSystemMetrics(SM_CXSCREEN) - width) / 2, top = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
+    // Scripted runs (the same variables the game window honours) keep this window off the desktop too.
+    const char* where = getenv("BLUEWAKE_WINDOW_POS");
+    int placed_x = 0, placed_y = 0;
+    if (where != NULL && sscanf(where, "%d,%d", &placed_x, &placed_y) == 2) {
+        left = placed_x;
+        top = placed_y;
+    }
+    const char* quiet = getenv("BLUEWAKE_WINDOW_NOACTIVATE");
+    HWND w = CreateWindowExW(quiet != NULL && quiet[0] == '1' ? WS_EX_NOACTIVATE : 0, cls.lpszClassName, L"boat-of-daphnes",
+                             WS_POPUP | WS_CAPTION | WS_VISIBLE, left, top, width, height, NULL, NULL, cls.hInstance, NULL);
     NONCLIENTMETRICSW metrics = {sizeof metrics};
     SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof metrics, &metrics, 0, dpi);
     HFONT font = CreateFontIndirectW(&metrics.lfMessageFont);
@@ -214,12 +227,19 @@ static int with_progress(Work* work, const wchar_t* title) {
     work->window = w;
     HANDLE thread = (HANDLE)_beginthreadex(NULL, 0, work_main, work, 0, NULL);
     MSG message;
+    char shown[128] = "";
     int done = thread == NULL;
     if (thread == NULL)
         work->result = -1;
     while (!done && GetMessageW(&message, NULL, 0, 0) > 0) {
         if (message.hwnd == w && message.message == WM_BW_PROGRESS) {
             SendMessageW(bar, PBM_SETPOS, (WPARAM)InterlockedCompareExchange(&work->fraction, 0, 0), 0);
+            if (work->stage[0] != '\0' && strcmp(work->stage, shown) != 0) {  // the step the work is on
+                snprintf(shown, sizeof shown, "%s", work->stage);
+                wchar_t line[192];
+                wide(shown, line, 192);
+                SetWindowTextW(text, line);
+            }
             if (message.wParam == 1)
                 done = 1;
             continue;
@@ -238,24 +258,43 @@ static int with_progress(Work* work, const wchar_t* title) {
 
 // --- the steps ---------------------------------------------------------------
 
-// nodtool (beside BlueWake.exe) unpacks the image to work->out; the window
-// follows the ISO as it grows.
+// The unpacker's progress, into the window's bar.
+static void unpack_progress(void* context, double fraction, const char* stage) {
+    note_progress((Work*)context, fraction, stage);
+}
+
+static int unpack_with_nodtool(Work* work, const char* pending);
+
+// The app's own unpacker (disc_unpack.c) first; for what it does not handle, nodtool (beside BlueWake.exe), when the builder
+// left it there, unpacks the image and the window follows the ISO as it grows. The ISO is made in a private folder of its own:
+// nothing earlier is touched.
 static int unpack(Work* work) {
-    char tool[MAX_PATH * 4], pending[MAX_PATH * 4], folder[900];
-    snprintf(tool, sizeof tool, "%snodtool.exe", g_exe);
-    // nodtool chooses the output format by its extension.
+    char pending[MAX_PATH * 4], folder[900];
     if (fresh_import_dir(folder, sizeof folder) != 0) {
         snprintf(work->error, sizeof work->error, "Could not create a private disc-import folder (error %lu).", GetLastError());
         return -1;
     }
     snprintf(pending, sizeof pending, "%s\\GZLE01.iso", folder);
-    if (!is_file(tool)) {
-        snprintf(work->error, sizeof work->error,
-                 "nodtool.exe, which unpacks %s images, is missing from BlueWake's folder. Use the Windows "
-                 "builder with this image, or convert it to ISO in Dolphin (right-click the game, Convert File).",
-                 extension(work->disc));
-        return -1;
+    char error[1024] = "";
+    const int rc = bluewake_disc_unpack(work->disc, pending, unpack_progress, work, error, sizeof error);
+    if (rc == 0) {
+        snprintf(work->out, sizeof work->out, "%s", pending);
+        return 0;
     }
+    char tool[MAX_PATH * 4];
+    snprintf(tool, sizeof tool, "%snodtool.exe", g_exe);
+    if (rc == 1 && is_file(tool)) {
+        fprintf(stderr, "[disc] %s Trying nodtool.\n", error);
+        return unpack_with_nodtool(work, pending);
+    }
+    snprintf(work->error, sizeof work->error, "%s", error);
+    return -1;
+}
+
+static int unpack_with_nodtool(Work* work, const char* pending_path) {
+    char tool[MAX_PATH * 4], pending[MAX_PATH * 4];
+    snprintf(tool, sizeof tool, "%snodtool.exe", g_exe);
+    snprintf(pending, sizeof pending, "%s", pending_path);
     wchar_t command[MAX_PATH * 8 + 64], wtool[MAX_PATH * 2], wdisc[MAX_PATH * 2], wpending[MAX_PATH * 2];
     wide(tool, wtool, MAX_PATH * 2);
     wide(work->disc, wdisc, MAX_PATH * 2);
@@ -288,8 +327,137 @@ static int unpack(Work* work) {
     return 0;
 }
 
+// The disc importer's progress, scaled into the first part of the window's bar.
+typedef struct Scaled {
+    Work* work;
+    double base, span;
+} Scaled;
+
+static void scaled_progress(void* context, double fraction, const char* stage) {
+    const Scaled* scaled = (const Scaled*)context;
+    char text[160];
+    if (stage != NULL) {
+        snprintf(text, sizeof text, "%s (once)...", stage);
+        note_progress(scaled->work, scaled->base + scaled->span * fraction, text);
+    } else {
+        note_progress(scaled->work, scaled->base + scaled->span * fraction, NULL);
+    }
+}
+
+// The files the release does not carry because they are made from the player's disc: Swift Sail's textures,
+// the Cosmetics Editor's Link data and the randomizer variant's RELs. rando\prepare_extras.py, run with the
+// embedded Python (rando\python\python.exe), makes them in `game` beside main.dol and rels\; it prints
+// "PROGRESS fraction text" lines for the window. A step that fails only costs its own feature (the log and
+// game\extras.json say which); the game still starts. 1 when the tools are here and ran, 0 when they are not.
+static int make_extras(Work* work, const char* disc, const char* game, double base, double span, int only_missing) {
+    char python[MAX_PATH * 4], script[MAX_PATH * 4], timing[MAX_PATH * 4];
+    snprintf(python, sizeof python, "%srando\\python\\python.exe", g_exe);
+    snprintf(script, sizeof script, "%srando\\prepare_extras.py", g_exe);
+    snprintf(timing, sizeof timing, "%sextras-seconds.txt", g_data);
+    if (!is_file(python) || !is_file(script)) {
+        fprintf(stderr, "[disc] rando\\ (the embedded Python and prepare_extras.py) is missing: Swift Sail, Link's "
+                        "colors in the Cosmetics Editor and the Randomizer cannot be made from the disc\n");
+        return 0;
+    }
+    wchar_t wpython[MAX_PATH * 2], wscript[MAX_PATH * 2], wdisc[MAX_PATH * 2], wgame[MAX_PATH * 2], wtiming[MAX_PATH * 2];
+    wide(python, wpython, MAX_PATH * 2);
+    wide(script, wscript, MAX_PATH * 2);
+    wide(disc, wdisc, MAX_PATH * 2);
+    wide(game, wgame, MAX_PATH * 2);
+    wide(timing, wtiming, MAX_PATH * 2);
+    wchar_t command[MAX_PATH * 12];
+    _snwprintf(command, sizeof command / sizeof command[0],
+               L"\"%ls\" \"%ls\" --iso \"%ls\" --out \"%ls\" --timing \"%ls\"%ls", wpython, wscript, wdisc, wgame, wtiming,
+               only_missing ? L" --only-missing" : L"");
+    SECURITY_ATTRIBUTES inherit = {sizeof inherit, NULL, TRUE};
+    HANDLE read_end = NULL, write_end = NULL;
+    if (!CreatePipe(&read_end, &write_end, &inherit, 0)) return 0;
+    SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOW startup = {sizeof startup};
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = write_end;
+    startup.hStdError = write_end;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    PROCESS_INFORMATION process = {0};
+    const BOOL started = CreateProcessW(wpython, command, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process);
+    CloseHandle(write_end);
+    if (!started) {
+        fprintf(stderr, "[disc] the embedded Python could not start (error %lu)\n", GetLastError());
+        CloseHandle(read_end);
+        return 0;
+    }
+    char line[1024];
+    size_t used = 0;
+    char chunk[512];
+    DWORD got;
+    while (ReadFile(read_end, chunk, sizeof chunk, &got, NULL) && got > 0) {
+        for (DWORD i = 0; i < got; i++) {
+            if (chunk[i] != '\n') {
+                if (used + 1 < sizeof line && chunk[i] != '\r') line[used++] = chunk[i];
+                continue;
+            }
+            line[used] = '\0';
+            used = 0;
+            if (strncmp(line, "PROGRESS ", 9) == 0) {
+                char* end = NULL;
+                const double fraction = strtod(line + 9, &end);
+                if (end != NULL && *end == ' ')
+                    note_progress(work, base + span * fraction, end + 1);
+            } else if (line[0] != '\0') {
+                fprintf(stderr, "[disc] %s\n", line);
+            }
+        }
+    }
+    CloseHandle(read_end);
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    if (code != 0)
+        fprintf(stderr, "[disc] some of the files made from the disc were not made (exit code %lu; %s\\extras.json says "
+                        "which): only the features that need them are affected\n", code, game);
+    return 1;
+}
+
 static int prepare(Work* work) {
-    return bluewake_disc_prepare(work->disc, work->out, note_progress, work, work->error, sizeof work->error);
+    Scaled scaled = {work, 0.0, 0.2};
+    if (bluewake_disc_prepare(work->disc, work->out, scaled_progress, &scaled, work->error, sizeof work->error) != 0)
+        return -1;
+    make_extras(work, work->disc, work->out, 0.2, 0.8, 0);
+    return 0;
+}
+
+// An earlier preparation of this disc that lacks some extras (made by an older app, or a step that failed): only the
+// steps whose outputs are missing are made.
+static int prepare_extras_only(Work* work) {
+    make_extras(work, work->disc, work->out, 0.0, 1.0, 1);
+    return 0;
+}
+
+// Whether prepare_extras.py --check finds a step whose outputs are missing (exit code 3). A hidden, quick run.
+static int extras_missing(const char* disc, const char* game) {
+    char python[MAX_PATH * 4], script[MAX_PATH * 4];
+    snprintf(python, sizeof python, "%srando\\python\\python.exe", g_exe);
+    snprintf(script, sizeof script, "%srando\\prepare_extras.py", g_exe);
+    if (!is_file(python) || !is_file(script)) return 0;
+    wchar_t wpython[MAX_PATH * 2], wscript[MAX_PATH * 2], wdisc[MAX_PATH * 2], wgame[MAX_PATH * 2];
+    wide(python, wpython, MAX_PATH * 2);
+    wide(script, wscript, MAX_PATH * 2);
+    wide(disc, wdisc, MAX_PATH * 2);
+    wide(game, wgame, MAX_PATH * 2);
+    wchar_t command[MAX_PATH * 10];
+    _snwprintf(command, sizeof command / sizeof command[0], L"\"%ls\" \"%ls\" --iso \"%ls\" --out \"%ls\" --check", wpython,
+               wscript, wdisc, wgame);
+    STARTUPINFOW startup = {sizeof startup};
+    PROCESS_INFORMATION process = {0};
+    if (!CreateProcessW(wpython, command, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) return 0;
+    WaitForSingleObject(process.hProcess, 30000);
+    DWORD code = 0;
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return code == 3;
 }
 
 // The explanation, then Windows' file picker. 1 and the chosen path, or 0
@@ -309,39 +477,24 @@ static int choose(const char* why, char* out, size_t size) {
     const size_t length = strlen(folder);
     if (length > 3 && folder[length - 1] == '\\')
         folder[length - 1] = '\0';
-    // The release leaves nodtool.exe out (it embeds Wii keys), so only a
-    // self-built folder can unpack Dolphin's compressed images: offer them only then.
-    char tool[MAX_PATH * 4];
-    snprintf(tool, sizeof tool, "%snodtool.exe", g_exe);
-    const int can_unpack = is_file(tool);
     char text[2048];
-    if (can_unpack)
-        snprintf(text, sizeof text,
-                 "%s"
-                 "BlueWake plays The Legend of Zelda: The Wind Waker from your own copy of the game: the "
-                 "GameCube disc for the USA (GZLE01).\n\n"
-                 "Choose your disc image next: an .iso or .gcm file, or a Dolphin .rvz. BlueWake checks it and "
-                 "prepares it once (an .rvz is unpacked to an ISO in %s), then remembers it.",
-                 why, folder);
-    else
-        snprintf(text, sizeof text,
-                 "%s"
-                 "BlueWake plays The Legend of Zelda: The Wind Waker from your own copy of the game: the "
-                 "GameCube disc for the USA (GZLE01).\n\n"
-                 "Choose your disc image next: an .iso or .gcm file. BlueWake checks it and prepares it once, "
-                 "then remembers it.\n\n"
-                 "A Dolphin .rvz has to be converted first: in Dolphin, right-click the game, choose "
-                 "Convert File... and pick ISO.",
-                 why);
+    snprintf(text, sizeof text,
+             "%s"
+             "boat-of-daphnes plays The Legend of Zelda: The Wind Waker from your own copy of the game: the "
+             "GameCube disc for the USA (GZLE01).\n\n"
+             "Choose your disc image next: an .iso or .gcm file (an .nkit.iso too), or a Dolphin .rvz, .wia or .gcz, or a "
+             ".ciso. boat-of-daphnes checks it and prepares it once (a compressed image is unpacked to an ISO in %s), "
+             "then remembers it.",
+             why, folder);
     wchar_t message[4096];
     wide(text, message, 4096);
-    if (MessageBoxW(NULL, message, L"BlueWake: choose your disc", MB_OKCANCEL | MB_ICONINFORMATION) != IDOK)
+    if (MessageBoxW(NULL, message, L"boat-of-daphnes: choose your disc", MB_OKCANCEL | MB_ICONINFORMATION) != IDOK)
         return 0;
     wchar_t file[MAX_PATH * 2] = L"";
     OPENFILENAMEW dialog = {sizeof dialog};
-    dialog.lpstrFilter = can_unpack ? L"GameCube disc images (*.iso, *.gcm, *.rvz, *.wia, *.gcz, *.ciso, *.nfs)\0"
-                                      L"*.iso;*.gcm;*.rvz;*.wia;*.gcz;*.ciso;*.nfs\0All files\0*.*\0"
-                                    : L"GameCube disc images (*.iso, *.gcm)\0*.iso;*.gcm\0All files\0*.*\0";
+    dialog.lpstrFilter =
+        L"GameCube disc images (*.iso, *.gcm, *.rvz, *.wia, *.gcz, *.ciso, *.nfs)\0"
+        L"*.iso;*.gcm;*.rvz;*.wia;*.gcz;*.ciso;*.nfs\0All files\0*.*\0";
     dialog.lpstrFile = file;
     dialog.nMaxFile = MAX_PATH * 2;
     dialog.lpstrTitle = L"Choose your Wind Waker disc image (GameCube, USA)";
@@ -384,12 +537,12 @@ int bw_disc_setup(const char* exe_dir, const char* data_dir) {
         read_line(remembered, disc, sizeof disc);
     if (explicit_disc && !is_file(disc)) {
         char text[MAX_PATH * 4 + 128];
-        snprintf(text, sizeof text, "BlueWake cannot find the disc image it was given:\n\n%s", disc);
+        snprintf(text, sizeof text, "boat-of-daphnes cannot find the disc image it was given:\n\n%s", disc);
         fprintf(stderr, "[disc] %s\n", text);
         box(text, MB_OK | MB_ICONERROR);
         return -1;
     }
-    const char* why = disc[0] != '\0' && !is_file(disc) ? "The disc image BlueWake used before is gone.\n\n" : "";
+    const char* why = disc[0] != '\0' && !is_file(disc) ? "The disc image boat-of-daphnes used before is gone.\n\n" : "";
     // A scripted choice is not asked again once it was refused.
     const int scripted = getenv("BLUEWAKE_DISC_CHOICE") != NULL;
     for (;;) {
@@ -418,8 +571,8 @@ int bw_disc_setup(const char* exe_dir, const char* data_dir) {
         if (bluewake_disc_check(disc, error, sizeof error) != 0) {
             char text[2048];
             snprintf(text, sizeof text,
-                     "%s\n\n%s\n\nChoose an image of the GameCube USA disc (GZLE01) instead: an .iso, .gcm or "
-                     "Dolphin .rvz file.",
+                     "%s\n\n%s\n\nChoose an image of the GameCube USA disc (GZLE01) instead: an .iso, .gcm, .nkit.iso, "
+                     "or a Dolphin .rvz, .wia, .gcz or .ciso file.",
                      disc, error);
             fprintf(stderr, "[disc] %s: %s\n", disc, error);
             box(text, MB_OK | MB_ICONWARNING);
@@ -434,7 +587,7 @@ int bw_disc_setup(const char* exe_dir, const char* data_dir) {
         read_line(stamp_path, prepared, sizeof prepared);
         if (strcmp(stamp, prepared) != 0 || !prepared_ready(dol, rels)) {
             if (fresh_import_dir(game, sizeof game) != 0) {
-                box("BlueWake could not create a new preparation folder. Previous files are preserved.", MB_OK | MB_ICONERROR);
+                box("boat-of-daphnes could not create a new preparation folder. Previous files are preserved.", MB_OK | MB_ICONERROR);
                 return -1;
             }
             snprintf(dol, sizeof dol, "%s\\main.dol", game);
@@ -445,7 +598,7 @@ int bw_disc_setup(const char* exe_dir, const char* data_dir) {
             fprintf(stderr, "[disc] preparing %s\n", disc);
             if (with_progress(&work, L"Checking and preparing your disc (once)...") != 0) {
                 char text[2048];
-                snprintf(text, sizeof text, "%s\n\n%s\n\nBlueWake needs the USA disc, revision 0 (GZLE01).", disc,
+                snprintf(text, sizeof text, "%s\n\n%s\n\nboat-of-daphnes needs the USA disc, revision 0 (GZLE01).", disc,
                          work.error);
                 fprintf(stderr, "[disc] %s: %s\n", disc, work.error);
                 box(text, MB_OK | MB_ICONWARNING);
@@ -456,19 +609,34 @@ int bw_disc_setup(const char* exe_dir, const char* data_dir) {
                 continue;
             }
             if (!write_line(stamp_path, stamp) || !write_line(game_record, game)) {
-                box("BlueWake could not remember the prepared files. The source and prepared files are preserved; try again.", MB_OK | MB_ICONERROR);
+                box("boat-of-daphnes could not remember the prepared files. The source and prepared files are preserved; try again.", MB_OK | MB_ICONERROR);
                 return -1;
+            }
+        }
+        else {
+            // Prepared by an earlier app: the files made from the disc may still be missing.
+            char extras_record[MAX_PATH * 4];
+            snprintf(extras_record, sizeof extras_record, "%s\\extras.json", game);
+            char tools[MAX_PATH * 4];
+            snprintf(tools, sizeof tools, "%srando\\prepare_extras.py", g_exe);
+            if (is_file(tools) && (!is_file(extras_record) || extras_missing(disc, game))) {
+                Work work = {prepare_extras_only, disc};
+                snprintf(work.out, sizeof work.out, "%s", game);
+                fprintf(stderr, "[disc] some files that come from the disc are missing (%s): making them from %s\n",
+                        is_file(extras_record) ? "an older install" : "none made yet", disc);
+                with_progress(&work, L"Making the files that come from your disc (once)...");
             }
         }
         break;
     }
     if (!explicit_disc && !write_line(remembered, disc)) {
-        box("BlueWake could not remember this disc. The disc is preserved; try again.", MB_OK | MB_ICONERROR);
+        box("boat-of-daphnes could not remember this disc. The disc is preserved; try again.", MB_OK | MB_ICONERROR);
         return -1;
     }
     _putenv_s("BLUEWAKE_DISC", disc);
     _putenv_s("BLUEWAKE_DOL", dol);
     _putenv_s("BLUEWAKE_RELS_DIR", rels);
+    _putenv_s("BLUEWAKE_EXTRAS_DIR", game);
     fprintf(stderr, "[disc] %s (prepared in %s)\n", disc, game);
     return 0;
 }

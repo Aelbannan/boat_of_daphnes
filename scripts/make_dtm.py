@@ -14,7 +14,7 @@ slot A, and sets the header's tick count far ahead: Dolphin ends playback as
 soon as the emulated tick count passes it, so a zero there ends the movie at
 once. The header layout is Source/Core/Core/Movie.h in ref/recompcore.
 
-Used by the Dolphin reference captures in docs/archive/status/CURRENT.md (2026-09-24):
+Used by the Dolphin reference captures in docs/status/CURRENT.md (2026-09-24):
 run Dolphin with its own user folder (-u), a GCI-folder card holding the save
 (scripts/card_to_gci.py), [Movie] DumpFrames = True and
 [Settings] DumpFramesAsImages = True, then -e DISC -m OUT.dtm.
@@ -55,7 +55,7 @@ def apply_game_config(h):
     h[149] = 0   # bImmediateXFB
     h[150] = 1   # bSkipXFBCopyToRam
     h[151] = 1   # memcards: slot A
-    h[152] = 0   # bClearSave: use the user folder's card
+    h[152] = 0   # bClearSave: use the card in Dolphin's User folder
     h[159] = 1   # bFollowBranch
     h[160] = 1   # bUseFMA
 

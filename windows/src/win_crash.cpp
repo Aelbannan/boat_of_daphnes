@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <tlhelp32.h>
 #include "win_crash.h"
 #include "crash_text.h"
 
@@ -69,6 +70,103 @@ static void fatal(const char* reason, DWORD code) {
     report_context(reason, code, context);
     TerminateProcess(GetCurrentProcess(), code);
 }
+// --- the hang watchdog ---
+// A freeze leaves no crash: the picture stops while the window stays (two after Ballad of Gales warps, 2026-10-17,
+// whose logs could only say the present side had stopped). When the UI thread's heartbeat stops for 10 s, every
+// thread's stack is written into the crash report (frames as image + offset, symbolized against the release's PDBs)
+// and a minidump beside it, once until the heartbeat comes back.
+static volatile LONG64 heartbeat;
+static char hang_dump_path[MAX_PATH * 4];
+
+extern "C" void bw_crash_heartbeat(void) { InterlockedIncrement64(&heartbeat); }
+
+static void hang_walk(HANDLE thread, DWORD id) {
+    CONTEXT context{};
+    context.ContextFlags = CONTEXT_FULL;
+    if (SuspendThread(thread) == (DWORD)-1)
+        return;
+    if (GetThreadContext(thread, &context)) {
+        literal("[hang] thread="); hex(id); literal(" rip="); hex(context.Rip); literal(" rsp="); hex(context.Rsp); literal("\r\n");
+        __try {
+            for (unsigned frame = 0; frame < 24 && context.Rip; ++frame) {
+                DWORD64 image = 0;
+                PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(context.Rip, &image, nullptr);
+                literal("[hang]   frame="); hex(frame); literal(" pc="); hex(context.Rip);
+                literal(" image="); hex(image); literal(" offset="); hex(context.Rip - image); literal("\r\n");
+                const DWORD64 previous = context.Rsp;
+                if (!function) {
+                    context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
+                    context.Rsp += 8;
+                } else {
+                    PVOID handler_data; DWORD64 establisher;
+                    RtlVirtualUnwind(UNW_FLAG_NHANDLER, image, context.Rip, function, &context, &handler_data,
+                                     &establisher, nullptr);
+                }
+                if (context.Rsp <= previous)
+                    break;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            literal("[hang]   (stack unreadable)\r\n");
+        }
+    }
+    ResumeThread(thread);
+}
+
+static DWORD WINAPI hang_watchdog(LPVOID) {
+    LONG64 seen = heartbeat;
+    unsigned still = 0;
+    bool reported = false;
+    for (;;) {
+        Sleep(1000);
+        const LONG64 now = heartbeat;
+        if (now != seen) {
+            seen = now;
+            still = 0;
+            reported = false;
+            continue;
+        }
+        // Before the first frame, and while the window is minimized (no frames then), nothing to say.
+        if (now == 0 || reported || ++still < 10)
+            continue;
+        reported = true;
+        literal("[hang] the UI thread has not finished a frame for 10 s: every thread's stack\r\n");
+        const DWORD self = GetCurrentThreadId(), pid = GetCurrentProcessId();
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            THREADENTRY32 entry{};
+            entry.dwSize = sizeof entry;
+            for (BOOL ok = Thread32First(snap, &entry); ok; ok = Thread32Next(snap, &entry)) {
+                if (entry.th32OwnerProcessID != pid || entry.th32ThreadID == self)
+                    continue;
+                HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
+                                           FALSE, entry.th32ThreadID);
+                if (thread != nullptr) {
+                    hang_walk(thread, entry.th32ThreadID);
+                    CloseHandle(thread);
+                }
+            }
+            CloseHandle(snap);
+        }
+        // The minidump: threads, stacks and the modules (dbghelp, loaded only now).
+        typedef BOOL(WINAPI * WriteDump)(HANDLE, DWORD, HANDLE, int, void*, void*, void*);
+        if (HMODULE dbghelp = LoadLibraryA("dbghelp.dll")) {
+            if (auto write = reinterpret_cast<WriteDump>(GetProcAddress(dbghelp, "MiniDumpWriteDump"))) {
+                HANDLE file = CreateFileA(hang_dump_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (file != INVALID_HANDLE_VALUE) {
+                    // MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules
+                    const BOOL ok = write(GetCurrentProcess(), pid, file, 0x1000 | 0x20, nullptr, nullptr, nullptr);
+                    CloseHandle(file);
+                    literal(ok ? "[hang] minidump written\r\n" : "[hang] minidump failed\r\n");
+                }
+            }
+        }
+        if (crash_file != INVALID_HANDLE_VALUE)
+            FlushFileBuffers(crash_file);
+        std::fprintf(stderr, "[hang] the UI thread stopped for 10 s: stacks in the crash report, minidump %s\n", hang_dump_path);
+    }
+    return 0;
+}
+
 extern "C" void bw_crash_install(const char* data_dir) {
     char path[MAX_PATH * 4];
     std::snprintf(path, sizeof path, "%slogs\\crash-%lu.log", data_dir, GetCurrentProcessId());
@@ -79,6 +177,9 @@ extern "C" void bw_crash_install(const char* data_dir) {
     if (crash_file == INVALID_HANDLE_VALUE) std::fprintf(stderr, "[crash] report file unavailable: %lu\n", GetLastError());
     else std::fprintf(stderr, "[crash] reports=%s\n", path);
     SetUnhandledExceptionFilter(unhandled);
+    std::snprintf(hang_dump_path, sizeof hang_dump_path, "%slogs\\hang-%lu.dmp", data_dir, GetCurrentProcessId());
+    if (HANDLE watchdog = CreateThread(nullptr, 64 * 1024, hang_watchdog, nullptr, 0, nullptr))
+        CloseHandle(watchdog);
     std::set_terminate([] { fatal("std::terminate", 0xE0420001); });
     std::signal(SIGABRT, [](int) { fatal("SIGABRT", 0xE0420002); });
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);

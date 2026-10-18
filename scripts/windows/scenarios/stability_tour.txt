@@ -1,0 +1,108 @@
+description The stability tour (scripts/windows/stability.py writes it; edit POINTS there).
+start state forest-card
+card user/GZLE01.card
+size 3440x1381
+env BLUEWAKE_WALL_PACE 1
+env BLUEWAKE_PERF_LOG 1
+env BLUEWAKE_TEST_POKE 1+:0x803C4C2C=0x43340000/4
+cvar gSettings.Graphics.InterpolationFPS 120
+cvar gSettings.Graphics.Vsync 1
+wait 10
+env BLUEWAKE_TINGLE_TUNER auto
+env BLUEWAKE_GBA_LOG 1
+give tingle_tuner
+equip X tingle_tuner
+set rupees 100
+wait 300
+press X
+wait 150
+press A
+wait 100
+press A
+wait 700
+press A
+wait 200
+press A
+wait 900
+warp sea:44:0
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:44:204
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:44:6
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:44:8
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:11:1
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+teleport sea 11 -569 89 -198007 -32768
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:11:0
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:13:0
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+warp sea:13:1
+wait 120
+stick 0 127 100
+stick 127 0 100
+stick 0 -127 100
+stick -127 0 100
+cstick 127 0 80
+cstick -127 0 80
+wait 40
+end

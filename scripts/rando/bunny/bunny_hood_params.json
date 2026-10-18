@@ -1,0 +1,230 @@
+{
+  "_comment": "Predefined parameters for the Bunny Hood generator (math only; no disc bytes). Head frame = WW Link head_jnt local: +X up, +Y front, Z lateral (+Z = Link's left), origin = joint origin.",
+  "prop": {
+    "stage_room": "res/stage/pfigure/room0.arc",
+    "model": "bdl/model.bdl",
+    "joint": "omen",
+    "select_box_room": {
+      "x": [
+        -288.0,
+        -256.0
+      ],
+      "y": [
+        323.0,
+        440.0
+      ],
+      "z": [
+        -1071.0,
+        -961.0
+      ]
+    },
+    "centre_z": -1016.3,
+    "cap_base_y": 336.0,
+    "back_plane_x": -287.0,
+    "texture": "mask_all"
+  },
+  "dome": {
+    "centre": [
+      22.5,
+      -4,
+      0
+    ],
+    "radius_up": 25,
+    "radius_front_back": 18.5,
+    "radius_lateral": 24.6,
+    "pitch_back_deg": -20,
+    "rings": 11,
+    "azimuth_steps": 48,
+    "relief_scale": 0.0,
+    "flat_half_width": 52.0,
+    "flat_height": 50.0,
+    "edge_fade": 2.5,
+    "face_uv": {
+      "quad_origin": [
+        64,
+        0
+      ],
+      "centre_texel_x": 4.0,
+      "eye_texel": [
+        13.5,
+        47.5
+      ],
+      "eye_height": 0.5,
+      "texel_per_unit": 1.1,
+      "lateral_clamp": 0.62,
+      "x_max": 18.0,
+      "y_range": [
+        40.0,
+        60.0
+      ],
+      "cream_texel": [
+        10.0,
+        52.0
+      ]
+    },
+    "eye": {
+      "azimuth_deg": 66,
+      "beta_rad": 1.22,
+      "radius_x": 2.0,
+      "radius_y": 2.8,
+      "slant_deg": 12,
+      "lift": 0.1,
+      "rings": 3,
+      "segments": 16,
+      "highlight": [
+        0.62,
+        0.3,
+        0.16
+      ],
+      "height_frac": 0.39
+    },
+    "rows_above": 14,
+    "blend_to_ellipsoid_rad": 0.75,
+    "band": {
+      "rows": 5,
+      "width_rad": 0.2,
+      "offset": 1.0,
+      "max_hit_dist": 26.0,
+      "notch_width_deg": 62.0,
+      "notch_floor_beta": 0.75,
+      "fade_rows": 3
+    }
+  },
+  "ears": {
+    "pivot": [
+      51.0,
+      -8.5,
+      10.5
+    ],
+    "length": 42,
+    "width_scale": 1.0,
+    "lean_back_deg": 8,
+    "splay_deg": 10.0,
+    "mid_fraction": 0.5,
+    "blend": [
+      0.35,
+      0.65
+    ],
+    "twist_deg": 15.0,
+    "cup": 1.5,
+    "pivot_beta_rad": 1.0,
+    "pivot_az_from_back_deg": 62.0,
+    "sink": 4.5,
+    "thickness": 2.6,
+    "front_bulge": 0.45,
+    "edge_round_len": 2.4,
+    "pinch_len": 12.0,
+    "back_texel": [
+      10.0,
+      8.0
+    ],
+    "flap_v_max": 45.0,
+    "root_flare": 0.0,
+    "root_flare_len": 10.0,
+    "root_thick": 0.0,
+    "root_rigid_end": 0.2,
+    "root_ramp": 0.22,
+    "collar_station": 6.5,
+    "collar_out": 4.0,
+    "collar_drop": 3.5,
+    "collar_lift": 0.15,
+    "collar_search": [
+      3.0,
+      26.0
+    ],
+    "collar_margin": 0.35,
+    "root_rigid_after": 1.0,
+    "root_ramp_len": 8.0
+  },
+  "shading": {
+    "ambient": 0.7,
+    "light": [
+      0.45,
+      0.55,
+      0.35
+    ]
+  },
+  "icon": {
+    "size": 48,
+    "supersample": 8,
+    "fill": 0.92,
+    "view": [
+      0.15,
+      1.0,
+      0.6
+    ],
+    "up": [
+      1,
+      0,
+      0
+    ],
+    "light": [
+      -0.35,
+      0.6,
+      0.7
+    ],
+    "tones": [
+      0.62,
+      0.85,
+      1.0,
+      1.3
+    ],
+    "thresholds": [
+      0.3,
+      0.62,
+      0.88
+    ],
+    "outline": [
+      58,
+      38,
+      26
+    ],
+    "saturation": 1.5,
+    "shadow_tint": [
+      0.74,
+      0.64,
+      0.72
+    ],
+    "highlight_rgb": [
+      255,
+      240,
+      160
+    ],
+    "shadow_offset": [
+      1,
+      1
+    ],
+    "shadow_rgb": [
+      24,
+      18,
+      16
+    ],
+    "eye_scale": 2.6
+  },
+  "item": {
+    "size": 28.0
+  },
+  "inner_ear": {
+    "cream_texel": [
+      4,
+      4
+    ],
+    "purple_texel": [
+      34,
+      14
+    ],
+    "lo": 0.15,
+    "hi": 0.85
+  },
+  "band_texel": [
+    52,
+    46
+  ],
+  "fit": {
+    "hat_droop_deg": [
+      -6.0,
+      -28.0,
+      -28.0
+    ]
+  }
+}

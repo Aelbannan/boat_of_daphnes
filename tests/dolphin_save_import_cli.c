@@ -1,10 +1,10 @@
-// Command-line front end for apple/ios/src/dolphin_save_import.c, so the
+// Command-line front end for runtime/host/src/dolphin_save_import.c, so the
 // in-app importer can be checked against build/device-setup/ww_save.py
 // (scripts/check_dolphin_import.py builds and runs it).
 //
 //   dolphin_save_import_cli show FILE                  (.gci, .raw or .card)
 //   dolphin_save_import_cli inject CARD SRC SRC_SLOT DST_SLOT OUT_CARD
-#include "../apple/ios/src/dolphin_save_import.h"
+#include "../runtime/host/src/dolphin_save_import.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -125,60 +125,6 @@ int main(void) {
     for (u32 i = 0; i < 8192u; i++)
         assert(mem_read8(&cpu, read_address + i) == (u8)(i * 37u));
 
-    // Once saving is off, the card answers as one taken out: the calls that
-    // find it and the ones that change it say there is no card, and the card
-    // file keeps every byte. A reopen keeps it off.
-    bluewake_card_runtime_close();
-    FILE* card_file = fopen(path, "rb");
-    assert(card_file != NULL);
-    static unsigned char before_refusal[1u << 20];
-    const size_t card_size = fread(before_refusal, 1, sizeof before_refusal, card_file);
-    fclose(card_file);
-    assert(card_size > 0u && card_size < sizeof before_refusal);
-    assert(bluewake_card_runtime_open(path));
-    assert(!bluewake_card_runtime_writes_refused());
-    bluewake_card_runtime_refuse_writes(&cpu, "the test");
-    assert(bluewake_card_runtime_writes_refused());
-    cpu.gpr[3] = 0u;
-    cpu.gpr[6] = 0xFFFFFFFFu;
-    call_card(&cpu, CARD_MOUNT);
-    assert((s32)cpu.gpr[3] == DOL_CARD_RESULT_NO_CARD);
-    cpu.gpr[3] = 0u;
-    cpu.gpr[4] = size_address;
-    cpu.gpr[5] = sector_address;
-    call_card(&cpu, CARD_PROBE_EX);
-    assert((s32)cpu.gpr[3] == DOL_CARD_RESULT_NO_CARD);
-    for (u32 i = 0; i < 8192u; i++)
-        mem_write8(&cpu, write_address + i, 0xA5u);
-    cpu.gpr[3] = info_address;
-    cpu.gpr[4] = write_address;
-    cpu.gpr[5] = 8192u;
-    cpu.gpr[6] = 0u;
-    cpu.gpr[7] = 0xFFFFFFFFu;
-    call_card(&cpu, CARD_WRITE);
-    assert((s32)cpu.gpr[3] == DOL_CARD_RESULT_NO_CARD);
-    cpu.gpr[3] = 0u;
-    cpu.gpr[4] = name_address;
-    cpu.gpr[5] = 8192u;
-    cpu.gpr[6] = info_address;
-    cpu.gpr[7] = 0xFFFFFFFFu;
-    call_card(&cpu, CARD_CREATE);
-    assert((s32)cpu.gpr[3] == DOL_CARD_RESULT_NO_CARD);
-    bluewake_card_runtime_close();
-    assert(bluewake_card_runtime_open(path));
-    assert(bluewake_card_runtime_writes_refused());
-    cpu.gpr[3] = 0u;
-    cpu.gpr[6] = 0xFFFFFFFFu;
-    call_card(&cpu, CARD_MOUNT);
-    assert((s32)cpu.gpr[3] == DOL_CARD_RESULT_NO_CARD);
-    bluewake_card_runtime_close();
-    static unsigned char after_refusal[1u << 20];
-    card_file = fopen(path, "rb");
-    assert(card_file != NULL);
-    assert(fread(after_refusal, 1, sizeof after_refusal, card_file) == card_size);
-    fclose(card_file);
-    assert(memcmp(before_refusal, after_refusal, card_size) == 0);
-
     bluewake_card_runtime_close();
     cpu_free(&cpu);
     assert(remove(path) == 0);

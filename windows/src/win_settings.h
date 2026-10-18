@@ -1,4 +1,4 @@
-// BlueWake for Windows: the settings (a settings file and the in-game menu),
+// The settings (CVars in boat-of-daphnes.json) and the in-game menu,
 // the desktop hotkeys and the window's placement. See win_settings.cpp.
 #pragma once
 
@@ -8,7 +8,7 @@ extern "C" {
 
 // First thing in main: the environment as BlueWake was started, for Restart.
 void bw_settings_capture_environment(void);
-// Read %APPDATA%\BlueWake\settings.ini (data_dir ends in a separator).
+// Load the CVars from boat-of-daphnes.json in data_dir (ends in a separator).
 void bw_settings_load(const char* data_dir);
 // Before the host starts: the settings as the host's variables, where the
 // command line did not already set one, and the live ones through Aurora.

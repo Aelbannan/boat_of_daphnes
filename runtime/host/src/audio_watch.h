@@ -24,13 +24,26 @@ void bluewake_audio_watch_cue(CPUState* cpu);
 // Once per retrace, after the game's code for it has run.
 void bluewake_audio_watch_retrace(CPUState* cpu, unsigned long long retrace);
 
+// BLUEWAKE_SOUND_TRACE=1 (with BLUEWAKE_DIRECT_CALLS=0, so that every call reaches the host) logs each sound the game starts:
+//   [sound] retrace=N se 0x08FF        JAIZelBasic::seStart (every mDoAud_seStart ends here)
+//   [sound] retrace=N bgm 0x80000002   JAIZelBasic::bgmStart
+//   [sound] retrace=N subbgm 0x...     JAIZelBasic::subBgmStart
+// GZLE01 revision 0 (symbols.txt). Reads only.
+enum { BLUEWAKE_JAI_SE_START = 0x802A6720u, BLUEWAKE_JAI_BGM_START = 0x802A34A4u, BLUEWAKE_JAI_SUBBGM_START = 0x802A47B8u };
+extern bool bluewake_sound_trace_on;
+void bluewake_sound_trace(CPUState* cpu, u32 address);
+
 static inline bool bluewake_audio_watch_observes(u32 address) {
-    return address == BLUEWAKE_AUDIO_WATCH_CUE;
+    return address == BLUEWAKE_AUDIO_WATCH_CUE ||
+           (bluewake_sound_trace_on && (address == BLUEWAKE_JAI_SE_START || address == BLUEWAKE_JAI_BGM_START ||
+                                        address == BLUEWAKE_JAI_SUBBGM_START));
 }
 
 static inline void bluewake_audio_watch_dispatch(CPUState* cpu, u32 address) {
     if (__builtin_expect(address == BLUEWAKE_AUDIO_WATCH_CUE, 0))
         bluewake_audio_watch_cue(cpu);
+    if (__builtin_expect(bluewake_sound_trace_on, 0))
+        bluewake_sound_trace(cpu, address);
 }
 
 #endif

@@ -47,10 +47,7 @@ static bool pack_or_fail(const BwStateField* fields, u32 count, u8** data, u64* 
 #define bw_state_fields_pack pack_or_fail
 #include "host_state_save_under_test.inc"
 #undef bw_state_fields_pack
-void host_state_guard_tests(void);
-
 int main(void) {
-    host_state_guard_tests();
     char path[256];
     snprintf(path, sizeof path, "host-state-failure-%lu.bwstate", (unsigned long)getpid());
     u8 ram[16] = {1};

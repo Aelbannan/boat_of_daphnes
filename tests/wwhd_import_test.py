@@ -1,6 +1,7 @@
 """Generated fixtures only: format decoding, hash identity and safe imports."""
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import struct
 import sys
@@ -397,13 +398,23 @@ class TextureTests(unittest.TestCase):
             self.assertIn("BLUEWAKE_HAPTICS=classic\nOTHER=value\n", settings.read_text())
             self.assertIn("DOL_AURORA_TEXTURE_PACK=" + str((base / "pack").resolve()) + "\n", settings.read_text())
             self.assertEqual(next(base.glob("settings.ini.before-wwhd-*")).read_text(), original)
-            # BlueWake for Windows: its own keys, the pack turned on and named.
-            windows = base / "windows" / "settings.ini"
+            # boat-of-daphnes: the CVar file, texture packs turned on, the rest kept.
+            windows = base / "windows" / "boat-of-daphnes.json"
             windows.parent.mkdir()
-            windows.write_text("# BlueWake settings\nhd_textures=0\nclimb=1\ntexture_pack=old\nhaptics=classic\n")
-            install(base / "pack", windows, windows=True)
-            self.assertEqual(windows.read_text(), "# BlueWake settings\nclimb=1\nhaptics=classic\nhd_textures=1\n"
-                             "texture_pack=" + str((base / "pack").resolve()) + "\n")
+            windows.write_text(json.dumps({"CVars": {"gSettings": {"Graphics": {"Vsync": 0}, "Mods": {"TexturePacks": 0}}}}))
+            install(base / "windows" / "mods" / "textures" / "WWHD", windows, windows=True)
+            self.assertEqual(json.loads(windows.read_text()),
+                             {"CVars": {"gSettings": {"Graphics": {"Vsync": 0}, "Mods": {"TexturePacks": 1}}}})
+            self.assertEqual(len(list(base.glob("windows/boat-of-daphnes.json.before-wwhd-*"))), 1)
+            fresh = base / "fresh" / "boat-of-daphnes.json"
+            install(base / "fresh" / "mods" / "textures" / "WWHD", fresh, windows=True)
+            self.assertEqual(json.loads(fresh.read_text()), {"CVars": {"gSettings": {"Mods": {"TexturePacks": 1}}}})
+            broken = base / "broken" / "boat-of-daphnes.json"
+            broken.parent.mkdir()
+            broken.write_text("{ not json")
+            with self.assertRaises(FormatError):
+                install(base / "pack", broken, windows=True)
+            self.assertEqual(broken.read_text(), "{ not json")
             invalid = base / "bad.key"
             invalid.write_bytes(b"x")
             with self.assertRaises(FormatError):

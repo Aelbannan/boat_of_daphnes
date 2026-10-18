@@ -16,6 +16,7 @@ bool bluewake_haptics_forward_motor(void) { return true; }
 
 #else
 
+#include "gc_adapter.h"
 #include "gxruntime/platform.h"
 
 #include <SDL3/SDL_atomic.h>
@@ -224,13 +225,14 @@ static void dualsense_triggers(SDL_Gamepad* pad, SDL_JoystickID id, double level
     if (previous != 0) SDL_RemoveTimer(previous);
 }
 
-// Player 1's controller gets the levels (0-1, before strength); the others stay
-// still (#190). With no controller in player 1's slot, every one does, as before.
+// Every open controller gets the same levels (0-1, before strength).
 static void send(double heavy, double light, double trigger, Uint64 now) {
     const Uint16 low = (Uint16)lround(fmin(heavy * g_strength, 1.0) * 65535.0);
     const Uint16 high = (Uint16)lround(fmin(light * g_strength, 1.0) * 65535.0);
     const Uint16 trig = g_triggers ? (Uint16)lround(fmin(trigger * g_strength, 1.0) * 65535.0) : 0;
     const bool quiet = low == 0 && high == 0 && trig == 0;
+    // The GameCube adapter's motors only go on or off: on from an eighth of full strength on either motor.
+    bluewake_gc_adapter_rumble_enhanced(low >= 0x2000 || high >= 0x2000);
     const bool changed = low != g_sent_low || high != g_sent_high || trig != g_sent_trigger;
     if (!changed && (quiet || now - g_sent_ns < kRefreshNs))
         return;
@@ -238,10 +240,9 @@ static void send(double heavy, double light, double trigger, Uint64 now) {
         return;
     int count = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&count);
-    SDL_Gamepad* one = SDL_GetGamepadFromPlayerIndex(0);
     for (int i = 0; ids != NULL && i < count; i++) {
         SDL_Gamepad* pad = SDL_GetGamepadFromID(ids[i]);
-        if (pad == NULL || (one != NULL && pad != one))
+        if (pad == NULL)
             continue;
         SDL_RumbleGamepad(pad, low, high, kExpiryMs);
         const SDL_PropertiesID props = SDL_GetGamepadProperties(pad);
@@ -269,8 +270,10 @@ static void silence(Uint64 now) {
 
 void bluewake_haptics_block(bool blocked) {
     if (blocked && !g_blocked) {
-        for (u32 channel = 0; channel < 4; ++channel)
+        for (u32 channel = 0; channel < 4; ++channel) {
             dol_platform_pad_control_motor(channel, 2u);
+            bluewake_gc_adapter_rumble_classic(channel, 2u);
+        }
         silence(SDL_GetTicksNS());
     }
     g_blocked = blocked;
@@ -451,8 +454,10 @@ void bluewake_haptics_reload(void) {
     const bool forwarded = bluewake_haptics_forward_motor();
     read_settings();
     if (forwarded && !bluewake_haptics_forward_motor()) {
-        for (u32 channel = 0; channel < 4u; channel++)
+        for (u32 channel = 0; channel < 4u; channel++) {
             dol_platform_pad_control_motor(channel, 2u); // PAD_MOTOR_STOP_HARD
+            bluewake_gc_adapter_rumble_classic(channel, 2u);
+        }
     }
     if (g_mode != MODE_ENHANCED)
         silence(SDL_GetTicksNS());

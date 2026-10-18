@@ -84,9 +84,9 @@ EC210028 48037B94
 04204670 4BDFFA51
 04204688 4BDFFA39
 0421E6E8 38800000
-04227A18 C0228014
+04227A18 C022BA98
 04227A1C C042BAC4
-04227A20 C0628034
+04227A20 C062BB18
 0422B9E4 4BDD8690
 04234528 38800000
 042375E4 4BDCCA90
@@ -103,11 +103,3 @@ C2F60000 C2EC0000
 043FA998 3FE38E39
 043FB77C 3FB20000
 043FB78C C2F60000
-# BlueWake change: the Picto Box gallery's picture viewport (x and width, loaded
-# at 0x80227A18 and 0x80227A20) is the one that matches the 2D layout above
-# (scripts/mods/widescreen_aspect.py, picture_viewport): x 81.98, width 473.89,
-# written into unused pool padding (0x803F7D14, 0x803F7D34). Dolphin's code
-# loads 79 and 480, which let the photos beside the middle one drift out of
-# their frames.
-043F7D14 42A3F47F
-043F7D34 43ECF19E

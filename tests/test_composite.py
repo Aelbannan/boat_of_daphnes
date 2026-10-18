@@ -72,7 +72,12 @@ def build_rel(module_id, sections_data, imports=None):
     struct.pack_into(">I", hdr, 0x14, imp_size)
     sec_table = bytearray()
     body = bytearray()
-    for exec_flag, _, data in sections_data:
+    for exec_flag, at, data in sections_data:
+        # `at`: the section's file offset (a REL's section sits at its linked address minus the module's base, which is
+        # how generate_composite reads a chunk's bytes); None: right after the header.
+        if at and data:
+            assert at >= header_size + imp_size + len(body), "section offset inside the previous data"
+            body += b"\x00" * (at - header_size - imp_size - len(body))
         off = header_size + imp_size + len(body)
         body += data
         while len(body) % 4:
@@ -92,10 +97,10 @@ def build_rel(module_id, sections_data, imports=None):
     return result + bytes(imp_table) + bytes(body)
 
 
-def write_rel_module(root, mid, chunks):
+def write_rel_module(root, mid, chunks, entry=None):
     mod_dir = root / f"d_a_test_{mid}"
     mod_dir.mkdir(parents=True)
-    ep_rel = min(c[0] for c in chunks) if chunks else REL_BASE
+    ep_rel = entry if entry is not None else min(c[0] for c in chunks) if chunks else REL_BASE
     (mod_dir / "generated.h").write_text(make_generated_h(chunks, entry_point=ep_rel))
     cd = mod_dir / "chunks"
     cd.mkdir(exist_ok=True)
@@ -118,7 +123,8 @@ def setup_fixture(td, dol_chunks=None, rel_specs=None):
         chunks = spec["chunks"]
         lo = min(c[0] for c in chunks); hi = max(c[1] for c in chunks)
         exec_data = bytes(((i * 13 + 0x42) & 0xFF) for i in range(hi - lo))
-        (rb / f"{mid:04d}.rel").write_bytes(build_rel(mid, [(True, None, exec_data)]))
+        base = lo & ~0xFFFF
+        (rb / f"{mid:04d}.rel").write_bytes(build_rel(mid, [(True, lo - base, exec_data)]))
         write_rel_module(ro, mid, chunks)
     return td
 
@@ -153,7 +159,7 @@ def test_single_dol_no_rels():
         assert "ctx->downcount += (s64)ctx->cycle_observation_suffix" in h
         # The dispatch cache is pc-keyed and exact, and the dispatcher is split
         # so the path every block boundary takes carries no cold code. Both are
-        # measured properties of the emitted text (docs/archive/status/CURRENT.md,
+        # measured properties of the emitted text (docs/status/CURRENT.md,
         # 2026-09-22); the reason they are checked here is that a cache which
         # answers for a pc it never resolved is a boot failure, not a slowdown,
         # and a dispatcher that lost its alias fallbacks is a wrong answer.
@@ -452,7 +458,7 @@ def test_import_across_modules():
         ro = td / "rels_out"; ro.mkdir(exist_ok=True)
         dep_exec = b"\xAB" * 0x100
         dep_chunks = [(bd + 0x100, bd + 0x200)]
-        (rb / f"{dep_mid:04d}.rel").write_bytes(build_rel(dep_mid, [(True, None, dep_exec)]))
+        (rb / f"{dep_mid:04d}.rel").write_bytes(build_rel(dep_mid, [(True, 0x100, dep_exec)]))
         write_rel_module(ro, dep_mid, dep_chunks)
         entries = [struct.pack(">I", (6 << 26) | (0 << 16) | 0x100),
                    struct.pack(">I", (5 << 26) | (0 << 16) | 0x104),
@@ -460,7 +466,7 @@ def test_import_across_modules():
         imp_exec = b"\xCD" * 0x100
         imp_chunks = [(bi + 0x100, bi + 0x200)]
         (rb / f"{imp_mid:04d}.rel").write_bytes(
-            build_rel(imp_mid, [(True, None, imp_exec)], imports={dep_mid: entries}))
+            build_rel(imp_mid, [(True, 0x100, imp_exec)], imports={dep_mid: entries}))
         write_rel_module(ro, imp_mid, imp_chunks)
         run_generator(td)
         rm = (td / "composite" / "rel_modules.inc").read_text()
@@ -480,12 +486,41 @@ def test_zero_length_section():
         ro = td / "rels_out"; ro.mkdir(exist_ok=True)
         exec_data = b"\xEF" * 0x100
         (rb / f"{mid:04d}.rel").write_bytes(
-            build_rel(mid, [(False, 0, b""), (True, None, exec_data)]))
+            build_rel(mid, [(False, 0, b""), (True, 0x100, exec_data)]))
         write_rel_module(ro, mid, chunks)
         run_generator(td)
         rm = (td / "composite" / "rel_modules.inc").read_text()
         assert f"s_rel_sec_{mid}[]" in rm
     print("PASS: test_zero_length_section")
+
+
+def test_rel_with_two_executable_sections():
+    """A randomizer-patched REL gains an executable section 7 (free-space code) after its data: every chunk's hash is
+    of the bytes at its linked address (module base + file offset), whichever executable section holds it, and a new
+    module whose first function is not at the start of its code (the entry point is that function) keeps its base."""
+    for mid, entry_extra in ((12, 0), (13, 0x40)):
+        b = REL_BASE + mid * 0x10000
+        chunks = [(b + 0x84, b + 0x104), (b + 0x400, b + 0x440)]
+        text = bytes(((i * 5 + 1) & 0xFF) for i in range(0x80))
+        data = bytes(range(0x20))
+        late = bytes(((i * 11 + 3) & 0xFF) for i in range(0x40))
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            write_dol_binary(td / "input", b"\x90" * 0x40)
+            write_dol_dir(td / "dol_out", [(0x80003100, 0x80003140)])
+            rb = td / "rels_bin"; rb.mkdir()
+            ro = td / "rels_out"; ro.mkdir()
+            rel = build_rel(mid, [(True, 0x84, text), (False, 0x108, data), (True, 0x400, late)])
+            (rb / f"{mid:04d}.rel").write_bytes(rel)
+            write_rel_module(ro, mid, chunks, entry=b + 0x84 + entry_extra)
+            run_generator(td)
+            tbl = (td / "composite" / "module_tables.inc").read_text()
+            hashes = [int(x, 16) for x in re.findall(r"0x([0-9A-F]{16})ull,", tbl)]
+            assert hashes[-2] == gc.fnv1a64(rel[0x84:0x104]), "text chunk hash"
+            assert hashes[-1] == gc.fnv1a64(rel[0x400:0x440]), "section 7 chunk hash"
+            rm = (td / "composite" / "rel_modules.inc").read_text()
+            assert f"{{{mid}u, 2u, 0x{b + 0x400:08X}u, 0x00000040u}}" in rm, "section 7 linked at base + its offset"
+    print("PASS: test_rel_with_two_executable_sections")
 
 
 def main():
@@ -508,6 +543,7 @@ def main():
         test_lifecycle_metadata_complete,
         test_import_across_modules,
         test_zero_length_section,
+        test_rel_with_two_executable_sections,
     ]
     failures = 0
     for t in tests:

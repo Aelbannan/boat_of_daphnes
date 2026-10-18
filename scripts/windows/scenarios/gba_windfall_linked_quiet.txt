@@ -1,0 +1,44 @@
+description gba_windfall_linked without the GBA log (the cost as players have it).
+env BLUEWAKE_WALL_PACE 1
+env BLUEWAKE_PERF_LOG 1
+env BLUEWAKE_TEST_POKE 1+:0x803C4C2C=0x43340000/4
+cvar gSettings.Graphics.InterpolationFPS 60
+start boot
+size 1280x960
+env BLUEWAKE_TINGLE_TUNER auto
+wait 5
+give tingle_tuner
+equip X tingle_tuner
+set rupees 100
+wait 300
+press X
+wait 40
+wait 110
+press A
+wait 100
+press A
+wait 100
+wait 600
+press A
+wait 200
+press A
+wait 200
+wait 515
+wait 12
+wait 12
+wait 12
+wait 12
+wait 12
+wait 12
+wait 12
+wait 100
+peek rupees
+wait 5
+warp sea:11:1
+wait 300
+stick 0 127 120
+stick 127 0 120
+cstick 127 0 100
+stick -127 0 120
+wait 400
+end

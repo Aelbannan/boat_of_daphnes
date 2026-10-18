@@ -6,19 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 
-bool bluewake_climb_on;
 bool bluewake_quick_doors_armed;
+bool bluewake_widescreen_active;
 bool bluewake_draw_tags_enabled;
 bool bluewake_forest_water_enabled;
 u32 bluewake_forest_water_tree_timer_check;
 static unsigned calls[6];
 static unsigned order;
-void bluewake_mouse_camera_hook(CPUState* cpu, u32 address) {
-    (void)cpu; (void)address; ++calls[0]; order = order * 6 + 1;
-}
-void bluewake_climb_hook(CPUState* cpu, u32 address) {
-    (void)cpu; (void)address; ++calls[1]; order = order * 6 + 2;
-}
 void bluewake_quick_doors_enter(CPUState* cpu) {
     (void)cpu; ++calls[2]; order = order * 6 + 3;
 }
@@ -31,14 +25,16 @@ void bluewake_forest_water_enter(CPUState* cpu, u32 address) {
 void bluewake_audio_watch_cue(CPUState* cpu) {
     (void)cpu; ++calls[5]; order = order * 6 + 5;
 }
+void bluewake_widescreen_enter(CPUState* cpu, u32 address) {
+    (void)cpu; (void)address; ++calls[0]; order = order * 6 + 1;
+}
 
 static void compare_dispatch(u32 address) {
     memset(calls, 0, sizeof calls);
     order = 0;
     bluewake_forest_water_dispatch(NULL, address);
     bluewake_audio_watch_dispatch(NULL, address);
-    bluewake_mouse_camera_dispatch(NULL, address);
-    bluewake_climb_dispatch(NULL, address);
+    bluewake_widescreen_dispatch(NULL, address);
     bluewake_quick_doors_dispatch(NULL, address);
     bluewake_draw_tags_dispatch(NULL, address);
     unsigned expected[6];
@@ -57,7 +53,7 @@ int main(void) {
     /* Forest Water's tree check is in a module, outside MEM1. */
     bluewake_forest_water_tree_timer_check = 0xC13B1850u;
     for (unsigned flags = 0; flags < 16; ++flags) {
-        bluewake_climb_on = (flags & 1) != 0;
+        bluewake_widescreen_active = (flags & 1) != 0;
         bluewake_quick_doors_armed = (flags & 2) != 0;
         bluewake_draw_tags_enabled = (flags & 4) != 0;
         bluewake_forest_water_enabled = (flags & 8) != 0;

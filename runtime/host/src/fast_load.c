@@ -71,13 +71,13 @@ static unsigned long long g_retrace;
 static unsigned long long g_cpu_us;
 static unsigned long long g_wall_us;
 
-// BLUEWAKE_TEST_WARP=retrace:stage:room:point[:layer][,...] (testing only): asks
+// BLUEWAKE_TEST_WARP=retrace:stage:room:point[:layer[:wipe]][,...] (testing only): asks
 // the game for that scene change at that retrace, as a door or an exit does;
 // up to 32, in order (a tour of places: the optimization training, shaders).
 typedef struct TestWarp {
     unsigned long long retrace;
     char stage[8];
-    int room, point, layer;
+    int room, point, layer, wipe;
 } TestWarp;
 static TestWarp g_warps[32];
 static unsigned g_warp_count, g_warp_next;
@@ -109,7 +109,8 @@ void bluewake_fast_load_attach(CPUState* cpu) {
         TestWarp* w = &g_warps[g_warp_count];
         char stage[16] = "";
         w->layer = -1;
-        if (sscanf(at, "%llu:%15[^:]:%d:%d:%d", &w->retrace, stage, &w->room, &w->point, &w->layer) < 4)
+        w->wipe = 0;
+        if (sscanf(at, "%llu:%15[^:]:%d:%d:%d:%d", &w->retrace, stage, &w->room, &w->point, &w->layer, &w->wipe) < 4)
             break;
         // A layer is the fifth field only within this entry.
         const char* end = strchr(at, ',');
@@ -118,6 +119,8 @@ void bluewake_fast_load_attach(CPUState* cpu) {
             fields += *c == ':';
         if (fields < 4)
             w->layer = -1;
+        if (fields < 5)
+            w->wipe = 0;
         snprintf(w->stage, sizeof w->stage, "%s", stage);
         g_warp_count++;
         g_trace = true;
@@ -131,7 +134,7 @@ static void warp(CPUState* cpu, const TestWarp* w) {
     mem_write16(cpu, kNextStage + 0x8u, (u16)w->point);
     mem_write8(cpu, kNextStage + 0xAu, (u8)w->room);
     mem_write8(cpu, kNextStage + 0xBu, (u8)w->layer);
-    mem_write8(cpu, kNextStage + 0xDu, 0u); // wipe 0: the plain fade
+    mem_write8(cpu, kNextStage + 0xDu, (u8)w->wipe); // wipe 0: the plain fade (4: the warp cauldron's)
     mem_write8(cpu, kNextStage + 0xCu, 1u); // enable
     fprintf(stderr, "[load] test warp retrace=%llu to %s room %d point %d layer %d\n", g_retrace, w->stage,
             w->room, w->point, w->layer);
@@ -166,14 +169,12 @@ static void shorten_fade(CPUState* cpu, u32 request) {
 
 bool bluewake_fast_load_fast_forward(void) { return g_ff; }
 
-void bluewake_fast_load_set_retrace(unsigned long long retrace) {
-    g_retrace = retrace;
-    while (g_warp_next < g_warp_count && g_warps[g_warp_next].retrace <= retrace)
-        g_warp_next++;
-}
+unsigned long long bluewake_host_retrace_count(void); // main.c
 
 void bluewake_fast_load_retrace(unsigned long long cpu_us) {
-    ++g_retrace;
+    // The host's count (equal to counting calls from boot), so test warps keep
+    // their retraces after a save state loads it.
+    g_retrace = bluewake_host_retrace_count();
     CPUState* cpu = g_cpu;
     if (cpu == NULL)
         return;

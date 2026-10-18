@@ -20,10 +20,27 @@ script compares that tree with the base tree and adds to the base:
     written into guest RAM at boot.
   * per-frame writes: a Gecko code's data writes, re-applied at every retrace
     as Dolphin does.
+  * a module layout (--layout NAME), for a mod that changes the shape of REL
+    data or adds modules (the randomizer: grown RELs move their BSS, the chest
+    actor's module has other sections, two modules are new): the mod's own
+    tables of REL modules, REL data images and prologs, which the host selects
+    before it stages anything (bluewake_composite_select_layout). The layout
+    carries the data, so the mod's REL data needs no boot writes.
+  * overlays: an extra chunk whose code range covers a base chunk's (the
+    randomizer's chest actor is another build of the same module) replaces that
+    base chunk by a trampoline that looks the pc up among the mod's extras, so
+    the extras win over the base chunk with the mod on while the base tree's
+    dispatcher, and with it the verified composite, is unchanged.
+
+  * switchable mods (--switchable NAME): a mod the host turns on and off while the game runs (the randomizer, at the
+    file select). The chunks it changes are not written into the chunk table by apply_mods but reached through a
+    trampoline per chunk (switch_tramp_N), a function whose body calls s_mod_switch_target[N]: the chunk's own code
+    with the mod off, the mod's variant with it on. The dispatcher's pc cache holds the trampoline, never a variant, so
+    bluewake_composite_set_mods(mask) can change the mask at any time without anything cached going stale.
 
 usage: build_mod_variants.py --composite-src BASE_TREE --base-dol BASE.dol
            --mod NAME:MOD_TREE:MOD.dol[:GECKO_RUNTIME_JSON] [--mod ...]
-           [--combo NAME+NAME:COMBO_TREE ...]
+           [--combo NAME+NAME:COMBO_TREE ...] [--layout NAME ...]
 
 Mods are numbered in the order given (bit 0, 1, ...). When two mods change the
 same chunk, each keeps its own variant and a --combo tree (the game patched by
@@ -38,13 +55,6 @@ import sys
 from pathlib import Path
 
 FUNC_RE = re.compile(r"\bfunc_([0-9A-F]{8})\b")
-
-
-def write_lf(path, text):
-    """Write text with LF line ends on every platform. Path.write_text's
-    newline argument needs Python 3.10, and macOS's own python3 is 3.9."""
-    with open(path, "w", newline="\n") as f:
-        f.write(text)
 CHUNK_FN_RE = re.compile(r"^void func_([0-9A-F]{8})\(CPUState\* ctx\) \{", re.M)
 
 
@@ -118,6 +128,117 @@ def rel_writes(base_tree, mod_tree):
             writes.append((linked + i, data[i:j]))
             i = j
     return writes
+
+
+SEC_ARRAY_RE = re.compile(r"static const StaticRecompRelSection s_rel_sec_(\d+)\[\] = \{(.*?)\};", re.S)
+SEC_RE = re.compile(r"\{(\d+)u, (\d+)u, 0x([0-9A-F]{8})u, 0x([0-9A-F]{8})u\},")
+MODULE_RE = re.compile(r"\{(\d+)u, (\d+)u, (\d+)u, 0x([0-9A-F]{4})u, (\d+)u, s_rel_sec_(\d+), (\d+)u\},")
+LIFECYCLE_RE = re.compile(r"\{(\d+)u, 0x([0-9A-F]{8})u\},")
+
+
+def rel_layout(tree):
+    """A tree's module tables as data: `modules` (id, version, section_count, section_info_offset, file_size) in
+    table order, `sections` (module -> [(index, linked_start, size)]), `data` ((module, section) -> (linked_start,
+    size, bytes or None for BSS)) with its table `order`, and the `lifecycle` prolog addresses."""
+    tree = Path(tree)
+    text = (tree / "rel_modules.inc").read_text()
+    sections = {int(mid): [(int(i), int(a, 16), int(n, 16)) for _, i, a, n in SEC_RE.findall(body)]
+                for mid, body in SEC_ARRAY_RE.findall(text)}
+    modules = [(int(m[0]), int(m[1]), int(m[2]), int(m[3], 16), int(m[4]))
+               for m in MODULE_RE.findall(text.split("s_rel_modules[] = {")[1])]
+    dtext = (tree / "rel_data.inc").read_text()
+    arrays = {name: bytes(int(v, 16) for v in re.findall(r"0x([0-9A-F]{2})u", body))
+              for name, body in REL_DATA_RE.findall(dtext)}
+    data, order = {}, []
+    for mid, si, linked, size, name in REL_ENTRY_RE.findall(dtext):
+        key = (int(mid), int(si))
+        data[key] = (int(linked, 16), int(size, 16), arrays.get(name))
+        order.append(key)
+    lifecycle = [(int(m), int(a, 16)) for m, a in LIFECYCLE_RE.findall(dtext.split("s_rel_lifecycle[] = {")[1])]
+    return {"modules": modules, "sections": sections, "data": data, "order": order, "lifecycle": lifecycle}
+
+
+def appended_code_images(base, mod, rels_dir):
+    """Data images for the executable sections a mod appends to a module (the randomizer's section 7: free-space
+    code that also holds data tables, which the game reads through the section's linked address and which a seed
+    writes into). The base has no such section, so the layout adds the file's bytes as the section's image, as a
+    data section's. Returns {(module, section): (linked_start, size, bytes)}."""
+    files = {}
+    for path in Path(rels_dir).glob("*.rel"):
+        data = path.read_bytes()
+        files[int.from_bytes(data[:4], "big")] = data
+    out = {}
+    for mid, sections in mod["sections"].items():
+        old = {i: (start, size) for i, start, size in base["sections"].get(mid, [])}
+        data = files.get(mid)
+        if data is None:
+            continue
+        count, table = int.from_bytes(data[12:16], "big"), int.from_bytes(data[16:20], "big")
+        for index, start, size in sections:
+            if not size or not start or old.get(index, (0, 0))[1] or index >= count:
+                continue
+            raw = int.from_bytes(data[table + 8 * index:table + 8 * index + 4], "big")
+            if not raw & 1 or mid not in base["sections"]:
+                continue  # data sections have images already; a module the base lacks keeps code out of memory
+            offset = raw & ~1
+            out[(mid, index)] = (start, size, data[offset:offset + size])
+    return out
+
+
+def layout_lines(name, base, mod):
+    """The C tables of mod `name`'s module layout. Whatever equals the base's (a section table, a data image) is
+    referenced by the base's own name, so only what the mod changes costs bytes."""
+    out = []
+    changed = {mid for mid, secs in mod["sections"].items() if base["sections"].get(mid) != secs}
+    for mid in sorted(changed):
+        out.append("static const StaticRecompRelSection s_mod_rel_sec_%s_%d[] = {" % (name, mid))
+        out += ["    {%du, %du, 0x%08Xu, 0x%08Xu}," % (mid, i, a, n) for i, a, n in mod["sections"][mid]]
+        out.append("};")
+    out.append("static const StaticRecompRelModule s_mod_rel_modules_%s[] = {" % name)
+    for mid, version, count, sio, fsize in mod["modules"]:
+        secs = ("s_mod_rel_sec_%s_%d" % (name, mid)) if mid in changed else ("s_rel_sec_%d" % mid)
+        out.append("    {%du, %du, %du, 0x%04Xu, %du, %s, %du}," % (
+            mid, version, count, sio, fsize, secs, len(mod["sections"][mid])))
+    out.append("};")
+    refs = {}
+    for key in mod["order"]:
+        data = mod["data"][key][2]
+        old = base["data"].get(key)
+        if data is None:
+            refs[key] = "NULL"
+        elif old is not None and old[2] == data:
+            refs[key] = "s_rel_data_%d_%d" % key
+        else:
+            refs[key] = "s_mod_rel_data_%s_%d_%d" % (name, key[0], key[1])
+            out.append("static const u8 %s[] = {%s};" % (refs[key], ", ".join("0x%02Xu" % b for b in data)))
+    out.append("static const BlueWakeRelData s_mod_rel_data_%s[] = {" % name)
+    out += ["    {%du, %du, 0x%08Xu, 0x%08Xu, %s}," % (k[0], k[1], mod["data"][k][0], mod["data"][k][1], refs[k])
+            for k in mod["order"]]
+    out.append("};")
+    out.append("static const BlueWakeRelLifecycle s_mod_rel_lifecycle_%s[] = {" % name)
+    out += ["    {%du, 0x%08Xu}," % entry for entry in mod["lifecycle"]]
+    out.append("};")
+    return out
+
+
+def overlaid_chunks(base_ranges, extras):
+    """The base chunks (start -> end) that these extra chunks overlap. The extras must cover each one completely:
+    the overlay trampoline has no base code to fall back on."""
+    spans = sorted((start, end) for _, start, end, _ in extras)
+    hit = {}
+    for start, end in sorted(base_ranges.items()):
+        pieces = [(a, b) for a, b in spans if a < end and start < b]
+        if not pieces:
+            continue
+        at = start
+        for a, b in pieces:
+            if a > at:
+                break
+            at = max(at, b)
+        if at < end:
+            sys.exit("an extra chunk overlaps base chunk %08X-%08X without covering it" % (start, end))
+        hit[start] = end
+    return hit
 
 
 def chunk_ranges(tree):
@@ -194,6 +315,50 @@ RECOMP_MODULE_EXPORT u32 bluewake_composite_option_writes(BlueWakeModWriteFn fn,
 }"""
 
 
+# Module layouts: the tables the host stages RELs from, one set per layout mod. The base's stay in force unless a layout
+# mod is on; module_export.c's bluewake_composite_select_layout points the module at the chosen mod's tables, and the
+# host calls it before it reads the first REL table.
+LAYOUT_TYPES = """typedef struct BlueWakeModLayout {
+    u32 mod;
+    const StaticRecompRelModule* modules;
+    u32 num_modules;
+    const BlueWakeRelData* data;
+    u32 num_data;
+    const BlueWakeRelLifecycle* lifecycle;
+    u32 num_lifecycle;
+} BlueWakeModLayout;"""
+
+# An extra chunk's code range covers a base chunk's: with the mod on, the base chunk's slot runs this, which finds
+# the pc among the mod's extras (a chunk returns on a pc it does not hold, as this does).
+OVERLAY_FN = """static void bluewake_mod_overlay(CPUState* ctx)
+{
+    DolRecompFunction fn = bluewake_mod_extra_find(ctx->pc);
+    if (fn)
+        fn(ctx);
+}"""
+
+
+def switch_lines(names, switchable, chunks):
+    """The trampolines of the switchable mods' chunks: one per chunk start any of their variants (alone or in a
+    combination) replaces. Without a switchable mod the module has none (MODULE_MOD_SWITCH_COUNT 0)."""
+    bits = 0
+    for name in switchable:
+        if name not in names:
+            sys.exit("--switchable %s is not one of the mods" % name)
+        bits |= 1 << names.index(name)
+    starts = sorted({c[1] for c in chunks if c[0] & bits})
+    lines = ["#define MODULE_MOD_SWITCH_MASK 0x%Xu" % bits, "#define MODULE_MOD_SWITCH_COUNT %du" % len(starts)]
+    if not starts:
+        return lines
+    lines.append("static DolRecompFunction s_mod_switch_target[MODULE_MOD_SWITCH_COUNT];")
+    for i in range(len(starts)):
+        lines.append("static void bluewake_mod_switch_tramp_%d(CPUState* ctx) { s_mod_switch_target[%d](ctx); }" % (i, i))
+    lines.append("static const u32 s_mod_switch_starts[MODULE_MOD_SWITCH_COUNT] = {%s};" % ", ".join("0x%08Xu" % a for a in starts))
+    lines.append("static const DolRecompFunction s_mod_switch_tramps[MODULE_MOD_SWITCH_COUNT] = {%s};" % ", ".join(
+        "bluewake_mod_switch_tramp_%d" % i for i in range(len(starts))))
+    return lines
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--composite-src", required=True)
@@ -205,6 +370,14 @@ def main():
     ap.add_argument("--exclusive", action="append", default=[], metavar="NAME,NAME")
     # Game options (game_options.py): the option table and the values the
     # options write, resolved against the base tree's REL data.
+    ap.add_argument("--switchable", action="append", default=[], metavar="NAME",
+                    help="the named mod can be turned on and off while the game runs: its chunks are reached through "
+                         "trampolines (bluewake_composite_set_mods)")
+    ap.add_argument("--layout", action="append", default=[], metavar="NAME",
+                    help="the named mod's REL module layout replaces the base's while it is on")
+    ap.add_argument("--layout-rels", action="append", default=[], metavar="NAME=DIR",
+                    help="the REL files the layout mod's tree was translated from: the executable sections it "
+                         "appends to a module get a data image (their tables are read and written by the game)")
     ap.add_argument("--options", metavar="SPEC")
     ap.add_argument("--rels-bin-dir", metavar="DIR")
     args = ap.parse_args()
@@ -213,6 +386,7 @@ def main():
     base_ranges = chunk_ranges(out)
     owner = {}
     names, chunks, extras, writes, decls = [], [], [], [], []
+    layouts, overlays, base_layout = [], 0, None
     for bit, spec in enumerate(args.mod):
         parts = spec.split(":")
         name, tree, mod_dol = parts[0], Path(parts[1]), parts[2]
@@ -239,7 +413,7 @@ def main():
                 owner.setdefault(start, []).append(name)
                 suffix = "__mod_" + name
                 target = dest / (chunk_dir.name + "__" + variant.name)
-                write_lf(target, FUNC_RE.sub(lambda g: g.group(0) + suffix, text))
+                target.write_text(FUNC_RE.sub(lambda g: g.group(0) + suffix, text), newline=chr(10))
                 fn = "func_%08X%s" % (start, suffix)
                 decls.append("void %s(CPUState* ctx);" % fn)
                 if start in base_ranges:
@@ -250,7 +424,28 @@ def main():
                 else:
                     extras.append((bit, start, mod_ranges[start], fn))
                     n_extra += 1
-        once = dol_writes(args.base_dol, mod_dol) + rel_writes(out, tree)
+        for start in overlaid_chunks(base_ranges, [e for e in extras if e[0] == bit]):
+            if set(owner.get(start, [])) - {name}:
+                sys.exit("chunk %08X is overlaid by %s and also changed by %s" % (start, name, owner[start]))
+            owner.setdefault(start, []).append(name)
+            chunks.append((1 << bit, start, "bluewake_mod_overlay"))
+            overlays += 1
+        if name in args.layout:
+            # The layout carries the mod's REL data, whatever its shape: no boot writes for it.
+            if base_layout is None:
+                base_layout = rel_layout(out)
+            mod_layout = rel_layout(tree)
+            for spec_ in args.layout_rels:
+                if spec_.split("=", 1)[0] == name:
+                    extra = appended_code_images(base_layout, mod_layout, spec_.split("=", 1)[1])
+                    for key, image in sorted(extra.items()):
+                        mod_layout["data"][key] = image
+                        mod_layout["order"].append(key)
+                    print("%s: %d appended executable sections carry a data image" % (name, len(extra)))
+            layouts.append((bit, name, layout_lines(name, base_layout, mod_layout)))
+            once = dol_writes(args.base_dol, mod_dol)
+        else:
+            once = dol_writes(args.base_dol, mod_dol) + rel_writes(out, tree)
         for address, data in once:
             writes.append((bit, 0, address, data))
         frame = []
@@ -258,8 +453,9 @@ def main():
             frame = [(a, bytes.fromhex(h)) for a, h in json.load(open(gecko))["data"]]
             for address, data in frame:
                 writes.append((bit, 1, address, data))
-        print("%s: %d variant chunks, %d extra chunks, %d boot writes (%d bytes), %d per-frame writes" % (
-            name, n_var, n_extra, len(once), sum(len(d) for _, d in once), len(frame)))
+        print("%s: %d variant chunks, %d extra chunks, %d boot writes (%d bytes), %d per-frame writes%s" % (
+            name, n_var, n_extra, len(once), sum(len(d) for _, d in once), len(frame),
+            ", module layout" if name in args.layout else ""))
     for spec in args.combo:
         combo, tree = spec.split(":")
         members = combo.split("+")
@@ -281,8 +477,8 @@ def main():
                     continue
                 start = int(m.group(1), 16)
                 suffix = "__mod_" + "_".join(members)
-                write_lf(dest / (chunk_dir.name + "__" + variant.name),
-                         FUNC_RE.sub(lambda g: g.group(0) + suffix, text))
+                (dest / (chunk_dir.name + "__" + variant.name)).write_text(
+                    FUNC_RE.sub(lambda g: g.group(0) + suffix, text), newline=chr(10))
                 fn = "func_%08X%s" % (start, suffix)
                 decls.append("void %s(CPUState* ctx);" % fn)
                 chunks.append((mask, start, fn))
@@ -305,10 +501,13 @@ def main():
              "#define MODULE_MOD_COUNT %du" % len(names),
              "static const char* const s_mod_names[] = {%s};" % ", ".join('"%s"' % n for n in names)]
     lines += decls
+    if overlays:
+        lines.append(OVERLAY_FN)
     lines.append("static const BlueWakeModChunk s_mod_chunks[] = {")
     lines += ["    {0x%Xu, 0x%08Xu, %s}," % c for c in chunks]
     lines.append("};")
     lines.append("#define MODULE_MOD_CHUNK_COUNT %du" % len(chunks))
+    lines += switch_lines(names, args.switchable, chunks)
     lines.append("static const BlueWakeModExtraChunk s_mod_extra_chunks[] = {")
     lines += ["    {%du, 0x%08Xu, 0x%08Xu, %s}," % e for e in extras]
     lines.append("};")
@@ -320,6 +519,18 @@ def main():
               for i, (bit, frame, a, d) in enumerate(writes)]
     lines.append("};")
     lines.append("#define MODULE_MOD_WRITE_COUNT %du" % len(writes))
+    if layouts:
+        lines.append(LAYOUT_TYPES)
+        for _, _, layout in layouts:
+            lines += layout
+        lines.append("static const BlueWakeModLayout s_mod_layouts[] = {")
+        for bit, name, _ in layouts:
+            lines.append("    {%du, s_mod_rel_modules_%s, (u32)(sizeof s_mod_rel_modules_%s / sizeof s_mod_rel_modules_%s[0]),"
+                         " s_mod_rel_data_%s, (u32)(sizeof s_mod_rel_data_%s / sizeof s_mod_rel_data_%s[0]),"
+                         " s_mod_rel_lifecycle_%s, (u32)(sizeof s_mod_rel_lifecycle_%s / sizeof s_mod_rel_lifecycle_%s[0])}," % (
+                             (bit,) + (name,) * 9))
+        lines.append("};")
+        lines.append("#define MODULE_MOD_LAYOUT_COUNT %du" % len(layouts))
     if args.options:
         import game_options
         spec = game_options.Spec(args.options)
@@ -341,7 +552,7 @@ def main():
         lines.append("#define MODULE_OPTION_WRITE_COUNT %du" % len(option_writes))
         lines.append(OPTION_EXPORTS)
         print("options: %d, %d writes" % (len(spec.options), len(option_writes)))
-    write_lf(out / "mod_variants.inc", "\n".join(lines) + "\n")
+    (out / "mod_variants.inc").write_text("\n".join(lines) + "\n", newline=chr(10))
 
 
 if __name__ == "__main__":

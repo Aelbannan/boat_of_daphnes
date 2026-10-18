@@ -1,4 +1,4 @@
-// BlueWake for Windows: the application icon and version information.
+// The application icon and version information.
 #include <winver.h>
 
 1 ICON "../resources/BlueWake.ico"
@@ -13,12 +13,12 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "FileDescription", "BlueWake (The Wind Waker static recompilation)"
-            VALUE "ProductName", "BlueWake"
+            VALUE "FileDescription", "boat-of-daphnes (The Wind Waker static recompilation, a BlueWake fork)"
+            VALUE "ProductName", "boat-of-daphnes"
             VALUE "FileVersion", "0.1"
             VALUE "ProductVersion", "0.1"
             VALUE "LegalCopyright", "GPL-3.0-or-later; game code is the player's own"
-            VALUE "OriginalFilename", "BlueWake.exe"
+            VALUE "OriginalFilename", "boat-of-daphnes.exe"
         END
     END
     BLOCK "VarFileInfo"

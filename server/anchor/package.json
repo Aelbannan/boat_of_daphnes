@@ -1,0 +1,14 @@
+{
+  "name": "boat-of-daphnes-anchor",
+  "private": true,
+  "description": "boat-of-daphnes's online play server (Anchor, as Ship of Harkinian's, for Wind Waker): a Cloudflare Worker with a Durable Object for each room and one for the room list.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/room.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

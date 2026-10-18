@@ -18,11 +18,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from direct_calls import watched_addresses
-# Later native steps' hooks are not part of the translation certified here.
-# The builder finishes a tree twice; on the second pass this step met hooks
-# inside the animation fragments it certifies and took them for a different
-# translation (2026-10-04).
-from native_entries import strip_hooks as strip_entry_hooks
 
 MARK = "/* bluewake: certified game math (scripts/windows/native_game_math.py) */\n"
 INCLUDE = '#include "../generated.h"\n'
@@ -90,7 +85,7 @@ ENTRIES = {
 
 
 def canonical(text):
-    text = strip_entry_hooks(HOOK.sub("", text))
+    text = HOOK.sub("", text)
     text = re.sub(r"^    if \(cycle_block_prepaid\) goto bwfast_\w+;\n", "", text, flags=re.M)
     text = re.sub(r"^(?:bwslow|bwend)_\w+: ;\n", "", text, flags=re.M)
     return " ".join(text.split())

@@ -17,7 +17,7 @@
       "role": "CPU translator; chrissotraidis/DolRecomp 5c91d6e (the translator state used for the shipped GZLE01 composite) plus runtime option sites (patches/dolrecomp/0019), which translate the base game byte-identically",
       "verified": "2026-09-28",
       "local_checkout": {
-        "path": "ref/recompcore/DolRecomp",
+        "path": "ref/dolrecomp",
         "sha": "b8b534591cba8ca7cd43943a655ee6e2591cf5de"
       },
       "local_patch": {
@@ -112,11 +112,18 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4",
-      "branch": "bluewake-next",
+      "sha": "0b86924175451edcea6f36a19b6ac6ca26aebc74",
+      "branch": "codex/bluewake-elliott-oct3",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
-      "verified": "2026-10-15",
+      "verified": "2026-10-04",
+      "vendored": {
+        "path": "runtime/recompcore",
+        "imported": "2026-10-04",
+        "tree": "f7273c6e2abfc2e8d61535377391359a17579f67",
+        "excluded": "the 35 submodule links (DolRecomp and Externals/*)",
+        "note": "boat-of-daphnes builds this vendored copy and changes it with normal commits; see runtime/VENDORED.md"
+      },
       "upstream": {
         "url": "https://github.com/ExpansionPak/RecompCore",
         "base_sha": "5c3611e2bcb03d1578274c956bc3d7b913527ec2"
@@ -258,7 +265,7 @@
           "GXRuntime/backends/aurora/aurora_audio.cpp",
           "GXRuntime/graphics/aurora/include/aurora/gfx.h"
         ],
-        "purpose": "typed integer WGSL clamps, authentic retail display-copy frame presentation, guest-cycle-clocked PCM DMA, DSP ADPCM decoder fixture, voice-event mixer boundary, sound-ID event adapter, gated PCM payload diagnostics, bounded guest-alias lookup, exact tagged guest-alias resolution, shared guest-alias backing, direct unshadowed-MEM1 access, exact stable-poll dispatch fast-forwarding, suffix-aware cycle-domain observations and host-observed timebase reads, deliverable-only DSP exception checks, predecoded DSP interpreter dispatch, inline common DSP instruction fetch, bounded Aurora staging segmentation without partial presentation, default classified gxcore coverage telemetry, native line/point primitive admission, primitive-specific zero-topology classification, honest incomplete-primitive no-op accounting, indirect TEV coordinate translation, classified texgen residuals, donor-exact normal-source texgen coordinates, complete five-texgen vertex/shader admission, donor-exact destination-alpha dual-source blending, donor-exact per-vertex normal-matrix selection, default GX early-depth emulation, donor-exact EFB alpha blend semantics, donor-exact draw-time BP scissor delivery, persistent EFB source dimensions across repeated half-scale copies, complete source/destination extent delivery for scaled EFB resolves, destination/extent/format-aware EFB copy texture caching, per-texmap BP address/filter/LOD-clamp/anisotropy sampler delivery, donor-exact BP SU fixed-point texture-coordinate scaling, late BP ZTexture sampled depth output, one-shot BP write-mask semantics for J3D material state, declared-span CI palette hashing, 64-bit monotonic packet sequencing for release-scale GX streams, authentic cache-flush/device-DMA texture dirtiness for content-hash reuse, host-clock timebase writes, complete audio-DMA draining, guest-cycle AI sample counting, and TEV-selected single-texmap binding, and serialization of the FIFO translation worker against Aurora's frame transition, and a stopped and joined FIFO translation worker at shutdown, and a parked prepaid-copy emitter experiment with its mid-block-entry fix (dormant: a delta against the working tree, not applied, documented in docs/archive/status/CURRENT.md, 2026-09-22), and a predecoded DSP dispatch table built with the interpreter's tables instead of behind a per-instruction initialization guard, and a guest-alias generation counter for readers that cache a resolved host pointer",
+        "purpose": "typed integer WGSL clamps, authentic retail display-copy frame presentation, guest-cycle-clocked PCM DMA, DSP ADPCM decoder fixture, voice-event mixer boundary, sound-ID event adapter, gated PCM payload diagnostics, bounded guest-alias lookup, exact tagged guest-alias resolution, shared guest-alias backing, direct unshadowed-MEM1 access, exact stable-poll dispatch fast-forwarding, suffix-aware cycle-domain observations and host-observed timebase reads, deliverable-only DSP exception checks, predecoded DSP interpreter dispatch, inline common DSP instruction fetch, bounded Aurora staging segmentation without partial presentation, default classified gxcore coverage telemetry, native line/point primitive admission, primitive-specific zero-topology classification, honest incomplete-primitive no-op accounting, indirect TEV coordinate translation, classified texgen residuals, donor-exact normal-source texgen coordinates, complete five-texgen vertex/shader admission, donor-exact destination-alpha dual-source blending, donor-exact per-vertex normal-matrix selection, default GX early-depth emulation, donor-exact EFB alpha blend semantics, donor-exact draw-time BP scissor delivery, persistent EFB source dimensions across repeated half-scale copies, complete source/destination extent delivery for scaled EFB resolves, destination/extent/format-aware EFB copy texture caching, per-texmap BP address/filter/LOD-clamp/anisotropy sampler delivery, donor-exact BP SU fixed-point texture-coordinate scaling, late BP ZTexture sampled depth output, one-shot BP write-mask semantics for J3D material state, declared-span CI palette hashing, 64-bit monotonic packet sequencing for release-scale GX streams, authentic cache-flush/device-DMA texture dirtiness for content-hash reuse, host-clock timebase writes, complete audio-DMA draining, guest-cycle AI sample counting, and TEV-selected single-texmap binding, and serialization of the FIFO translation worker against Aurora's frame transition, and a stopped and joined FIFO translation worker at shutdown, and a parked prepaid-copy emitter experiment with its mid-block-entry fix (dormant: a delta against the working tree, not applied, documented in docs/status/CURRENT.md, 2026-09-22), and a predecoded DSP dispatch table built with the interpreter's tables instead of behind a per-instruction initialization guard, and a guest-alias generation counter for readers that cache a resolved host pointer",
         "tracked_patches": [
           "patches/recompcore/0008-guest-cycle-audio-dma.patch",
           "patches/recompcore/0009-bound-guest-alias-lookup.patch",
@@ -595,34 +602,6 @@
           "runtime": "6c853a1d908af3d6f700510377729f5d4c2c8c31",
           "donor": "elliotttate RecompCore 31401e5, 3be805f, 0e631be, bb63c90, 50763a2, 6d0ed15, db2c87f, 44e5c2c (Wind-Waker-Recomp patches 0121, 0123-0129), authorship retained",
           "evidence": "Device lock, multi-threaded pipelines, GX worker reductions, Smooth Motion cloth and colours, ubershader (on by default for D3D12 only). Mac host builds; frame_interp and fps_watch regressions pass; donor measurements not repeated."
-        },
-        "picto_actor_id": {
-          "runtime": "5423b269e01d629fd3668c822887a6d54b620c79",
-          "tracked_patches": [
-            "patches/recompcore/0177-answer-picto-actor-id-from-current-efb.patch"
-          ],
-          "evidence": "Mac M3 Max Metal: clear Lenzo subject 94/detail 0; empty-wall subject 0 with normal warm-cache rendering. Copied card unchanged. Contributors confirmed Linux/M4 Pro and all three Lenzo photos plus bad-photo rejection on Windows. Cold first-use alpha-only draws can still be skipped while pipelines compile; RecompCore#39 is a separate Mac-tested follow-up awaiting Windows/Linux gameplay checks."
-        },
-        "vulkan_resize": {
-          "runtime": "f647d03d3886eb2357950190fe1cba3fa3d10242",
-          "tracked_patches": [
-            "patches/recompcore/0178-Aurora-a-resized-Vulkan-window-keeps-its-surface.patch"
-          ],
-          "evidence": "pdale-boop's RecompCore#38 (#325): on Arch/X11 with an RTX 5070 Ti on Vulkan, window resizes, fullscreen switches and resizes with F1 open keep drawing, with no VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and no stale-size snapback. The size following runs on Vulkan only; on Metal and Direct3D 12 it does nothing. Suboptimal textures are now presented and a lost surface is reconfigured up to 30 times before being released, on every backend."
-        },
-        "picto_copy_crop": {
-          "runtime": "77d4717d868cec8b4014932bb22978c284a535a7",
-          "tracked_patches": [
-            "patches/recompcore/0180-Aurora-aurora_set_copy_crop-for-pictures-taken-through-a-widened-camera.patch"
-          ],
-          "evidence": "pdale-boop's RecompCore#37 (#338): aurora_set_copy_crop(width, height, fraction) makes a texture copy of that size take the middle fraction of its source's width and scale it back, as a 4:3 camera would; both GXCopyTex and gxcore's EFB copies use it. Nothing calls it unless BLUEWAKE_PICTO_CROP=1 (picto_crop=1). Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12, 2560x1080: Picto Box and Deluxe Picto Box photos keep their 4:3 shape at 16:9, 16:10 and 21:9; Arch Linux, Vulkan: the same at all three aspects for the Picto Box and at 16:9 for the Deluxe Picto Box."
-        },
-        "hd_look_sea": {
-          "runtime": "369b7b7e0de46de4bae944a49646b246762759d5",
-          "tracked_patches": [
-            "patches/recompcore/0182-Aurora-HD-look-cloud-shadows-take-the-sea-from-its-plane-and-dither-the-shades.patch"
-          ],
-          "evidence": "RecompCore#41: the HD look's cloud shadows take the sea's place from its plane (only nearer surfaces from depth), with gradient noise turned per octave, and the cloud, sun-shadow, ambient-occlusion and bloom passes dither by half an 8-bit step. M3 Max, Metal, a copied card warped to Outset and Dragon Roost with cloud shadows alone at 0.8: the straight-edged band across Outset's sea is gone; the full HD look renders without shader errors. Vulkan and Direct3D 12, where the panels were reported (#371), not yet checked."
         }
       }
     },
@@ -668,7 +647,7 @@
         "stale": false
       },
       "component_transfer": {
-        "manifest": "docs/archive/SUNPAD_TRANSFER.md",
+        "manifest": "docs/SUNPAD_TRANSFER.md",
         "adapted": [
           "apple/ios/SunPadGameOverlay.mm -> apple/ios/src/BWGameOverlay.mm"
         ],

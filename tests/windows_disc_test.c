@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
     char source[MAX_PATH * 4], canonical[MAX_PATH * 4], settings[MAX_PATH * 4];
     snprintf(source, sizeof source, "%s\\input with spaces.iso", root);
     snprintf(canonical, sizeof canonical, "%sGZLE01.iso", data);
-    snprintf(settings, sizeof settings, "%ssettings.ini", data);
+    snprintf(settings, sizeof settings, "%sboat-of-daphnes.json", data);
     put(canonical, "previous converted disc"); put(settings, "preserve preferences");
     _putenv_s("BLUEWAKE_DISC", source); assert(bw_disc_setup(exe, data) == -1); // missing explicit file
     put(source, "synthetic original"); check_failed = 1;

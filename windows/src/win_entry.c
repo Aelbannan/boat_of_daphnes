@@ -1,24 +1,30 @@
-// BlueWake Windows entry shim.
+// Windows entry shim.
 //
-// The Windows counterpart of apple/ios/src/ios_entry.m: it fills in default
-// paths beside the executable and in the player's data folder, starts the
-// session log, then runs the unchanged host (runtime/host/src/main.c, compiled
-// with main renamed to bluewake_host_main).
+// It fills in default paths beside the executable, starts the session log,
+// then runs the host (runtime/host/src/main.c, compiled with main renamed to
+// bluewake_host_main).
 //
-// App folder (scripts/windows/build.py writes it; it is a personal build that
-// contains code translated from your disc, never share it):
-//   BlueWake.exe, SDL3.dll, webgpu_dawn.dll    the host and its runtime DLLs
+// Everything lives in the executable's folder, as in Ship of Harkinian
+// (scripts/windows/build.py writes the app files; the build contains code
+// translated from your disc, never share it):
+//   boat-of-daphnes.exe, SDL3.dll, ...       the host and its runtime DLLs
 //   gGZLE01_recomp.dll                         the translated game module
-//   game\GZLE01.iso                            the disc image the game reads
-//   game\main.dol, game\rels\                  prepared from that disc
+//   game\GZLE01.iso, game\main.dol, game\rels\ the disc image and its code
 //   dsp\dsp_rom.bin, dsp\dsp_coef.bin          only for BLUEWAKE_DSP_MODE=lle
 //   initial_pipeline_cache.db                  Aurora's bundled pipeline seed
-// Player data, kept outside the app folder so a rebuild never touches it:
-//   %APPDATA%\BlueWake\GZLE01.card             the memory card (saves)
-//   %APPDATA%\BlueWake\sram.bin                the console's settings
-//   %APPDATA%\BlueWake\logs\session-*.log      the newest eight sessions
-// Portable mode (#64): with a file named portable.txt beside BlueWake.exe, the
-// player data goes in a user folder beside it instead (BlueWake\user\...).
+// Player files, never touched by a rebuild:
+//   boat-of-daphnes.json, imgui.ini          settings (CVars) and window layout
+//   Save\GZLE01.card                           the memory card (saves)
+//   Save\sram.bin                              the console's settings
+//   Save\states\                               save states
+//   mods\textures\                             texture packs (Dolphin format)
+//   Randomizer\                                randomizer seeds and spoiler logs
+//   logs\session-*.log, logs\crash-*.log       the newest sessions, crashes
+//   cache\                                     shader and pipeline caches, and
+//                                              what is made from the picked disc on first
+//                                              launch (the prepared game files, Swift Sail,
+//                                              Link colors, randomizer RELs: win_disc.c)
+// BLUEWAKE_DATA_DIR moves the player files elsewhere (tests, scripted runs).
 // Every default is only a default: an environment variable that is already
 // set (BLUEWAKE_DISC, BLUEWAKE_CARD_PATH, ...) wins.
 #ifndef WIN32_LEAN_AND_MEAN
@@ -49,64 +55,10 @@
 
 int bluewake_host_main(int argc, char** argv);
 
-// A clear message on a CPU this build can't run on (#77). A build for
-// x86-64-v3 (the release's -march: AVX2, FMA, BMI1 and BMI2, MOVBE, LZCNT) stops
-// at its first such instruction on an older CPU, with no message at all. This
-// check is compiled for plain x86-64 and runs from the C runtime's initializer
-// table, before the C++ static initializers and main. A build for an older
-// level (the builder picks one on such a CPU) doesn't need it and leaves it out.
-#if defined(__AVX2__)
-#define BW_PLAIN_X86_64 __attribute__((target("arch=x86-64"), noinline))
-BW_PLAIN_X86_64 static void bw_cpuid(unsigned leaf, unsigned sub, unsigned out[4]) {
-    __asm__ volatile("cpuid" : "=a"(out[0]), "=b"(out[1]), "=c"(out[2]), "=d"(out[3]) : "a"(leaf), "c"(sub));
-}
-
-BW_PLAIN_X86_64 static int bw_cpu_runs_this_build(void) {
-    unsigned r[4];
-    bw_cpuid(0, 0, r);
-    if (r[0] < 7u)
-        return 0;
-    bw_cpuid(1, 0, r);
-    const unsigned leaf1 = (1u << 12) | (1u << 22) | (1u << 27) | (1u << 28);  // FMA, MOVBE, OSXSAVE, AVX
-    if ((r[2] & leaf1) != leaf1)
-        return 0;
-    unsigned lo, hi;
-    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
-    (void)hi;
-    if ((lo & 6u) != 6u)  // Windows saves the AVX registers
-        return 0;
-    bw_cpuid(7, 0, r);
-    const unsigned leaf7 = (1u << 3) | (1u << 5) | (1u << 8);  // BMI1, AVX2, BMI2
-    if ((r[1] & leaf7) != leaf7)
-        return 0;
-    bw_cpuid(0x80000000u, 0, r);
-    if (r[0] < 0x80000001u)
-        return 0;
-    bw_cpuid(0x80000001u, 0, r);
-    return (r[2] & (1u << 5)) != 0;  // LZCNT
-}
-
-BW_PLAIN_X86_64 static int __cdecl bw_cpu_check(void) {
-    if (bw_cpu_runs_this_build())
-        return 0;
-    if (GetEnvironmentVariableW(L"BLUEWAKE_NO_DIALOG", NULL, 0) == 0)
-        MessageBoxW(NULL,
-                    L"BlueWake can't run on this processor.\n\n"
-                    L"This download needs a CPU with AVX2: an Intel Core from 2013 (Haswell) or later, "
-                    L"or an AMD Ryzen or later.",
-                    L"BlueWake", MB_OK | MB_ICONERROR);
-    ExitProcess(1);
-    return 1;
-}
-
-#pragma section(".CRT$XIU", long, read)
-__declspec(allocate(".CRT$XIU")) __attribute__((used)) static int(__cdecl* bw_cpu_check_entry)(void) = bw_cpu_check;
-#endif
-
 static char g_exe_dir[MAX_PATH * 4];
 static char g_data_dir[MAX_PATH * 4];
+static char g_cache_dir[MAX_PATH * 4];
 static char g_log_path[MAX_PATH * 4];
-static int g_portable;
 
 static int file_exists(const char* path) {
     DWORD attributes = GetFileAttributesA(path);
@@ -125,39 +77,30 @@ static void bw_default(const char* name, const char* value) {
     _putenv_s(name, value);
 }
 
+// The GameCube adapter (USB 057E:0337) is read by the app itself (runtime/host/src/gc_adapter.c). SDL's gamepad layer
+// must not also claim it, so it is told to ignore that device, before SDL starts. The list keeps any entries the
+// player set. BLUEWAKE_GCADAPTER=0 turns the app's reader off and leaves the adapter to SDL.
+static void bw_ignore_gc_adapter_in_sdl(void) {
+    const char* off = getenv("BLUEWAKE_GCADAPTER");
+    if (off != NULL && off[0] == '0')
+        return;
+    const char* entry = "0x057e/0x0337";
+    const char* existing = getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+    char list[1024];
+    if (existing != NULL && existing[0] != '\0') {
+        if (strstr(existing, entry) != NULL || strlen(existing) + strlen(entry) + 2 > sizeof list)
+            return;
+        snprintf(list, sizeof list, "%s,%s", existing, entry);
+    } else {
+        snprintf(list, sizeof list, "%s", entry);
+    }
+    _putenv_s("SDL_GAMECONTROLLER_IGNORE_DEVICES", list);
+}
+
 static void bw_default_path(const char* name, const char* dir, const char* relative) {
     char path[MAX_PATH * 4];
     snprintf(path, sizeof path, "%s%s", dir, relative);
     bw_default(name, path);
-}
-
-// Aurora's own files: controller button remaps (*.controller), keyboard
-// bindings, the controller port choice and imgui.ini. They follow
-// DOL_AURORA_USER_DIR into the portable folder now (#64); before, they went to
-// %APPDATA%\BlueWake even in portable mode. Copy the ones the portable folder
-// doesn't have yet, so remaps made there carry over. Nothing is moved or
-// replaced.
-static void bw_copy_aurora_files(void) {
-    static const char* const names[] = {"*.controller", "keyboard_bindings.dat", "controller_ports.dat", "imgui.ini"};
-    const char* appdata = getenv("APPDATA");
-    if (appdata == NULL || appdata[0] == '\0')
-        return;
-    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
-        char pattern[MAX_PATH * 4];
-        snprintf(pattern, sizeof pattern, "%s\\BlueWake\\%s", appdata, names[i]);
-        WIN32_FIND_DATAA found;
-        HANDLE find = FindFirstFileA(pattern, &found);
-        if (find == INVALID_HANDLE_VALUE)
-            continue;
-        do {
-            char from[MAX_PATH * 4], to[MAX_PATH * 4];
-            snprintf(from, sizeof from, "%s\\BlueWake\\%s", appdata, found.cFileName);
-            snprintf(to, sizeof to, "%s%s", g_data_dir, found.cFileName);
-            if (CopyFileA(from, to, TRUE))
-                fprintf(stderr, "[portable] copied %s from %%APPDATA%%\\BlueWake\n", found.cFileName);
-        } while (FindNextFileA(find, &found));
-        FindClose(find);
-    }
 }
 
 static void resolve_dirs(void) {
@@ -171,25 +114,28 @@ static void resolve_dirs(void) {
     } else {
         snprintf(g_exe_dir, sizeof g_exe_dir, ".\\");
     }
+    // Player files beside the executable, as in Ship of Harkinian. Never
+    // %APPDATA%\BlueWake: that folder belongs to upstream BlueWake and Wind
+    // Waker Recomp, and this fork must not read or overwrite their saves.
     const char* override = getenv("BLUEWAKE_DATA_DIR");
-    const char* appdata = getenv("APPDATA");
-    char portable[MAX_PATH * 4];
-    snprintf(portable, sizeof portable, "%sportable.txt", g_exe_dir);
     if (override != NULL && override[0] != '\0')
         snprintf(g_data_dir, sizeof g_data_dir, "%s\\", override);
-    else if (file_exists(portable)) {
-        snprintf(g_data_dir, sizeof g_data_dir, "%suser\\", g_exe_dir);
-        g_portable = 1;
-    } else if (appdata != NULL && appdata[0] != '\0')
-        snprintf(g_data_dir, sizeof g_data_dir, "%s\\BlueWake\\", appdata);
     else
-        snprintf(g_data_dir, sizeof g_data_dir, "%suser\\", g_exe_dir);
+        snprintf(g_data_dir, sizeof g_data_dir, "%s", g_exe_dir);
     _mkdir(g_data_dir);
+    static const char* const folders[] = {"Save", "Save\\states", "mods", "mods\\textures", "Randomizer",
+                                          "logs", "cache"};
+    for (size_t i = 0; i < sizeof folders / sizeof folders[0]; i++) {
+        char folder[MAX_PATH * 4];
+        snprintf(folder, sizeof folder, "%s%s", g_data_dir, folders[i]);
+        _mkdir(folder);
+    }
+    snprintf(g_cache_dir, sizeof g_cache_dir, "%scache\\", g_data_dir);
 }
 
 // Session log. Everything the host writes to stdout and stderr goes to
-// %APPDATA%\BlueWake\logs\session-YYYYMMDD-HHMMSS.log, each line stamped with
-// the local time, and still to the terminal BlueWake was started from, if any.
+// logs\session-YYYYMMDD-HHMMSS.log beside the executable, each line stamped
+// with the local time, and still to the terminal it was started from, if any.
 static HANDLE g_console = INVALID_HANDLE_VALUE;
 static FILE* g_log_file;
 static HANDLE g_log_thread;
@@ -489,11 +435,10 @@ static void start_profile(void) {
     fprintf(stderr, "[profile] sampling the game thread into %s\n", g_profile_path);
 }
 
-// Desktop hotkeys: F1 or Esc the settings, F2 the HD look, F6 a second save
-// state key, F9 the frame rate, F10 Smooth Motion, and F11 or Alt+Return
-// fullscreen (Return is the game's START). A keyboard hook on the game thread,
-// which pumps the window's messages, sees them before SDL; Aurora's single
-// event-observer slot belongs to the mouse camera.
+// Desktop hotkeys: F11 toggles fullscreen (Return, the other half of the usual
+// Alt+Return, is the game's START), F9 the frame rate, F6/F8 save states. A
+// keyboard hook on the game thread, which pumps the window's messages, sees them
+// before SDL; Aurora's single event-observer slot is host_input.c's.
 static HHOOK g_hotkey_hook;
 
 static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
@@ -506,9 +451,8 @@ static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
     if (trace)
         fprintf(stderr, "[keys] code=%d vk=0x%02X %s%s%s\n", code, (unsigned)key, down ? "down" : "up",
                 repeat ? " repeat" : "", alt ? " alt" : "");
-    // A key BlueWake handles (win_settings.cpp, bw_settings_key) is kept from
-    // the game: F1, F2, F6, F9, F10, F11, Esc, and Alt+Enter, whose Return
-    // would be START.
+    // A key the app handles (win_settings.cpp) is kept from the game: F1, F6,
+    // F8, F9, F11, Esc for the menu, and Alt+Enter, whose Return would be START.
     if (code == HC_ACTION && down && !repeat && bw_settings_key((unsigned)key, alt))
         return 1;
     if (code == HC_ACTION && key == VK_RETURN && alt)
@@ -518,35 +462,26 @@ static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
 
 static void usage(void) {
     fprintf(stderr,
-            "usage: BlueWake.exe [options]\n"
-            "  --widescreen       16:9 (the widescreen mod: a wider camera and HUD)\n"
-            "  --aspect A         4:3 (the game's own), 16:10, 16:9 or 21:9\n"
-            "  --smooth           Smooth Motion (experimental): 60 FPS with in-between\n"
-            "                     frames; F10 toggles it\n"
-            "  --no-smooth        the game's own 30 FPS (the default)\n"
+            "usage: " BLUEWAKE_APP_NAME ".exe [options]\n"
+            "  --aspect W:H       force the picture's shape (16:9, 21:9, 4:3, ...); black bars\n"
+            "                     fill the rest of the window. By default the picture fills it\n"
             "  --betterww         Better Wind Waker's settings, at their defaults\n"
             "  --options LIST     change them: name,-name,... (mods\\betterww\\options.txt)\n"
             "  --fullscreen       start in fullscreen (F11 toggles it while playing)\n"
             "  --window WxH       the window's size\n"
             "  --scale N          render at N x 480 lines (0: the window's own pixels)\n"
             "  --fps              show the frame rate\n"
-            "  --stretch          fill the window instead of keeping the game's aspect\n"
-            "  --no-mouse-camera  keep the mouse out of the camera\n"
             "  --safe-mode        Recover startup with HLE audio and mods off\n"
             "  --hle-audio        Fast audio for this session\n"
             "  --lle-audio        run the DSP's own microcode instead of the HLE ucode\n"
-            "  --stage-select-saves  keep saving on after using the stage select (it can\n"
-            "                     leave your file in a state the story never reaches)\n"
             "  --mods LIST        mods compiled into the module, by name\n"
-            "  --disc FILE        the disc image to read (default game\\GZLE01.iso)\n"
+            "  --disc FILE        the disc image to read (default: the one you chose on first launch)\n"
             "  --module FILE      the translated game module (default gGZLE01_recomp.dll)\n"
             "Keyboard: arrows D-pad, J A, K B, U X, I Y, W/A/S/D stick,\n"
             "H/F/T/G C-stick, E/R L/R, Q Z, Return START. Game controllers work too.\n"
-            "Mouse: click the game, then move it to turn the camera; Esc releases it.\n"
-            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate,\n"
-            "F5 save state, F8 load it, F2 HD look, F7 stage select.\n"
-            "The settings menu saves to %%APPDATA%%\\BlueWake\\settings.ini (with portable.txt beside\n"
-            "BlueWake.exe, to its user folder); options given here win for the session.\n");
+            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F9 frame rate.\n"
+            "The settings menu saves to boat-of-daphnes.json beside the executable; options given here win\n"
+            "for the session.\n");
 }
 
 static void fatal_box(const char* message) {
@@ -559,8 +494,13 @@ static void fatal_box(const char* message) {
         snprintf(text, sizeof text, "%s\n\nSession log:\n%s", message, g_log_path);
     else
         snprintf(text, sizeof text, "%s", message);
-    MessageBoxA(NULL, text, "BlueWake", MB_OK | MB_ICONERROR);
+    MessageBoxA(NULL, text, BLUEWAKE_APP_NAME, MB_OK | MB_ICONERROR);
 }
+
+// Laptops with two GPUs (NVIDIA Optimus, AMD switchable graphics): ask the driver to run the exe on the dedicated
+// GPU. Without these, a friend's GTX laptop could present through the integrated GPU (2026-10-12 log).
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 int main(int argc, char** argv) {
     bw_settings_capture_environment();
@@ -587,20 +527,16 @@ int main(int argc, char** argv) {
             snprintf(mods + strlen(mods), sizeof mods - strlen(mods), "%sbetterww", mods[0] ? "," : "");
         } else if (strcmp(a, "--options") == 0 && more) {
             _putenv_s("BLUEWAKE_OPTIONS", argv[++i]);
-        } else if (strcmp(a, "--widescreen") == 0) {
-            _putenv_s("BLUEWAKE_ASPECT", "16:9");
         } else if (strcmp(a, "--aspect") == 0 && more) {
-            _putenv_s("BLUEWAKE_ASPECT", argv[++i]);
-        } else if (strcmp(a, "--smooth") == 0) {
-            // Aurora reads DOL_AURORA_FRAME_INTERP and DOL_AURORA_SHOW_FPS in
-            // static initializers, before main: set them through its API.
-            _putenv_s("DOL_AURORA_FRAME_INTERP", "1");
-            _putenv_s("DOL_AURORA_FRAME_INTERP_STEPS", "1");
-            aurora_set_frame_interp_steps(1);
-            aurora_set_frame_interpolation(true);
-        } else if (strcmp(a, "--no-smooth") == 0) {
-            _putenv_s("DOL_AURORA_FRAME_INTERP", "0");
-            aurora_set_frame_interpolation(false);
+            // W:H (or a plain ratio such as 2.333) as the renderer's forced aspect.
+            const char* text = argv[++i];
+            double w = 0.0, h = 0.0;
+            char ratio[32];
+            if (sscanf(text, "%lf:%lf", &w, &h) == 2 && w > 0.0 && h > 0.0)
+                snprintf(ratio, sizeof ratio, "%.6f", w / h);
+            else
+                snprintf(ratio, sizeof ratio, "%s", text);
+            _putenv_s("DOL_AURORA_ASPECT_RATIO", ratio);
         } else if (strcmp(a, "--fullscreen") == 0) {
             _putenv_s("DOL_AURORA_FULLSCREEN", "1");
         } else if (strcmp(a, "--window") == 0 && more) {
@@ -608,16 +544,12 @@ int main(int argc, char** argv) {
         } else if (strcmp(a, "--scale") == 0 && more) {
             _putenv_s("DOL_AURORA_RENDER_SCALE", argv[++i]);
         } else if (strcmp(a, "--fps") == 0) {
+            // Aurora reads DOL_AURORA_SHOW_FPS in a static initializer, before
+            // main: set it through its API too.
             _putenv_s("DOL_AURORA_SHOW_FPS", "1");
             aurora_set_fps_overlay(true);
-        } else if (strcmp(a, "--stretch") == 0) {
-            _putenv_s("DOL_AURORA_ASPECT_FIT", "0");
-        } else if (strcmp(a, "--no-mouse-camera") == 0) {
-            _putenv_s("BLUEWAKE_MOUSE_CAMERA", "0");
         } else if (strcmp(a, "--safe-mode") == 0) {
             _putenv_s("BLUEWAKE_SAFE_MODE", "1");
-        } else if (strcmp(a, "--stage-select-saves") == 0) {
-            _putenv_s("BLUEWAKE_STAGE_SELECT_SAVES", "1");
         } else if (strcmp(a, "--hle-audio") == 0) {
             _putenv_s("BLUEWAKE_DSP_MODE", "hle");
         } else if (strcmp(a, "--lle-audio") == 0) {
@@ -626,7 +558,7 @@ int main(int argc, char** argv) {
             usage();
             return 0;
         } else {
-            fprintf(stderr, "BlueWake: unknown option %s\n", a);
+            fprintf(stderr, BLUEWAKE_APP_NAME ": unknown option %s\n", a);
             usage();
             return 2;
         }
@@ -634,7 +566,7 @@ int main(int argc, char** argv) {
     if (mods[0] != '\0')
         _putenv_s("BLUEWAKE_MODS", mods);
 
-    // The player's settings (settings.ini, the F1 menu), where the command
+    // The player's settings (boat-of-daphnes.json, the menu), where the command
     // line did not already choose.
     bw_settings_load(g_data_dir);
     bw_settings_apply_launch();
@@ -651,21 +583,12 @@ int main(int argc, char** argv) {
     bw_default("BLUEWAKE_MAX_BLOCKS", "100000000000");
     bw_default("BLUEWAKE_DSP_MODE", "hle");
     bw_default("BLUEWAKE_CLOCK", "now");
-    bw_default_path("BLUEWAKE_SRAM", g_data_dir, "sram.bin");
-    bw_default_path("BLUEWAKE_CARD_PATH", g_data_dir, "GZLE01.card");
-    char states[MAX_PATH * 4];
-    snprintf(states, sizeof states, "%sstates", g_data_dir);
-    _mkdir(states);
-    bw_default("BLUEWAKE_STATE_DIR", states);
-    // Aurora's shader and pipeline caches (dawn_cache.db, pipeline_cache.db)
-    // and its own files (controller remaps, keyboard bindings, imgui.ini) go
-    // with the rest of the player's data: the same %APPDATA%\BlueWake as before,
-    // or the user folder in portable mode (#64), which otherwise still filled
-    // %APPDATA%.
-    bw_default("DOL_AURORA_CACHE_DIR", g_data_dir);
+    bw_default_path("BLUEWAKE_SRAM", g_data_dir, "Save\\sram.bin");
+    bw_default_path("BLUEWAKE_CARD_PATH", g_data_dir, "Save\\GZLE01.card");
+    bw_default_path("BLUEWAKE_STATE_DIR", g_data_dir, "Save\\states");
+    // Aurora's files: imgui.ini beside the executable, caches in cache\.
     bw_default("DOL_AURORA_USER_DIR", g_data_dir);
-    if (g_portable)
-        bw_copy_aurora_files();
+    bw_default("DOL_AURORA_CACHE_DIR", g_cache_dir);
     char module[MAX_PATH * 4];
     const char* module_env = getenv("BLUEWAKE_COMPOSITE");
     if (module_arg != NULL)
@@ -679,7 +602,7 @@ int main(int argc, char** argv) {
         fatal_box("The player-generated game module is missing. Build your own copy from your USA revision-0 disc with python scripts\\windows\\build.py YOUR_DISC.iso. Keep that personal build local.");
         return 1;
     }
-    const int disc_status = bw_disc_setup(g_exe_dir, g_data_dir);
+    const int disc_status = bw_disc_setup(g_exe_dir, g_cache_dir);
     if (disc_status != 0) return disc_status < 0 ? 1 : 0;
     bw_default_path("BLUEWAKE_DOL", g_exe_dir, "game\\main.dol");
     bw_default_path("BLUEWAKE_RELS_DIR", g_exe_dir, "game\\rels");
@@ -706,7 +629,7 @@ int main(int argc, char** argv) {
     if (missing != NULL) {
         char message[2048];
         snprintf(message, sizeof message,
-                 "BlueWake cannot start: %s is missing.\n\n%s\n\n"
+                 BLUEWAKE_APP_NAME " cannot start: %s is missing.\n\n%s\n\n"
                  "Build your own copy from your disc with\n"
                  "python scripts\\windows\\build.py YOUR_DISC.iso (or .rvz)",
                  missing, missing_path);
@@ -733,16 +656,17 @@ int main(int argc, char** argv) {
             fprintf(stderr, "[windows] priority above normal\n");
     }
     // The name the volume mixer shows for the game's audio.
-    SDL_SetAppMetadata("BlueWake", "0.1", "dev.bluewake.BlueWake");
+    SDL_SetAppMetadata(BLUEWAKE_APP_NAME, "0.1", "dev.boat-of-daphnes");
     g_hotkey_hook = SetWindowsHookExW(WH_KEYBOARD, hotkey_hook, NULL, GetCurrentThreadId());
     if (!g_hotkey_hook) fprintf(stderr, "[windows] hotkey hook failed: %lu\n", GetLastError());
+    bw_ignore_gc_adapter_in_sdl();
     bw_settings_install();
     start_profile();
     char* host_argv[3] = {argv[0], module, NULL};
     char launch_marker[MAX_PATH * 4];
     snprintf(launch_marker, sizeof launch_marker, "%slaunch.pending", g_data_dir);
     if (!bw_launch_begin(launch_marker)) {
-        fatal_box("BlueWake could not create its launch recovery marker. Check that its data folder is writable.");
+        fatal_box(BLUEWAKE_APP_NAME " could not create its launch recovery marker. Check that its folder is writable.");
         return 1;
     }
     bw_crash_test();
@@ -753,7 +677,7 @@ int main(int argc, char** argv) {
     fflush(stderr);
     if (status != 0) {
         char message[256];
-        snprintf(message, sizeof message, "BlueWake stopped with an error (status %d).", status);
+        snprintf(message, sizeof message, BLUEWAKE_APP_NAME " stopped with an error (status %d).", status);
         fatal_box(message);
     }
     if (g_hotkey_hook) { UnhookWindowsHookEx(g_hotkey_hook); g_hotkey_hook = NULL; }

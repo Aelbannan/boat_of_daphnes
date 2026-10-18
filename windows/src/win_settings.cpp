@@ -1,27 +1,40 @@
-// BlueWake for Windows: the settings, the in-game settings menu (F1 or Esc),
-// the desktop hotkeys (F11 and Alt+Enter fullscreen, F10 Smooth Motion, F9 the
-// frame rate, F2 the HD look; F5, F7 and F8 are the shared code's) and the
-// window's placement.
+// The settings and the in-game menu (Esc or F1, or a controller's Back), the
+// desktop hotkeys (F11 and Alt+Enter fullscreen, F9 the frame rate, F7 the item tracker, F4 the check tracker,
+// F6/F8 save states when enabled) and the window's placement.
 //
-// The settings live in %APPDATA%\BlueWake\settings.ini. At launch they become
-// the host's own variables (BLUEWAKE_*, DOL_*) unless the command line already
-// set one, so the command line wins for that session. In the menu, display and
-// control settings apply at once; the mods, Better Wind Waker's options, the
-// picture's shape and the audio mode apply when BlueWake restarts (Restart now
-// starts it again with the environment it began with).
+// Settings are CVars (runtime/host/src/ship/cvar.h), saved in
+// boat-of-daphnes.json beside the executable, with Ship of Harkinian's
+// prefixes: gSettings.*, gEnhancements.*, gCheats.*, gOpenWindows.*. The menu
+// is ship_menu.h, laid out as SoH's port menu: Settings, Enhancements and Dev
+// Tools, each a sidebar of pages. Every setting applies at once, while the
+// game runs (the Audio Mode, texture packs and Precompile Shaders too).
 //
-// The menu is ImGui, drawn through the host overlay hook inside Aurora's frame
-// (gxruntime/aurora_backend.h). The game keeps running under it; while it is
-// open the keyboard is taken off the game's pad and the mouse camera stands
-// aside, so the menu's clicks and keys do not move Link.
+// At launch the settings that the host reads once become its variables
+// (BLUEWAKE_*, DOL_*) unless the command line already set one, so the command
+// line wins for that session.
+// The Windows build force-includes a POSIX layer whose rename() macro breaks <filesystem> (aurora/texture.hpp).
+#ifdef rename
+#undef rename
+#endif
+
 #include "win_settings.h"
-#include "settings_state.h"
-#include "smooth_rate.h"
-#include "fps_position.h"
+#include "win_crash.h"
+#include "game_state.h"
 #include "controller_face_swap.h"
 #include "restart_request.h"
+#include "rando_flow.h"
 #include "launch_marker.h"
-#include "atomic_file.h"
+#include "ship_menu.h"
+#include "cosmetics_editor.h"
+#include "anchor.h"
+#include "mods.h"
+#include "hud_colors.h"
+#include "notifications.h"
+#include "randomizer_menu.h"
+#include "item_tracker.h"
+#include "check_tracker.h"
+#include "input_viewer.h"
+#include "ship/cvar.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -31,230 +44,171 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <setupapi.h>
 
 #include <SDL3/SDL.h>
 #include <aurora/aurora.h>
+#include <aurora/gfx.h>
 #include <aurora/imgui.h>
+#include <aurora/texture.hpp>
+#include <dolphin/gx/GXAurora.h>
 #include <dolphin/pad.h>
 #include <imgui.h>
-#include <imgui_internal.h> // FindWindowByName: the menu's position before Begin draws it
-#include "button_remap.h"
-#include "menu_shared.h"
-#include "input_remap.h"
-#include "option_notes.h"
-#include "texture_pack_menu.h"
+#include "input_editor.h"
+#include "dev_windows.h"
+#include "adapter_driver.h"
+#include "gc_adapter.h"
+#include "gba_window.h"
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gxruntime/aurora_backend.h"
 #include "save_state.h"
-#include "stage_select_key.h"
-#include "desktop_theme.h"
-#include "status_line_overlay.h"
-#include <aurora/gfx.h>
 
 extern "C" {
-// runtime/host/src/mouse_camera.h and game_options.h, declared here with plain
-// types: those headers bring in the guest CPU's, which this file has no use for.
-void bluewake_mouse_camera_configure(bool enabled, double sensitivity, bool invert_y);
-void bluewake_mouse_camera_block(bool blocked);
-void bluewake_pad_hold_until_released(void);
-bool bluewake_mouse_camera_captured(void);
-void bluewake_mouse_camera_buttons(const char* map);
+// Host functions declared here with plain types: their headers bring in the
+// guest CPU's, which this file has no use for.
 void bluewake_haptics_reload(void);
-void bluewake_mouse_camera_reload(void);
-void bluewake_climb_reload(void);
-// forest_water.h: BLUEWAKE_FOREST_WATER_KEEP_TREES and _30_MINUTES read again.
 void bluewake_forest_water_reload(void);
-// hd_look.h: BLUEWAKE_HD_LOOK read again.
-void bluewake_hd_look_reload(void);
-// dpad_menus.h: BLUEWAKE_DPAD_MENUS read again.
-void bluewake_dpad_menus_reload(void);
 void bluewake_haptics_block(bool blocked);
 const char* bluewake_game_options_describe(uint32_t position, const char** title, bool* default_on, bool* on);
-// climb.h: the stamina wheel's state for the HUD.
-bool bluewake_climb_hud(float* fraction, bool* exhausted, float* x, float* y, float* aspect, float* alpha);
+bool bluewake_game_options_set(const char* name, bool on);
+bool bluewake_game_options_has(const char* name);
+bool bluewake_host_reset_requested(void); // game_options.c: the game asked for a console reset
+void bluewake_treasure_glow_set(int mode);
+void bluewake_intro_skip_set(bool on);
+void bluewake_pref_switch_targeting_set(bool on);
+void bluewake_pref_remove_videos_set(bool on);
+void bluewake_rando_pref_set(const char* option, bool on);
+void bluewake_dsp_request_mode(int lle);
+void bluewake_fast_load_reload(void);
+void bluewake_quick_doors_reload(void);
+void dol_aurora_audio_set_master_volume(float volume);
+void bluewake_audio_volume_set(int music_percent, int sfx_percent, int fanfare_percent);
+void bluewake_autosave_configure(int interval_minutes, bool on_new_item);
+bool bluewake_autosave_take_done(int* slot, bool* ok);
 }
 
 // Aurora's frame counters (lib/gfx/common.hpp, linked in statically), for the
-// session log: every present, and the game's own frames.
+// session log and Dev Tools: every present, and the game's own frames.
+extern "C" void bluewake_bunny_hood_enable(bool on);
+extern "C" void bluewake_text_swap_enable(bool on);
+extern "C" void bluewake_host_set_pad_unfocused_block(bool block);
+
 namespace aurora::gfx {
 float calculate_fps() noexcept;
 float calculate_game_fps() noexcept;
 }  // namespace aurora::gfx
 
+#define CVAR_SETTING(name) "gSettings." name
+#define CVAR_ENHANCEMENT(name) "gEnhancements." name
+#define CVAR_CHEAT(name) "gCheats." name
+#define CVAR_WINDOW(name) "gOpenWindows." name
+
 namespace {
 
-Settings g_saved;     // as in the file, changed by the menu and hotkeys
-Settings g_session, g_before_edit;
-Settings g_launched;  // as this session started (what a restart would change)
-bw_texture_pack::Counter g_pack_count; // textures in the chosen pack, counted once per menu opening
-std::string g_data_dir, g_path;
-std::vector<wchar_t> g_environment;  // as BlueWake was started, for Restart
+using shipmenu::WidgetInfo;
+using shipmenu::WidgetType;
 
+std::string g_data_dir;
+std::vector<wchar_t> g_environment;  // as the game was started, for Restart
 RestartRequest g_restart;
 bool g_safe_mode;
 bool g_menu_open;
-bool g_stage_select_question; // the menu shows only the stage select's question
+bool g_text_capture;  // the chat line over the game is open: typing is not the game's
 bool g_toggle_menu, g_toggle_fullscreen;  // from the hotkeys, done in the frame
-bool g_dirty;
-Uint64 g_dirty_at, g_first_frame_at;
-bool g_pad_applied;
-SDL_JoystickID g_pad_connection = 0;
+Uint64 g_first_frame_at;
+bool g_placed;
 float g_font_scale = 1.0f;  // the scale the UI font was drawn at (see load_font)
+shipmenu::Menu g_menu;
+bool g_menu_built;
+void sync_live_textures();
+void start_shader_warmup();
 
-const char* const kScaleNames[] = {"The window's own pixels", "1x (640x480)", "2x (1280x960)",
-                                   "3x (1920x1440)", "4x (2560x1920)"};
-const int kAnisotropy[] = {1, 2, 4, 8, 16};
-const char* const kAnisotropyNames[] = {"The game's own", "2x anisotropic", "4x anisotropic", "8x anisotropic",
-                                        "16x anisotropic"};
+constexpr int kAnisotropy[] = {1, 2, 4, 8, 16};
+// Force Aspect Ratio: Off, then the presets; the last (6) is the custom X:Y.
+constexpr float kAspects[] = {0.0f, 4.0f / 3.0f, 1.6f, 16.0f / 9.0f, 21.0f / 9.0f, 32.0f / 9.0f};
+constexpr int kAspectCustom = 6;
+// Pixel Count Presets: the picture's height in pixels.
+constexpr int kPixelPresets[] = {480, 960, 720, 1080, 1440, 2160};
 
-// --- the file ---------------------------------------------------------------
+// Better Wind Waker's options (mods/betterww/options.txt): where each goes in
+// the menu, as SoH would label it.
+struct BetterWwRow {
+    const char* name;
+    const char* sidebar;
+    int column;
+    const char* section;
+    const char* label;
+    const char* tooltip;
+    int def = 0;       // the setting's value when the file has none
+};
+const BetterWwRow kBetterWw[] = {
+    {"tingle_chests", "Quality of Life", 0, "Convenience", "Tingle Chests Without Tuner",
+     "Allows Tingle Chests to be opened with normal Bombs, without the Tingle Tuner."},
+    {"reveal_sea_chart", "Quality of Life", 0, "Convenience", "Reveal Sea Chart (New Files)",
+     "Reveals the whole Sea Chart on new save files."},
+    {"skip_intro_movie", "Skips & Speed-ups", 0, "Cutscenes", "Skip Opening Movie",
+     "Skips the story told when a new game starts (and the one on the title screen): the game goes straight to "
+     "Outset Island."},
+    {"no_song_replays", "Skips & Speed-ups", 0, "Cutscenes", "Skip Song Replays",
+     "Skips the replay of a song after it is played with the Wind Waker."},
+    {"instant_text", "Skips & Speed-ups", 0, "Text", "Instant Text",
+     "Makes text boxes appear at once, and lets holding B advance text as soon as it can."},
+    {"faster_movement", "Skips & Speed-ups", 1, "Animations", "Faster Rolling",
+     "Makes Link's roll faster, as in Wind Waker HD."},
+    {"faster_block_push", "Skips & Speed-ups", 1, "Animations", "Faster Block Pushing",
+     "Speeds up pushing and pulling blocks."},
+    {"faster_animations", "Skips & Speed-ups", 1, "Animations", "Faster Crawling and Climbing",
+     "Speeds up crawling, climbing ladders and vines, and the camera zoom when talking to characters."},
+    {"faster_ballad", "Skips & Speed-ups", 1, "Animations", "Faster Ballad of Gales",
+     "Speeds up the Ballad of Gales warp."},
+    {"swift_sail", "Items", 0, "Sailing", "Swift Sail",
+     "Makes the Sail twice as fast, red, and turns the wind behind the boat whenever the Sail is up, as in "
+     "Wind Waker HD. Red sail textures from the Wind Waker Randomizer."},
+    {"brisk_sail", "Items", 0, "Sailing", "Brisk Sail",
+     "Swift Sail with harder braking. Turns Swift Sail on as well."},
+    {"unrestricted_boat", "Items", 0, "Sailing", "Unrestricted Boat",
+     "Allows the boat to sail into places it normally cannot."},
+    {"faster_grapple", "Items", 1, "Grappling Hook", "Faster Grappling Hook",
+     "Speeds up throwing and pulling in the Grappling Hook."},
+    {"swing_turn", "Items", 1, "Grappling Hook", "Turn While Swinging",
+     "Allows turning with the Control Stick while swinging on the Grappling Hook."},
+    // From wwrando (https://github.com/LagoLunatic/wwrando, MIT) and Better Wind Waker.
+    {"hero_mode", "Quality of Life", 0, "Difficulty", "Hero Mode",
+     "You take double damage, and hearts no longer drop from enemies, pots or grass. From Better Wind Waker's "
+     "Gecko codes, built as wwrando's Hero Mode patch.", 0},
+    {"no_low_hp_beep", "Quality of Life", 0, "Difficulty", "No Low-Health Beep",
+     "Stops the low-health beep with a one-heart maximum, and the low-health animation until two quarter hearts "
+     "are missing. From wwrando.", 0},
+    {"fix_vanilla_bugs", "Quality of Life", 1, "Fixes", "Fix Vanilla Bugs",
+     "Fixes bugs of the original game, as wwrando does: Grandma's soup message crash, the Helmaroc King mask "
+     "shards Hookshot crash, Orca without a sword, Beedle buying Blue Chu Jelly, the Deluxe Picto Box not "
+     "equipping, Morths falling out of bounds, light arrows on Stalfos, Miniblins, Jalhalla's Poes and Magtails, "
+     "Phantom Ganon's trigger, the Skull Hammer guard, the miniboss music that kept playing, and the arrow "
+     "crash.", 1},
+    {"blur_off", "Graphics", 0, "Camera", "Blur Off",
+     "Removes the distance blur. From Better Wind Waker's Gecko codes (Dolphin's Remove Distance Blur).", 0},
+    {"unrestricted_camera", "Graphics", 0, "Camera", "Unrestricted Camera",
+     "Lets the C-Stick camera zoom out farther and tilt higher. From Better Wind Waker's Gecko codes.", 0},
+};
 
-bool parse_bool(const std::string& v) { return v == "1" || v == "true" || v == "on" || v == "yes"; }
+std::string better_ww_cvar(const char* name) { return std::string(CVAR_ENHANCEMENT("BetterWW.")) + name; }
 
-void load_file() {
-    FILE* f = std::fopen(g_path.c_str(), "r");
-    if (f == nullptr)
-        return;
-    char line[512];
-    while (std::fgets(line, sizeof line, f) != nullptr) {
-        std::string s = line;
-        while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' '))
-            s.pop_back();
-        const size_t eq = s.find('=');
-        if (s.empty() || s[0] == '#' || eq == std::string::npos)
-            continue;
-        const std::string k = s.substr(0, eq), v = s.substr(eq + 1);
-        Settings& d = g_saved;
-        if (k == "fullscreen") d.fullscreen = parse_bool(v);
-        else if (k == "window") std::sscanf(v.c_str(), "%dx%d", &d.window_w, &d.window_h);
-        else if (k == "window_position") std::sscanf(v.c_str(), "%d,%d", &d.window_x, &d.window_y);
-        else if (k == "render_scale") d.render_scale = std::clamp(std::atoi(v.c_str()), 0, 4);
-        else if (k == "anisotropy") d.anisotropy = std::clamp(std::atoi(v.c_str()), 1, 16);
-        else if (k == "smooth_motion") d.smooth_motion = parse_bool(v);
-        else if (k == "smooth_motion_fps") d.smooth_steps = v == "display" ? -1 : std::atoi(v.c_str()) >= 120 ? 3 : 1;
-        else if (k == "show_fps") d.show_fps = parse_bool(v);
-        else if (k == "fps_position") d.fps_position = bw_fps_position(v.c_str());
-        else if (k == "pause_unfocused") d.pause_unfocused = parse_bool(v);
-        else if (k == "compile_shaders_first") d.shaders_first = parse_bool(v);
-        else if (k == "mouse_camera") d.mouse_camera = parse_bool(v);
-        else if (k == "mouse_sensitivity") d.mouse_sensitivity = std::clamp(std::atof(v.c_str()), 0.1, 10.0);
-        else if (k == "mouse_invert_y") d.mouse_invert_y = parse_bool(v);
-        else if (k == "controller_swap_ab") d.controller_swap_ab = parse_bool(v);
-        else if (k == "button_map") d.button_map = v;
-        else if (k == "mouse_buttons") d.mouse_buttons = v;
-        else if (k == "key_map") d.key_map = v;
-        else if (k == "controller_swap_xy") d.controller_swap_xy = parse_bool(v);
-        else if (k == "controller_swap_lr") d.controller_swap_lr = parse_bool(v);
-        else if (k == "dpad_menus") d.dpad_menus = parse_bool(v);
-        else if (k == "controller_invert_x") d.pad_invert_x = parse_bool(v);
-        else if (k == "controller_invert_y") d.pad_invert_y = parse_bool(v);
-        else if (k == "stick_camera") d.stick_camera = parse_bool(v);
-        else if (k == "stick_camera_speed") d.stick_speed = std::clamp(std::atoi(v.c_str()), 60, 1080);
-        else if (k == "stick_aim_speed") d.stick_aim_speed = std::clamp(std::atoi(v.c_str()), 30, 720);
-        else if (k == "stick_zoom") d.stick_zoom = parse_bool(v);
-        else if (k == "stick_zoom_speed") d.stick_zoom_speed = std::clamp(std::atof(v.c_str()), 0.25, 2.0);
-        else if (k == "aim_invert_y") d.aim_invert_y = parse_bool(v);
-        else if (k == "gyro_aim") d.gyro_aim = parse_bool(v);
-        else if (k == "gyro_aim_speed") d.gyro_aim_speed = std::clamp(std::atof(v.c_str()), 0.25, 4.0);
-        else if (k == "climb") d.climb = parse_bool(v);
-        else if (k == "climb_stamina") d.climb_stamina = std::clamp(std::atoi(v.c_str()), 4, 30);
-        else if (k == "forest_water_keep_trees") d.forest_keep_trees = parse_bool(v);
-        else if (k == "forest_water_30_minutes") d.forest_30_minutes = parse_bool(v);
-        else if (k == "hd_look") d.hd_look = parse_bool(v);
-        else if (k == "haptics") d.haptics = v == "off" ? 0 : v == "classic" ? 1 : 2;
-        else if (k == "haptics_strength") d.haptics_strength = std::clamp(std::atoi(v.c_str()), 0, 100);
-        else if (k == "haptics_triggers") d.haptics_triggers = parse_bool(v);
-        else if (k == "aspect") d.aspect = (v == "16:9" || v == "16:10" || v == "21:9") ? v : "4:3";
-        else if (k == "keep_aspect") d.keep_aspect = parse_bool(v);
-        else if (k == "picto_crop") d.picto_crop = parse_bool(v);
-        else if (k == "betterww") d.betterww = parse_bool(v);
-        else if (k.rfind("option.", 0) == 0) d.options[k.substr(7)] = parse_bool(v);
-        else if (k == "hd_textures") d.hd_textures = parse_bool(v);
-        else if (k == "texture_pack") d.texture_pack = v;
-        else if (k == "lle_audio") d.lle_audio = parse_bool(v);
-        else if (k == "movement_extras") d.movement_extras = parse_bool(v);
-        else if (k == "sprint_speed") d.sprint_speed = std::clamp(std::atof(v.c_str()), 1.1, 2.0);
-        else if (k == "fast_transitions") d.fast_transitions = parse_bool(v);
-        else if (k == "quick_doors") d.quick_doors = parse_bool(v);
-        else if (k == "stage_select") d.stage_select = parse_bool(v);
-    }
-    std::fclose(f);
-}
-
-void save_file() {
-    g_dirty_at = SDL_GetTicks(); // back off after failures rather than retry every frame
-    char* pending = bw_atomic_path(g_path.c_str());
-    FILE* f = pending != nullptr ? std::fopen(pending, "w") : nullptr;
-    if (f == nullptr) { free(pending); return; }
-    const Settings& d = g_saved;
-    std::fprintf(f, "# BlueWake settings (the in-game menu, F1, writes this file)\n");
-    std::fprintf(f, "fullscreen=%d\n", d.fullscreen);
-    if (d.window_w > 0 && d.window_h > 0)
-        std::fprintf(f, "window=%dx%d\n", d.window_w, d.window_h);
-    if (d.window_x != INT_MIN && d.window_y != INT_MIN)
-        std::fprintf(f, "window_position=%d,%d\n", d.window_x, d.window_y);
-    std::fprintf(f, "render_scale=%d\nanisotropy=%d\nsmooth_motion=%d\nshow_fps=%d\npause_unfocused=%d\n",
-                 d.render_scale, d.anisotropy, d.smooth_motion, d.show_fps, d.pause_unfocused);
-    std::fprintf(f, "fps_position=%s\n", kBwFpsPositionValues[d.fps_position]);
-    std::fprintf(f, "compile_shaders_first=%d\n", d.shaders_first);
-    std::fprintf(f, "smooth_motion_fps=%s\n", d.smooth_steps == -1 ? "display" : d.smooth_steps >= 3 ? "120" : "60");
-    std::fprintf(f, "mouse_camera=%d\nmouse_sensitivity=%.2f\nmouse_invert_y=%d\n", d.mouse_camera,
-                 d.mouse_sensitivity, d.mouse_invert_y);
-    std::fprintf(f, "controller_swap_ab=%d\ncontroller_swap_xy=%d\n", d.controller_swap_ab, d.controller_swap_xy);
-    std::fprintf(f, "controller_swap_lr=%d\n", d.controller_swap_lr);
-    std::fprintf(f, "dpad_menus=%d\n", d.dpad_menus);
-    if (!d.button_map.empty())
-        std::fprintf(f, "button_map=%s\n", d.button_map.c_str());
-    if (!d.mouse_buttons.empty())
-        std::fprintf(f, "mouse_buttons=%s\n", d.mouse_buttons.c_str());
-    if (!d.key_map.empty())
-        std::fprintf(f, "key_map=%s\n", d.key_map.c_str());
-    std::fprintf(f, "controller_invert_x=%d\ncontroller_invert_y=%d\n", d.pad_invert_x, d.pad_invert_y);
-    std::fprintf(f, "stick_camera=%d\nstick_camera_speed=%d\nstick_aim_speed=%d\n", d.stick_camera, d.stick_speed,
-                 d.stick_aim_speed);
-    std::fprintf(f, "stick_zoom=%d\nstick_zoom_speed=%.3f\n", d.stick_zoom, d.stick_zoom_speed);
-    std::fprintf(f, "aim_invert_y=%d\n", d.aim_invert_y);
-    std::fprintf(f, "gyro_aim=%d\ngyro_aim_speed=%.2f\n", d.gyro_aim, d.gyro_aim_speed);
-    std::fprintf(f, "climb=%d\nclimb_stamina=%d\n", d.climb, d.climb_stamina);
-    std::fprintf(f, "forest_water_keep_trees=%d\nforest_water_30_minutes=%d\n", d.forest_keep_trees,
-                 d.forest_30_minutes);
-    std::fprintf(f, "hd_look=%d\n", d.hd_look);
-    if (!d.texture_pack.empty())
-        std::fprintf(f, "texture_pack=%s\n", d.texture_pack.c_str());
-    std::fprintf(f, "haptics=%s\nhaptics_strength=%d\nhaptics_triggers=%d\n",
-                 d.haptics == 0 ? "off" : d.haptics == 1 ? "classic" : "enhanced",
-                 d.haptics_strength, d.haptics_triggers);
-    std::fprintf(f, "aspect=%s\nkeep_aspect=%d\nbetterww=%d\nhd_textures=%d\nlle_audio=%d\n", d.aspect.c_str(),
-                 d.keep_aspect, d.betterww, d.hd_textures, d.lle_audio);
-    if (d.picto_crop)
-        std::fprintf(f, "picto_crop=1\n");
-    for (const auto& [name, on] : d.options)
-        std::fprintf(f, "option.%s=%d\n", name.c_str(), on);
-    std::fprintf(f, "movement_extras=%d\nsprint_speed=%.2f\nfast_transitions=%d\nquick_doors=%d\n",
-                 d.movement_extras, d.sprint_speed, d.fast_transitions, d.quick_doors);
-    std::fprintf(f, "stage_select=%d\n", d.stage_select);
-    const bool ok = bw_atomic_finish_dirty(f, pending, g_path.c_str(), &g_dirty);
-    free(pending);
-    if (!ok) std::fprintf(stderr, "[settings] save failed; previous file kept, retry pending\n");
-}
-
-void changed() {
-    bw_settings_keep_edits(g_saved, g_before_edit, g_session);
-    g_before_edit = g_session;
-    g_dirty = true;
-    g_dirty_at = SDL_GetTicks();
-}
+void changed() { CVarSaveNextFrame(); }
 
 // --- the launch -------------------------------------------------------------
 
@@ -268,13 +222,9 @@ void env_default(const char* name, const std::string& value) {
         _putenv_s(name, value.c_str());
 }
 
-double aspect_ratio(const std::string& aspect) {
-    return aspect == "16:9" ? 16.0 / 9.0 : aspect == "16:10" ? 1.6 : aspect == "21:9" ? 21.0 / 9.0 : 4.0 / 3.0;
-}
-
 // A window a good size for this screen: the tallest multiple of 240 lines that
-// fits in 80 percent of the primary screen's work area, at the picture's shape.
-void default_window(double ratio, int* w, int* h) {
+// fits in 80 percent of the primary screen's work area, at 4:3.
+void default_window(int* w, int* h) {
     MONITORINFO info{};
     info.cbSize = sizeof info;
     int work_w = 1280, work_h = 1024;
@@ -283,19 +233,46 @@ void default_window(double ratio, int* w, int* h) {
         work_h = info.rcWork.bottom - info.rcWork.top;
     }
     int height = std::max(480, static_cast<int>(work_h * 0.8) / 240 * 240);
-    int width = static_cast<int>(std::lround(height * ratio));
+    int width = height * 4 / 3;
     if (width > work_w * 9 / 10) {
         width = work_w * 9 / 10;
-        height = static_cast<int>(width / ratio);
+        height = width * 3 / 4;
     }
     *w = width;
     *h = height;
 }
 
-std::string texture_folder() { return g_data_dir + "Load\\Textures\\GZLE01"; }
-// The folder the pack is loaded from: the one chosen, else texture_folder().
-std::string texture_pack_folder(const Settings& d) {
-    return d.texture_pack.empty() ? texture_folder() : d.texture_pack;
+// BLUEWAKE_TEXTURES_DIR (testing): another folder of texture packs.
+std::string texture_folder() {
+    if (const char* dir = std::getenv("BLUEWAKE_TEXTURES_DIR"); dir != nullptr && dir[0] != '\0')
+        return dir;
+    return g_data_dir + "mods\\textures";
+}
+
+// The executable's folder, ending in a separator.
+std::string exe_folder() {
+    char path[MAX_PATH * 2];
+    const DWORD length = GetModuleFileNameA(nullptr, path, sizeof path);
+    if (length == 0 || length >= sizeof path)
+        return g_data_dir;
+    std::string folder(path, length);
+    return folder.substr(0, folder.find_last_of("\\/") + 1);
+}
+
+// Internal Resolution is a percentage of the window's pixels, as in SoH. The
+// renderer takes a multiple of the game's 480 lines (0: the window's own).
+float render_scale_for(int pixel_height) {
+    // Set Fixed Vertical Resolution: that many lines whatever the window.
+    if (CVarGetInteger(CVAR_SETTING("Graphics.FixedVerticalResolution"), 0))
+        return static_cast<float>(std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.VerticalResolution"), 480), 240, 4320)) /
+               480.0f;
+    // Pixel Perfect Mode: the game's own 480 lines, shown at a whole multiple.
+    if (CVarGetInteger(CVAR_SETTING("Graphics.PixelPerfect"), 0))
+        return 1.0f;
+    const int percent = CVarGetInteger(CVAR_SETTING("Graphics.InternalResolution"), 100);
+    if (percent == 100 || pixel_height <= 0)
+        return 0.0f;
+    return static_cast<float>(pixel_height) * static_cast<float>(percent) / 100.0f / 480.0f;
 }
 
 // --- the window -------------------------------------------------------------
@@ -310,25 +287,35 @@ SDL_Window* game_window() {
 
 bool is_fullscreen(SDL_Window* w) { return (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN) != 0; }
 
-// Fullscreen for this session only: whether the game starts in fullscreen is
-// its own setting (fullscreen= in settings.ini), so trying fullscreen never
-// changes how the game starts (#320).
 void set_fullscreen(SDL_Window* w, bool on) {
     if (w == nullptr)
         return;
     SDL_SetWindowFullscreen(w, on);
+    CVarSetInteger(CVAR_SETTING("Graphics.Fullscreen"), on ? 1 : 0);
+    changed();
     std::fprintf(stderr, "[windows] fullscreen %s\n", on ? "on" : "off");
 }
 
-// Whether a window whose client area starts at (x, y) has its title bar and
-// its top left on a connected monitor. Asked at launch, before the window
-// exists, so Win32's rather than SDL's; the manifest makes BlueWake per-monitor
-// DPI aware, so these are the pixels SDL saved the position in.
-bool on_a_monitor(int x, int y) {
-    const POINT title{x + 60, y - 16};
-    const POINT corner{x + 60, y + 60};
-    return MonitorFromPoint(title, MONITOR_DEFAULTTONULL) != nullptr &&
-           MonitorFromPoint(corner, MONITOR_DEFAULTTONULL) != nullptr;
+// Once the window exists: where it was last time, if that is still on a
+// screen with its title bar showing, else centred.
+void place_window(SDL_Window* w) {
+    if (is_fullscreen(w))
+        return;
+    if (std::getenv("BLUEWAKE_WINDOW_POS") != nullptr)
+        return; // a test run's place (window.cpp)
+    const int x = CVarGetInteger(CVAR_SETTING("Window.X"), INT_MIN);
+    const int y = CVarGetInteger(CVAR_SETTING("Window.Y"), INT_MIN);
+    bool restored = false;
+    if (x != INT_MIN && y != INT_MIN) {
+        const SDL_Point title{x + 60, y - 16};
+        const SDL_Point corner{x + 60, y + 60};
+        if (SDL_GetDisplayForPoint(&title) != 0 && SDL_GetDisplayForPoint(&corner) != 0) {
+            SDL_SetWindowPosition(w, x, y);
+            restored = true;
+        }
+    }
+    if (!restored)
+        SDL_SetWindowPosition(w, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
 
 // Remember the window's place and size as the player leaves them.
@@ -339,21 +326,13 @@ void track_window(SDL_Window* w) {
     int x = 0, y = 0, width = 0, height = 0;
     if (!SDL_GetWindowPosition(w, &x, &y) || !SDL_GetWindowSize(w, &width, &height))
         return;
-    Settings& d = g_session;
-    static bool first = true;
-    if (first) {
-        first = false;
-        d.window_x = g_before_edit.window_x = x;
-        d.window_y = g_before_edit.window_y = y;
-        d.window_w = g_before_edit.window_w = width;
-        d.window_h = g_before_edit.window_h = height;
-        return;
-    }
-    if (x != d.window_x || y != d.window_y || width != d.window_w || height != d.window_h) {
-        d.window_x = x;
-        d.window_y = y;
-        d.window_w = width;
-        d.window_h = height;
+    if (x != CVarGetInteger(CVAR_SETTING("Window.X"), INT_MIN) || y != CVarGetInteger(CVAR_SETTING("Window.Y"), INT_MIN) ||
+        width != CVarGetInteger(CVAR_SETTING("Window.Width"), 0) ||
+        height != CVarGetInteger(CVAR_SETTING("Window.Height"), 0)) {
+        CVarSetInteger(CVAR_SETTING("Window.X"), x);
+        CVarSetInteger(CVAR_SETTING("Window.Y"), y);
+        CVarSetInteger(CVAR_SETTING("Window.Width"), width);
+        CVarSetInteger(CVAR_SETTING("Window.Height"), height);
         changed();
     }
 }
@@ -364,158 +343,280 @@ void reset_window(SDL_Window* w) {
     if (is_fullscreen(w))
         set_fullscreen(w, false);
     int width = 0, height = 0;
-    default_window(aspect_ratio(g_launched.aspect), &width, &height);
+    default_window(&width, &height);
     SDL_SetWindowSize(w, width, height);
     SDL_SetWindowPosition(w, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
 
 // --- settings that apply at once ------------------------------------------------
 
-// A controller's camera stick, inverted as asked, as the iOS app does it
-// (apple/ios/src/controller_apply.cpp). Only touched once the player inverts
-// an axis, so a mapping set elsewhere is otherwise left alone.
-void apply_controller() {
-    const Settings& d = g_session;
-    BwButtonMap map;
-    const bool remapped = bw_button_map_parse(d.button_map, &map);
-    if (!d.pad_invert_x && !d.pad_invert_y && !d.controller_swap_ab && !d.controller_swap_xy &&
-        !d.controller_swap_lr && !remapped && !g_pad_applied)
-        return;
-    if (PADGetIndexForPort(0) < 0)
-        return;
-    PADRestoreDefaultMapping(0);
-    // A custom layout replaces the swaps; otherwise the swaps as before.
-    if (remapped)
-        bw_apply_button_map(0, map);
-    else
-        bw_apply_face_swaps(0, d.controller_swap_ab, d.controller_swap_xy);
-    bw_apply_camera_axes(0, d.pad_invert_x, d.pad_invert_y);
-    bw_apply_trigger_swap(0, d.controller_swap_lr);
-    g_pad_applied = true;
-}
+// The camera inversion on every port's mapping (input_editor.cpp).
+void apply_controller() { input_editor::ApplyCamera(); }
 
-// The keyboard's keys for the GameCube buttons (input_remap.h), applied once
-// the pad's keyboard bindings exist and again whenever they change.
-void apply_key_map() {
-    static bool applied = false;
-    static std::string last;
-    const std::string& text = g_session.key_map;
-    if (applied && text == last)
-        return;
-    BwKeyMap map;
-    bw_key_map_parse(text, &map);
-    if (bw_apply_key_map(0, map)) {
-        applied = true;
-        last = text;
-    }
-}
+const char* rumble_name(int mode) { return mode == 0 ? "off" : mode == 1 ? "classic" : "enhanced"; }
 
-// Adapted from Elliott Tate's display-rate selection; resolve the current
-// session so a command-line override never changes a saved preference.
-float display_refresh(SDL_Window* window) {
-    const SDL_DisplayMode* mode = window != nullptr ? SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)) : nullptr;
-    return mode != nullptr ? mode->refresh_rate : 0.f;
-}
-
-void apply_smooth_rate(SDL_Window* window) {
-    aurora_set_frame_interp_steps(bw_smooth_steps(g_session.smooth_steps, display_refresh(window)));
-}
-
-void apply_fps_position() {
-    aurora_set_fps_overlay_position(static_cast<AuroraFpsOverlayPosition>(g_session.fps_position));
-}
-
-const char* haptics_name(int mode) { return mode == 0 ? "off" : mode == 1 ? "classic" : "enhanced"; }
-
-void apply_haptics() {
-    const Settings& d = g_session;
-    _putenv_s("BLUEWAKE_HAPTICS", haptics_name(d.haptics));
-    _putenv_s("BLUEWAKE_HAPTICS_STRENGTH", std::to_string(d.haptics_strength).c_str());
-    _putenv_s("BLUEWAKE_HAPTICS_TRIGGERS", d.haptics_triggers ? "1" : "0");
+void apply_rumble() {
+    _putenv_s("BLUEWAKE_HAPTICS", rumble_name(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1)));
+    _putenv_s("BLUEWAKE_HAPTICS_STRENGTH",
+              std::to_string(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Strength"), 80)).c_str());
+    _putenv_s("BLUEWAKE_HAPTICS_TRIGGERS", CVarGetInteger(CVAR_SETTING("Controls.Rumble.Triggers"), 1) ? "1" : "0");
     bluewake_haptics_reload();
 }
 
-// The fast right-stick camera reads the controller through SDL itself, so the
-// controller's inversion (apply_controller, for the game's own C-stick) is its
-// BLUEWAKE_STICK_CAMERA_INVERT_X and _Y too (as in Elliott Tate's Windows menu).
-void apply_stick() {
-    const Settings& d = g_session;
-    _putenv_s("BLUEWAKE_STICK_CAMERA", d.stick_camera ? "1" : "0");
-    _putenv_s("BLUEWAKE_STICK_CAMERA_SPEED", std::to_string(d.stick_speed).c_str());
-    _putenv_s("BLUEWAKE_STICK_AIM_SPEED", std::to_string(d.stick_aim_speed).c_str());
-    _putenv_s("BLUEWAKE_STICK_ZOOM", d.stick_zoom ? "1" : "0");
-    _putenv_s("BLUEWAKE_STICK_ZOOM_SPEED", std::to_string(d.stick_zoom_speed).c_str());
-    _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_X", d.pad_invert_x ? "1" : "0");
-    _putenv_s("BLUEWAKE_STICK_CAMERA_INVERT_Y", d.pad_invert_y ? "1" : "0");
-    _putenv_s("BLUEWAKE_AIM_INVERT_Y", d.aim_invert_y ? "1" : "0");
-    _putenv_s("BLUEWAKE_GYRO_AIM", d.gyro_aim ? "1" : "0");
-    _putenv_s("BLUEWAKE_GYRO_AIM_SPEED", std::to_string(d.gyro_aim_speed).c_str());
-    bluewake_mouse_camera_reload();
-}
-
-void apply_climb() {
-    const Settings& d = g_session;
-    _putenv_s("BLUEWAKE_CLIMB", d.climb ? "1" : "0");
-    _putenv_s("BLUEWAKE_CLIMB_STAMINA", std::to_string(d.climb_stamina).c_str());
-    bluewake_climb_reload();
-}
-
 void apply_forest_water() {
-    const Settings& d = g_session;
-    _putenv_s("BLUEWAKE_FOREST_WATER_KEEP_TREES", d.forest_keep_trees ? "1" : "0");
-    _putenv_s("BLUEWAKE_FOREST_WATER_30_MINUTES", d.forest_30_minutes ? "1" : "0");
+    _putenv_s("BLUEWAKE_FOREST_WATER_KEEP_TREES", CVarGetInteger(CVAR_ENHANCEMENT("KeepWateredTrees"), 0) ? "1" : "0");
+    _putenv_s("BLUEWAKE_FOREST_WATER_30_MINUTES",
+              CVarGetInteger(CVAR_ENHANCEMENT("LongerForestWaterTimer"), 0) ? "1" : "0");
     bluewake_forest_water_reload();
 }
 
-void apply_hd_look() {
-    _putenv_s("BLUEWAKE_HD_LOOK", g_session.hd_look ? "1" : "0");
-    bluewake_hd_look_reload();
+void apply_resolution(SDL_Window* w) {
+    int pw = 0, ph = 0;
+    if (w != nullptr)
+        SDL_GetWindowSizeInPixels(w, &pw, &ph);
+    aurora_set_frame_buffer_scale(render_scale_for(ph));
 }
 
-void apply_dpad_menus() {
-    _putenv_s("BLUEWAKE_DPAD_MENUS", g_session.dpad_menus ? "1" : "0");
-    bluewake_dpad_menus_reload();
+// Interpolation FPS (SoH's Settings > Graphics > Current FPS): the game runs at
+// 30 frames a second; above 30, frames are made between its frames (Aurora's
+// frame interpolation, n in-between frames for 30 * (n + 1)). 30 is off.
+void apply_interpolation() {
+    const int fps = std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.InterpolationFPS"), 30), 30, 240);
+    const int steps = fps / 30 - 1;
+    if (steps > 0)
+        aurora_set_frame_interp_steps(steps);
+    aurora_set_frame_interpolation(steps > 0);
 }
 
-void apply_live() {
-    const Settings& d = g_session;
-    aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
-    aurora_set_forced_anisotropy(static_cast<unsigned>(d.anisotropy));
-    apply_smooth_rate(game_window());
-    aurora_set_frame_interpolation(d.smooth_motion);
-    aurora_set_fps_overlay(d.show_fps);
-    apply_fps_position();
-    aurora_set_pause_on_focus_lost(d.pause_unfocused);
-    bluewake_mouse_camera_configure(d.mouse_camera, d.mouse_sensitivity, d.mouse_invert_y);
-    bluewake_mouse_camera_buttons(d.mouse_buttons.c_str());
+// The PC's hardware, read at launch: written to the session log every time, and on the first launch (no Interpolation
+// FPS saved yet) it picks Interpolation FPS. Frames between the game's run on worker threads beside the game thread,
+// so a 4-core laptop at 120 starved the game itself (a friend's log, 2026-10-12).
+struct Hardware {
+    int cores = 0, threads = 0, ram_gb = 0, hz = 60;
+    std::string gpus;
+};
+
+Hardware read_hardware(SDL_Window* w) {
+    Hardware hw;
+    DWORD bytes = 0;
+    GetLogicalProcessorInformation(nullptr, &bytes);
+    std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> info(bytes / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    if (!info.empty() && GetLogicalProcessorInformation(info.data(), &bytes))
+        for (const auto& i : info)
+            if (i.Relationship == RelationProcessorCore) {
+                ++hw.cores;
+                for (ULONG_PTR m = i.ProcessorMask; m != 0; m &= m - 1)
+                    ++hw.threads;
+            }
+    if (hw.cores == 0)
+        hw.cores = hw.threads = static_cast<int>(std::thread::hardware_concurrency());
+    MEMORYSTATUSEX mem{sizeof mem};
+    if (GlobalMemoryStatusEx(&mem))
+        hw.ram_gb = static_cast<int>((mem.ullTotalPhys + (512ull << 20)) >> 30);
+    if (w != nullptr)
+        if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(w)))
+            if (mode->refresh_rate > 0.f)
+                hw.hz = static_cast<int>(mode->refresh_rate + 0.5f);
+    DISPLAY_DEVICEA dev{sizeof dev};
+    std::vector<std::string> seen;
+    for (DWORD i = 0; EnumDisplayDevicesA(nullptr, i, &dev, 0); ++i, dev.cb = sizeof dev)
+        if (std::find(seen.begin(), seen.end(), dev.DeviceString) == seen.end()) {
+            seen.emplace_back(dev.DeviceString);
+            hw.gpus += (hw.gpus.empty() ? "" : " + ") + seen.back();
+        }
+    return hw;
+}
+
+// 6+ cores: the display's rate up to 120; 4-5 cores: up to 60; fewer: 30 (off).
+int recommended_interpolation(const Hardware& hw) {
+    const int cap = hw.cores >= 6 ? 120 : hw.cores >= 4 ? 60 : 30;
+    return std::clamp(std::min(hw.hz, cap) / 30 * 30, 30, 240);
+}
+
+void profile_hardware(SDL_Window* w, bool apply) {
+    const Hardware hw = read_hardware(w);
+    const int rec = recommended_interpolation(hw);
+    const char* key = CVAR_SETTING("Graphics.InterpolationFPS");
+    // Automated runs (scenarios, the release check) keep the default, so their timing stays comparable.
+    const bool first = !CVarExists(key) && std::getenv("BLUEWAKE_NO_DIALOG") == nullptr;
+    std::fprintf(stderr, "[hw] %d cores / %d threads, %d GB RAM, display %d Hz, GPU %s; recommended Interpolation FPS %d%s\n",
+                 hw.cores, hw.threads, hw.ram_gb, hw.hz, hw.gpus.c_str(), rec,
+                 first ? " (first launch: set)" : "");
+    if (!first && !apply) {
+        const int fps = CVarGetInteger(key, 30);
+        if (fps > rec)
+            std::fprintf(stderr, "[hw] Interpolation FPS %d is above the recommended %d for this PC\n", fps, rec);
+        return;
+    }
+    CVarSetInteger(key, rec);
+    CVarSaveNextFrame();
+    notifications::Options o;
+    o.prefix = "Graphics";
+    o.message = "Interpolation FPS set to " + std::to_string(rec) + " for this PC (Settings > Graphics).";
+    notifications::Emit(std::move(o));
+}
+
+// The aspect the picture is held to (0: it fills the window). Widescreen Off
+// is the game's own 4:3; otherwise Force Aspect Ratio decides.
+float picture_aspect() {
+    if (!CVarGetInteger(CVAR_SETTING("Graphics.Widescreen"), 1))
+        return 4.0f / 3.0f;
+    const int aspect = std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.ForceAspectRatio"), 0), 0, kAspectCustom);
+    if (aspect == kAspectCustom) {
+        const int x = std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.AspectRatioX"), 16), 1, 64);
+        const int y = std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.AspectRatioY"), 9), 1, 64);
+        return static_cast<float>(x) / static_cast<float>(y);
+    }
+    return kAspects[aspect];
+}
+
+void apply_graphics(SDL_Window* w) {
+    apply_resolution(w);
+    apply_interpolation();
+    const int aniso = CVarGetInteger(CVAR_SETTING("Graphics.Anisotropy"), 0);
+    aurora_set_forced_anisotropy(static_cast<unsigned>(kAnisotropy[std::clamp(aniso, 0, 4)]));
+    aurora_enable_vsync(CVarGetInteger(CVAR_SETTING("Graphics.Vsync"), 1) != 0);
+    aurora_set_fps_overlay(CVarGetInteger(CVAR_SETTING("Graphics.ShowFPS"), 0) != 0);
+    aurora_set_frame_buffer_aspect(picture_aspect());
+    aurora_set_integer_scale(!CVarGetInteger(CVAR_SETTING("Graphics.PixelPerfect"), 0)           ? 0
+                             : CVarGetInteger(CVAR_SETTING("Graphics.AutoIntegerScale"), 1) != 0 ? -1
+                             : std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.IntegerScaleFactor"), 2), 1, 10));
+    aurora_set_resampler(CVarGetInteger(CVAR_SETTING("Graphics.OutputResampling"), 1) ? SAMPLER_AREA : SAMPLER_BILINEAR);
+}
+
+void apply_audio() {
+    dol_aurora_audio_set_master_volume(
+        static_cast<float>(std::clamp(CVarGetInteger(CVAR_SETTING("Audio.MasterVolume"), 100), 0, 100)) / 100.0f);
+    // The three category volumes are made in the game's own audio (runtime/host/src/audio_volume.c).
+    bluewake_audio_volume_set(CVarGetInteger(CVAR_SETTING("Audio.MusicVolume"), 100),
+                              CVarGetInteger(CVAR_SETTING("Audio.SfxVolume"), 100),
+                              CVarGetInteger(CVAR_SETTING("Audio.FanfareVolume"), 100));
+}
+
+// Enhancements > Autosave: the host saves the way the pause menu does (runtime/host/src/autosave.c).
+void apply_autosave() {
+    bluewake_autosave_configure(std::clamp(CVarGetInteger(CVAR_ENHANCEMENT("Autosave.Minutes"), 0), 0, 30),
+                                CVarGetInteger(CVAR_ENHANCEMENT("Autosave.OnNewItem"), 0) != 0);
+}
+
+// Once a frame: a save the host has finished is a toast (and, in a randomizer session, the file's seed noted).
+void poll_autosave() {
+    int slot = 0;
+    bool ok = false;
+    while (bluewake_autosave_take_done(&slot, &ok)) {
+        notifications::Options o;
+        o.prefix = "Autosave";
+        o.prefixColor = ok ? ImVec4(0.5f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.5f, 0.5f, 1.0f);
+        o.message = ok ? "Saved" : "Could not save";
+        o.suffix = "file " + std::to_string(slot + 1);
+        o.suffixColor = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+        notifications::Emit(std::move(o));
+        if (ok)
+            randoflow::OnSaved(slot);
+    }
+}
+
+// Faster Transitions and Quick Doors: the host's switches, read again.
+void apply_fast_transitions() {
+    const bool fast = CVarGetInteger(CVAR_ENHANCEMENT("FasterTransitions"), 0) != 0;
+    _putenv_s("BLUEWAKE_FAST_FORWARD", fast ? "1" : "0");
+    _putenv_s("BLUEWAKE_FADE_FRAMES", fast ? "6" : "0");
+    bluewake_fast_load_reload();
+    std::fprintf(stderr, "[settings] faster transitions %s\n", fast ? "on" : "off");
+}
+
+void apply_quick_doors() {
+    const bool on = CVarGetInteger(CVAR_ENHANCEMENT("QuickDoors"), 0) != 0;
+    _putenv_s("BLUEWAKE_QUICK_DOORS", on ? "1" : "0");
+    bluewake_quick_doors_reload();
+    std::fprintf(stderr, "[settings] quick doors %s\n", on ? "on" : "off");
+}
+
+// A Better Wind Waker switch that works on the running game (its instructions
+// and values are switched in the translated code).
+bool better_ww_wanted(const char* name) {
+    int def = 0;
+    for (const auto& row : kBetterWw)
+        if (std::strcmp(row.name, name) == 0)
+            def = row.def;
+    return CVarGetInteger(better_ww_cvar(name).c_str(), def) != 0;
+}
+
+bool is_sail_option(const char* name) {
+    return std::strcmp(name, "swift_sail") == 0 || std::strcmp(name, "brisk_sail") == 0;
+}
+
+// Brisk Sail is Swift Sail with harder braking, so it needs Swift Sail's sites:
+// they run when either is chosen (the host does the same at launch). Their
+// red textures follow in sync_live_textures.
+void apply_sail_options() {
+    const bool brisk = better_ww_wanted("brisk_sail");
+    bluewake_game_options_set("brisk_sail", brisk);
+    bluewake_game_options_set("swift_sail", brisk || better_ww_wanted("swift_sail"));
+}
+
+void apply_better_ww(const char* name) {
+    if (is_sail_option(name))
+        apply_sail_options();
+    else
+        bluewake_game_options_set(name, better_ww_wanted(name));
+}
+
+// The player's preferences that used to sit in the Randomizer page: they follow the settings in every session (vanilla and
+// randomizer), the seed's own values are put aside (runtime/host/src/rando_host.c).
+void apply_preferences() {
+    bluewake_pref_switch_targeting_set(CVarGetInteger(CVAR_SETTING("Controls.SwitchTargeting"), 0) != 0);
+    bluewake_rando_pref_set("switch_targeting_mode", CVarGetInteger(CVAR_SETTING("Controls.SwitchTargeting"), 0) != 0);
+    bluewake_pref_remove_videos_set(CVarGetInteger(CVAR_ENHANCEMENT("RemoveTitleAndEndingVideos"), 0) != 0);
+    bluewake_rando_pref_set("invert_sea_compass_x_axis", CVarGetInteger(CVAR_ENHANCEMENT("InvertSeaCompassX"), 0) != 0);
+    // Music is a volume now (Audio > Music Volume, 0 = none), made in the game's audio at any moment. The seed's own
+    // wwrando "remove music" patch is therefore kept off in every session: the player's slider decides.
+    bluewake_rando_pref_set("remove_music", false);
+    bluewake_game_options_set("invert_sea_compass_x", CVarGetInteger(CVAR_ENHANCEMENT("InvertSeaCompassX"), 0) != 0);
+}
+
+// Tooltips of the two preferences whose code sites a vanilla session needs a module built with them for.
+void module_tooltip(WidgetInfo& wi, const char* text, const char* option) {
+    wi.tooltip = std::string(text) + "\n\n" + (bluewake_game_options_has(option)
+        ? "Works in vanilla and randomizer sessions."
+        : "Randomizer sessions only: this game module has no switch for it yet.");
+}
+
+void apply_port_options() {
+    apply_preferences();
+    for (const auto& row : kBetterWw)
+        if (!is_sail_option(row.name))
+            bluewake_game_options_set(row.name, CVarGetInteger(better_ww_cvar(row.name).c_str(), row.def) != 0);
+    apply_sail_options();
+    apply_autosave();
+    bluewake_game_options_set("widescreen_culling", CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 1) != 0);
+    bluewake_game_options_set("hud_edges", CVarGetInteger(CVAR_ENHANCEMENT("HudAtScreenEdges"), 1) != 0);
+}
+
+void apply_live(SDL_Window* w) {
+    apply_graphics(w);
+    apply_audio();
+    aurora_set_pause_on_focus_lost(CVarGetInteger(CVAR_SETTING("PauseOnFocusLost"), 0) != 0);
+    aurora_set_background_input(CVarGetInteger(CVAR_SETTING("AllowBackgroundInputs"), 1) != 0);
     apply_controller();
-    apply_stick();
-    apply_climb();
+    apply_rumble();
     apply_forest_water();
-    apply_hd_look();
-    apply_dpad_menus();
+    apply_port_options();
+    bluewake_text_swap_enable(CVarGetInteger(CVAR_ENHANCEMENT("Crenando"), 0) != 0);
+    cosmetics::ApplyAll();
 }
 
 void set_menu_open(bool open) {
     if (open == g_menu_open)
         return;
     g_menu_open = open;
-    if (open)
-        g_pack_count.forget();
-    if (!open && g_stage_select_question) {
-        g_stage_select_question = false;
-        bluewake_stage_select_answer(false); // closed without an answer: cancel
-    }
-    PADBlockInput(open);
+    PADBlockInput(open || g_text_capture);
     // The menu's keys and clicks are not the game's.
-    PADSetKeyboardActive(0, open ? FALSE : TRUE);
-    bluewake_mouse_camera_block(open);
+    input_editor::ApplyKeyboard(open || g_text_capture);
     bluewake_haptics_block(open);
-    if (!open)
-        bluewake_pad_hold_until_released();
     std::fprintf(stderr, "[windows] settings menu %s\n", open ? "open" : "closed");
-    if (!open && g_dirty)
-        save_file();
+    if (!open)
+        CVarSave();
 }
 
 void open_folder(const std::string& path) {
@@ -525,17 +626,42 @@ void open_folder(const std::string& path) {
         ShellExecuteW(nullptr, L"open", wide, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void restart() {
-    if (g_dirty) save_file();
-    bool ok = g_restart.request(!g_dirty, [] {
-        SDL_Event quit{};
-        quit.type = SDL_EVENT_QUIT;
-        return SDL_PushEvent(&quit);
-    });
-    if (!ok) std::fprintf(stderr, "[windows] restart refused: settings save or quit request failed\n");
+void quit() {
+    CVarSave();
+    SDL_Event event{};
+    event.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&event);
 }
 
-// Start BlueWake again, with the command line and environment it began with,
+// The menu's Restart, as Ship of Harkinian's: back to the title screen with the game's own fade, the game's soft
+// reset (holding B+X+Start: JUTGamePad's three-button reset, then dComIfG_resetToOpening), the process kept. Before
+// the game has a scene (the boot) the process is started again instead.
+extern "C" void bluewake_ui_pad_inject(uint16_t buttons, unsigned samples); // ui_pad.h
+void restart();
+void soft_restart() {
+    const BluewakeLocation here = bluewake_game_location();
+    if (here.scene_proc == BLUEWAKE_SCENE_PLAY || here.scene_proc == BLUEWAKE_SCENE_NAME ||
+        here.scene_proc == BLUEWAKE_SCENE_TITLE) {
+        std::fprintf(stderr, "[windows] restart: the game's soft reset (B+X+Start)\n");
+        set_menu_open(false);
+        bluewake_ui_pad_inject(0x0200u | 0x0400u | 0x1000u, 90u); // B, X, Start, held well past the 0.5 s it needs
+        return;
+    }
+    restart();
+}
+
+void restart() {
+    CVarSave();
+    bool ok = g_restart.request(true, [] {
+        SDL_Event quit_event{};
+        quit_event.type = SDL_EVENT_QUIT;
+        return SDL_PushEvent(&quit_event);
+    });
+    if (!ok)
+        std::fprintf(stderr, "[windows] restart refused: the quit request failed\n");
+}
+
+// Start the game again, with the command line and environment it began with,
 // so the settings file decides what the new session is.
 bool relaunch() {
     wchar_t exe[MAX_PATH * 2];
@@ -556,468 +682,776 @@ bool relaunch() {
     return true;
 }
 
-// --- the menu ---------------------------------------------------------------
+// --- presets ------------------------------------------------------------------------
+// Settings > Presets: a named set of the Enhancements. Applying one sets every
+// setting it manages (the ones it does not list go to their defaults) and runs
+// each widget's own callback, so what can change at once does. Their contents
+// are listed in docs/fork/settings-menu.md.
+const char* const kPresetNames[] = {"Default", "Vanilla Plus", "Enhanced", "Randomizer"};
+const char* const kPresetInfo[] = {
+    "Every enhancement off, as the original game plays.",
+    "Quality of life that keeps the game's feel: Tingle Chests Without Tuner, Reveal Sea Chart (New Files), Keep "
+    "Watered Trees, Longer Forest Water Timer, Treasure Light Up Close (Treasure).",
+    "Vanilla Plus and the speed-ups: Instant Text, Faster Rolling, Faster Block Pushing, Faster Crawling and Climbing, "
+    "Faster Ballad of Gales, Skip Song Replays, Skip Opening Movie, Faster Grappling Hook, Turn While Swinging, Faster "
+    "Transitions, Quick Doors, Swift Sail.",
+    "What suits a randomizer seed, nothing that changes where a place can be reached: the Enhanced speed-ups without "
+    "Quick Doors, and with Reveal Sea Chart (New Files), Keep Watered Trees and Treasure Light Up Close (All). Tingle "
+    "Chests Without Tuner and Unrestricted Boat stay off.",
+};
 
-bool needs_restart() {
-    const Settings &a = g_session, &b = g_launched;
-    return a.aspect != b.aspect || a.keep_aspect != b.keep_aspect || a.betterww != b.betterww ||
-           a.options != b.options || a.hd_textures != b.hd_textures || a.texture_pack != b.texture_pack ||
-           a.lle_audio != b.lle_audio ||
-           a.movement_extras != b.movement_extras || a.sprint_speed != b.sprint_speed ||
-           a.fast_transitions != b.fast_transitions ||
-           a.quick_doors != b.quick_doors || a.stage_select != b.stage_select;
+std::vector<std::pair<std::string, int>> preset_values(int preset) {
+    std::map<std::string, int> v;
+    for (const auto& row : kBetterWw)
+        v[better_ww_cvar(row.name)] = 0;
+    v[CVAR_ENHANCEMENT("FasterTransitions")] = 0;
+    v[CVAR_ENHANCEMENT("QuickDoors")] = 0;
+    v[CVAR_ENHANCEMENT("KeepWateredTrees")] = 0;
+    v[CVAR_ENHANCEMENT("LongerForestWaterTimer")] = 0;
+    v[CVAR_ENHANCEMENT("TreasureLightUpClose")] = 0;
+    v[CVAR_ENHANCEMENT("SkipIntroWithStart")] = 1;
+    auto on = [&](const char* name) { v[better_ww_cvar(name)] = 1; };
+    auto flag = [&](const char* cvar, int value = 1) { v[cvar] = value; };
+    if (preset >= 1) {
+        flag(CVAR_ENHANCEMENT("KeepWateredTrees"));
+        flag(CVAR_ENHANCEMENT("LongerForestWaterTimer"));
+        flag(CVAR_ENHANCEMENT("TreasureLightUpClose"), preset == 3 ? 3 : 1);
+        on("reveal_sea_chart");
+        if (preset != 3)
+            on("tingle_chests");
+    }
+    if (preset >= 2) {
+        for (const char* name : {"instant_text", "faster_movement", "faster_block_push", "faster_animations",
+                                 "faster_ballad", "no_song_replays", "skip_intro_movie", "faster_grapple", "swing_turn",
+                                 "swift_sail"})
+            on(name);
+        flag(CVAR_ENHANCEMENT("FasterTransitions"));
+        if (preset == 2)
+            flag(CVAR_ENHANCEMENT("QuickDoors"));
+    }
+    return {v.begin(), v.end()};
 }
 
-// Sliders as on Mac and Linux: the label above, the slider the menu's width,
-// and left and right move one while it's selected, a twentieth of its range a
-// press, without A to grab it first (menu_shared.h).
-bool slider_float(const char* label, float* value, float low, float high, const char* format,
-                  ImGuiSliderFlags flags = 0) {
-    ImGui::PushID(label);
-    ImGui::TextWrapped("%s", label);
-    ImGui::SetNextItemWidth(-1.0f);
-    bool changed = ImGui::SliderFloat("##value", value, low, high, format, flags);
-    if (const int step = bw_menu_slider_nudge()) {
-        *value = std::clamp(*value + step * (high - low) / 20.0f, low, high);
-        changed = true;
+void apply_preset(int preset) {
+    preset = std::clamp(preset, 0, 3);
+    for (const auto& [cvar, value] : preset_values(preset)) {
+        CVarSetInteger(cvar.c_str(), value);
+        g_menu.FireCallback(cvar);
     }
-    ImGui::PopID();
-    return changed;
+    changed();
+    std::fprintf(stderr, "[settings] preset %s applied\n", kPresetNames[preset]);
 }
 
-bool slider_int(const char* label, int* value, int low, int high, const char* format) {
-    ImGui::PushID(label);
-    ImGui::TextWrapped("%s", label);
-    ImGui::SetNextItemWidth(-1.0f);
-    bool changed = ImGui::SliderInt("##value", value, low, high, format);
-    if (const int step = bw_menu_slider_nudge()) {
-        *value = std::clamp(*value + step * std::max(1, (high - low) / 20), low, high);
-        changed = true;
-    }
-    ImGui::PopID();
-    return changed;
-}
+// Settings > Controls > GameCube Adapter: the official Wii U adapter (USB
+// 057E:0337) as Windows sees it. SDL reads it directly only once WinUSB drives
+// it, so "Driver Needed" is a plugged-in adapter under another driver.
+enum class AdapterState { NotFound, DriverNeeded, Ready };
 
-void restart_note(bool differs) {
-    if (differs) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(next launch)");
-    }
-}
-
-// The Display tab, in the Mac and Linux menu's order (settings_menu.cpp's
-// display_tab), so the menus match on every platform (#320).
-void tab_display(SDL_Window* w) {
-    Settings& d = g_session;
-    if (bw_menu_checkbox("Wind Waker HD look   (F2)", &d.hd_look)) {
-        apply_hd_look();
-        changed();
-    }
-    ImGui::TextDisabled("The HD release's look, rebuilt piece by piece. So far: islands on the horizon from further away, soft shading, cloud shadows and edge light outdoors, torch light, a soft distance and bloom.");
-    // An action for this session, not a setting: a button.
-    const bool full = w != nullptr && is_fullscreen(w);
-    if (ImGui::Button(full ? "Leave fullscreen   (F11 or Alt+Enter)" : "Fullscreen   (F11 or Alt+Enter)"))
-        set_fullscreen(w, !full);
-    if (bw_menu_checkbox("Start in fullscreen", &d.fullscreen))
-        changed();
-    ImGui::SameLine();
-    ImGui::TextDisabled("(next launch)");
-    if (bw_menu_combo("Render resolution", &d.render_scale, kScaleNames, IM_ARRAYSIZE(kScaleNames))) {
-        aurora_set_frame_buffer_scale(static_cast<float>(d.render_scale));
-        changed();
-    }
-    // Off, or on at a rate: the saved smooth_motion and smooth_motion_fps, so
-    // F10 still turns it on at the rate last chosen.
-    static const char* const kSmooth[] = {"Off (30, the game's)", "60 frames a second",
-                                          "120 frames a second (120 Hz displays)", "Match the display (up to 240)"};
-    int smooth = !d.smooth_motion ? 0 : d.smooth_steps == -1 ? 3 : d.smooth_steps >= 3 ? 2 : 1;
-    if (bw_menu_combo("Smooth Motion (experimental)   (F10)", &smooth, kSmooth, IM_ARRAYSIZE(kSmooth))) {
-        d.smooth_motion = smooth != 0;
-        if (smooth != 0)
-            d.smooth_steps = smooth == 3 ? -1 : smooth == 2 ? 3 : 1;
-        apply_smooth_rate(w);
-        aurora_set_frame_interpolation(d.smooth_motion);
-        changed();
-    }
-    const float refresh = display_refresh(w);
-    ImGui::TextDisabled("    Target: %d FPS on this %.0f Hz display; pacing may reduce it.",
-                        d.smooth_motion ? (bw_smooth_steps(d.smooth_steps, refresh) + 1) * 30 : 30, refresh);
-    ImGui::TextDisabled("    The game itself still runs at 30. Experimental: off by default.");
-    if (bw_menu_checkbox("Show the frame rate   (F9)", &d.show_fps)) {
-        aurora_set_fps_overlay(d.show_fps);
-        changed();
-    }
-    ImGui::BeginDisabled(!d.show_fps);
-    if (bw_menu_combo("FPS position", &d.fps_position, kBwFpsPositionNames, BW_FPS_POSITIONS)) {
-        apply_fps_position();
-        changed();
-    }
-    ImGui::EndDisabled();
-    int filtering = 0;
-    for (int i = 0; i < IM_ARRAYSIZE(kAnisotropy); i++)
-        if (kAnisotropy[i] == d.anisotropy)
-            filtering = i;
-    if (bw_menu_combo("Texture filtering", &filtering, kAnisotropyNames, IM_ARRAYSIZE(kAnisotropyNames))) {
-        d.anisotropy = kAnisotropy[filtering];
-        aurora_set_forced_anisotropy(static_cast<unsigned>(d.anisotropy));
-        changed();
-    }
-    if (bw_menu_checkbox("Keep the picture's shape (black bars rather than stretching)", &d.keep_aspect))
-        changed();
-    restart_note(d.keep_aspect != g_launched.keep_aspect);
-    if (bw_menu_checkbox("Pause while the window is in the background", &d.pause_unfocused)) {
-        aurora_set_pause_on_focus_lost(d.pause_unfocused);
-        changed();
-    }
-    if (bw_menu_checkbox("Compile shaders before playing", &d.shaders_first))
-        changed();
-    restart_note(d.shaders_first != g_launched.shaders_first);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("At start, wait until the shaders from earlier play are ready, so nothing is missing "
-                          "from the picture the first time it is drawn. Otherwise they are made while you play.");
-    ImGui::Spacing();
-    if (ImGui::Button("Reset the window"))
-        reset_window(w);
-    ImGui::SameLine();
-    ImGui::TextDisabled("Drag the title bar to move it; drag an edge to size it.");
-}
-
-void tab_controls() {
-    Settings& d = g_session;
-    // The Mac and Linux order (settings_menu.cpp's controls_tab): the
-    // controller's buttons and the keys, the mouse, the right stick and aiming,
-    // vibration, then the keys at a glance.
-    BwButtonMap map;
-    const bool remapped = bw_button_map_parse(d.button_map, &map);
-    ImGui::BeginDisabled(remapped);
-    bool pad = bw_menu_checkbox("Swap A and B", &d.controller_swap_ab);
-    pad |= bw_menu_checkbox("Swap X and Y", &d.controller_swap_xy);
-    ImGui::EndDisabled();
-    pad |= bw_menu_checkbox("Swap L and R (the triggers)", &d.controller_swap_lr);
-    if (bw_menu_checkbox("D-pad moves the cursor in Items and Quest Status", &d.dpad_menus)) {
-        apply_dpad_menus();
-        changed();
-    }
-    if (ImGui::CollapsingHeader("Controller buttons")) {
-        ImGui::TextWrapped("Choose which controller button presses each GameCube button. Picking one that is "
-                           "already used swaps the two.%s", remapped ? " The swaps above are off while you use "
-                           "a custom layout." : "");
-        if (bw_button_map_ui(&map)) {
-            d.button_map = bw_button_map_format(map);
-            pad = true;
-        }
-    }
-    BwKeyMap keys;
-    bw_key_map_parse(d.key_map, &keys);
-    if (ImGui::CollapsingHeader("Keyboard keys")) {
-        ImGui::TextWrapped("Choose the key for each GameCube button. Picking one that is already used swaps the two.");
-        if (bw_key_map_ui(&keys)) {
-            d.key_map = bw_key_map_format(keys);
-            changed();
-        }
-    }
-
-    bool mouse = false;
-    if (bw_menu_checkbox("Mouse camera (click the game to use it)", &d.mouse_camera))
-        mouse = true;
-    ImGui::BeginDisabled(!d.mouse_camera);
-    float sensitivity = static_cast<float>(d.mouse_sensitivity);
-    if (slider_float("Mouse sensitivity", &sensitivity, 0.25f, 4.0f, "%.2f", ImGuiSliderFlags_Logarithmic)) {
-        d.mouse_sensitivity = sensitivity;
-        mouse = true;
-    }
-    if (bw_menu_checkbox("Invert the mouse's up and down", &d.mouse_invert_y))
-        mouse = true;
-    if (ImGui::CollapsingHeader("Mouse buttons")) {
-        BwMouseMap buttons;
-        bw_mouse_map_parse(d.mouse_buttons.c_str(), &buttons);
-        ImGui::TextWrapped("What each mouse button presses while the mouse is the camera. The first left click "
-                           "only hands the mouse to the game.");
-        if (bw_mouse_map_ui(&buttons)) {
-            char text[64];
-            bw_mouse_map_format(&buttons, text, sizeof text);
-            d.mouse_buttons = text;
-            bluewake_mouse_camera_buttons(d.mouse_buttons.c_str());
-            changed();
-        }
-    }
-    ImGui::EndDisabled();
-    if (mouse) {
-        bluewake_mouse_camera_configure(d.mouse_camera, d.mouse_sensitivity, d.mouse_invert_y);
-        changed();
-    }
-
-    ImGui::Separator();
-    bool stick = bw_menu_checkbox("Direct right-stick camera and aiming", &d.stick_camera);
-    ImGui::BeginDisabled(!d.stick_camera);
-    stick |= slider_int("Right-stick turn speed", &d.stick_speed, 120, 720, "%d degrees a second");
-    stick |= slider_int("Right-stick aim speed (first person, items)", &d.stick_aim_speed, 60, 480,
-                              "%d degrees a second");
-    stick |= bw_menu_checkbox("Hold the right-stick click and move it up/down to zoom", &d.stick_zoom);
-    ImGui::BeginDisabled(!d.stick_zoom);
-    float zoom_speed = static_cast<float>(d.stick_zoom_speed);
-    if (slider_float("Controller zoom speed", &zoom_speed, 0.25f, 2.0f, "%.3fx")) {
-        d.stick_zoom_speed = zoom_speed;
-        stick = true;
-    }
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
-    pad |= bw_menu_checkbox("Invert the right stick's left and right", &d.pad_invert_x);
-    pad |= bw_menu_checkbox("Invert the right stick's up and down", &d.pad_invert_y);
-    stick |= bw_menu_checkbox("Invert the left stick's up and down when aiming (first person, items)", &d.aim_invert_y);
-    stick |= bw_menu_checkbox("Gyro aiming: move the controller to aim (DualSense, DualShock 4, Switch Pro, Steam Deck)",
-                             &d.gyro_aim);
-    ImGui::BeginDisabled(!d.gyro_aim);
-    float gyro_speed = static_cast<float>(d.gyro_aim_speed);
-    if (slider_float("Gyro aim speed", &gyro_speed, 0.25f, 4.0f, "%.2fx")) {
-        d.gyro_aim_speed = gyro_speed;
-        stick = true;
-    }
-    ImGui::EndDisabled();
-    ImGui::TextDisabled("    Click the right stick for first person. In the telescope and Picto Box, the left stick or "
-                        "D-pad zooms.");
-    if (pad || stick) {
-        apply_controller();
-        apply_stick();
-        changed();
-    }
-
-    ImGui::SeparatorText("Haptics");
-    // The game's vibration on an Xbox controller, a DualSense and others:
-    // rendered from what the game asked for, or its own on-off motor.
-    static const char* const kHaptics[] = {"Off", "Classic (the game's own on and off)",
-                                           "Enhanced (shaped, with the triggers)"};
-    bool haptics = bw_menu_combo("Controller vibration", &d.haptics, kHaptics, IM_ARRAYSIZE(kHaptics));
-    ImGui::BeginDisabled(d.haptics != 2);
-    haptics |= slider_int("Vibration strength", &d.haptics_strength, 0, 100, "%d%%");
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(d.haptics != 2);
-    haptics |= bw_menu_checkbox("Trigger feedback (Xbox impulse triggers, DualSense trigger vibration)",
-                               &d.haptics_triggers);
-    ImGui::EndDisabled();
-    ImGui::TextDisabled(d.haptics == 2   ? "    Hits, falls, explosions and quakes as the game times them, shaped by their strength."
-                        : d.haptics == 1 ? "    The motor on and off, as a GameCube controller's."
-                                         : "    No vibration. (The game's own Vibration option turns it off too.)");
-    if (haptics) {
-        apply_haptics();
-        changed();
-    }
-
-    ImGui::SeparatorText("Keyboard");
-    char face[96], shoulder[96];
-    std::snprintf(face, sizeof face, "%s  %s  %s  %s", bw_key_name(keys.scancode[0]), bw_key_name(keys.scancode[1]),
-                  bw_key_name(keys.scancode[2]), bw_key_name(keys.scancode[3]));
-    std::snprintf(shoulder, sizeof shoulder, "%s  %s  %s", bw_key_name(keys.scancode[5]),
-                  bw_key_name(keys.scancode[6]), bw_key_name(keys.scancode[4]));
-    if (ImGui::BeginTable("keys", 2, ImGuiTableFlags_SizingFixedFit)) {
-        const char* const rows[][2] = {
-            {"Control stick", "W A S D"}, {"C-stick", "T F G H"}, {"D-pad", "Arrow keys"},
-            {"A  B  X  Y", face}, {"L  R  Z", shoulder}, {"START", bw_key_name(keys.scancode[7])},
-            {"Jump", "Space (controller: left bumper)"}, {"Sprint", "Shift (controller: click the left stick)"},
-            {"Camera zoom", "Mouse wheel, while the mouse is the camera"},
-            {"Settings", "F1 or Esc"}, {"HD look", "F2"}, {"Save state / load it", "F5 / F8"},
-            {"Stage select", "F7"}, {"Frame rate", "F9"}, {"Smooth Motion", "F10"},
-            {"Fullscreen", "F11 or Alt+Enter"},
-        };
-        for (const auto& row : rows) {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(row[0]);
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", row[1]);
-        }
-        ImGui::EndTable();
-    }
-    ImGui::TextDisabled("Game controllers work as they are plugged in (Xbox, PlayStation, Switch Pro, ...).");
-}
-
-// Wind Waker HD textures: the same section, in the same order, as the Mac and
-// Linux Mods tab and the iPhone and iPad Mods menu (texture_pack_menu.h).
-void hd_textures_section(Settings& d) {
-    std::string picked;
-    if (bw_texture_pack::take_folder(picked)) {
-        d.texture_pack = picked == texture_folder() ? "" : picked;
-        d.hd_textures = true;
-        changed();
-    }
-    ImGui::SeparatorText("Wind Waker HD textures");
-    if (bw_menu_checkbox("HD textures", &d.hd_textures))
-        changed();
-    restart_note(d.hd_textures != g_launched.hd_textures || d.texture_pack != g_launched.texture_pack);
-    const std::string folder = texture_pack_folder(d);
-    const size_t textures = g_pack_count.get(folder);
-    {
-        const bool on = d.hd_textures && (!folder.empty());
-        const bw_texture_pack::PackState state = bw_texture_pack::state_of(textures, on);
-        std::string line;
-        if (!on)
-            line = "Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the game's textures.";
-        else if (textures == 0)
-            line = "No .png or .dds textures found in the chosen folder.";
-        else
-            line = std::to_string(textures) + " textures in " + folder;
-        ImGui::TextColored(bw_texture_pack::state_color(state), "%s", line.c_str());
-    }
-    if (ImGui::SmallButton("Choose texture pack folder..."))
-        bw_texture_pack::choose_folder(nullptr, folder);
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Open the texture folder"))
-        open_folder(folder);
-    if (!d.texture_pack.empty()) {
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Use Load\\Textures\\GZLE01 instead")) {
-            d.texture_pack.clear();
-            changed();
-        }
-    }
-    std::string imported;
-    if (bw_texture_pack::import_controls(nullptr, g_data_dir + "Load\\Textures", imported)) {
-        d.texture_pack = imported;
-        d.hd_textures = true;
-        changed();
-    }
-    const std::string error = bw_texture_pack::picker_error();
-    if (!error.empty())
-        ImGui::TextWrapped("The folder picker did not open (%s). Put the pack in the texture folder instead.",
-                           error.c_str());
-    ImGui::Spacing();
-}
-
-// The Gameplay tab, in the Mac and Linux menu's order (settings_menu.cpp's
-// gameplay_tab). Climbing and Forest Water apply at once; the rest at the
-// next launch.
-void tab_gameplay() {
-    Settings& d = g_session;
-    if (bw_menu_checkbox("Developers' stage select (F7)", &d.stage_select))
-        changed();
-    restart_note(d.stage_select != g_launched.stage_select);
-    ImGui::TextDisabled("    F7 during play opens the menu the developers used to jump to any room, from your");
-    ImGui::TextDisabled("    own file; F7 in the menu goes back. On a controller, Back (View on Xbox, Share or");
-    ImGui::TextDisabled("    Create on PlayStation) opens these settings and the button below does the same.");
-    bw_stage_select_save_warning();
-    if (bw_stage_select_button())
-        set_menu_open(false);
-    ImGui::SeparatorText("Forest Water Challenge");
-    if (bw_menu_checkbox("Keep watered trees when time runs out", &d.forest_keep_trees)) {
-        apply_forest_water();
-        changed();
-    }
-    ImGui::TextDisabled("    Forest Water still expires. Refill and carry on with the trees still to water.");
-    if (bw_menu_checkbox("30-minute Forest Water timer", &d.forest_30_minutes)) {
-        apply_forest_water();
-        changed();
-    }
-    ImGui::TextDisabled("    Applies the next time Link scoops Forest Water.");
-    ImGui::SeparatorText("Doors and exits");
-    if (bw_menu_checkbox("Fast transitions (short fades, no waiting in the black)", &d.fast_transitions))
-        changed();
-    restart_note(d.fast_transitions != g_launched.fast_transitions);
-    if (bw_menu_checkbox("Quick doors (no walk-in or door closing behind Link)", &d.quick_doors))
-        changed();
-    restart_note(d.quick_doors != g_launched.quick_doors);
-    ImGui::SeparatorText("Climbing");
-    if (bw_menu_checkbox("Wall climbing (experimental)", &d.climb)) {
-        apply_climb();
-        changed();
-    }
-    ImGui::BeginDisabled(!d.climb);
-    if (slider_int("Climbing stamina", &d.climb_stamina, 4, 30, "%d seconds")) {
-        apply_climb();
-        changed();
-    }
-    ImGui::EndDisabled();
-    // Jump and sprint, one switch as on the iPad, with the sprint's speed
-    // under it (BLUEWAKE_SPRINT_SPEED at the next launch).
-    ImGui::SeparatorText("Jump & Sprint");
-    if (bw_menu_checkbox("Jump & Sprint (Space or the left bumper jumps; Shift or the left stick click sprints)",
-                        &d.movement_extras))
-        changed();
-    restart_note(d.movement_extras != g_launched.movement_extras);
-    ImGui::BeginDisabled(!d.movement_extras);
-    float sprint = static_cast<float>(d.sprint_speed);
-    if (slider_float("Sprint speed", &sprint, 1.1f, 2.0f, "%.2fx")) {
-        d.sprint_speed = std::round(std::clamp(sprint, 1.1f, 2.0f) * 100.0f) / 100.0;
-        changed();
-    }
-    restart_note(d.sprint_speed != g_launched.sprint_speed);
-    ImGui::EndDisabled();
-}
-
-// Mods: HD textures first, then widescreen and Better Wind Waker, as in the
-// Mac and Linux Mods tab and the iPhone and iPad Mods menu.
-void tab_mods() {
-    Settings& d = g_session;
-    hd_textures_section(d);
-    ImGui::Spacing();
-    static const char* const kAspects[] = {"Off (4:3, the game's)", "16:10", "16:9", "21:9"};
-    static const char* const kAspectValues[] = {"4:3", "16:10", "16:9", "21:9"};
-    int aspect = 0;
-    for (int i = 0; i < IM_ARRAYSIZE(kAspectValues); i++)
-        if (d.aspect == kAspectValues[i])
-            aspect = i;
-    if (bw_menu_combo("Widescreen", &aspect, kAspects, IM_ARRAYSIZE(kAspects))) {
-        d.aspect = kAspectValues[aspect];
-        changed();
-    }
-    restart_note(d.aspect != g_launched.aspect);
-    ImGui::TextDisabled("    Widescreen widens the camera and moves the HUD to the edges.");
-    ImGui::Spacing();
-    if (bw_menu_checkbox("Better Wind Waker", &d.betterww))
-        changed();
-    restart_note(d.betterww != g_launched.betterww);
-    ImGui::TextDisabled("    Wind Waker HD's changes. Each can be turned on or off:");
-    ImGui::BeginDisabled(!d.betterww);
-    ImGui::Indent();
-    bool any = false;
-    for (uint32_t i = 0;; i++) {
-        const char* title = nullptr;
-        bool default_on = false, on = false;
-        const char* name = bluewake_game_options_describe(i, &title, &default_on, &on);
-        if (name == nullptr)
+AdapterState adapter_state() {
+    AdapterState state = AdapterState::NotFound;
+    HDEVINFO devices = SetupDiGetClassDevsW(nullptr, L"USB", nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+    if (devices == INVALID_HANDLE_VALUE)
+        return state;
+    SP_DEVINFO_DATA info{};
+    info.cbSize = sizeof info;
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(devices, i, &info); ++i) {
+        wchar_t ids[1024] = {};
+        if (!SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_HARDWAREID, nullptr,
+                                               reinterpret_cast<PBYTE>(ids), sizeof ids - sizeof(wchar_t), nullptr))
+            continue;
+        bool adapter = false;
+        for (const wchar_t* id = ids; *id != L'\0'; id += wcslen(id) + 1)
+            adapter = adapter || wcsstr(id, L"VID_057E&PID_0337") != nullptr;
+        if (!adapter)
+            continue;
+        wchar_t service[128] = {};
+        SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_SERVICE, nullptr, reinterpret_cast<PBYTE>(service),
+                                          sizeof service - sizeof(wchar_t), nullptr);
+        state = _wcsicmp(service, L"WinUSB") == 0 ? AdapterState::Ready : AdapterState::DriverNeeded;
+        if (state == AdapterState::Ready)
             break;
-        any = true;
-        bool value = bw_settings_option_value(d, name, default_on);
-        ImGui::PushID(name);
-        if (bw_menu_checkbox(title != nullptr ? title : name, &value)) {
-            d.options[name] = value;
-            changed();
-        }
-        const bool was = bw_settings_option_value(g_launched, name, default_on);
-        restart_note(value != was);
-        if (const char* note = bw_option_note(name)) {
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
-            ImGui::TextDisabled("%s", note);
-            ImGui::PopTextWrapPos();
-        }
-        ImGui::PopID();
     }
-    if (!any)
-        ImGui::TextDisabled("This build has no Better Wind Waker options (build with mods).");
-    ImGui::Unindent();
-    ImGui::EndDisabled();
+    SetupDiDestroyDeviceInfoList(devices);
+    return state;
 }
 
-void tab_game() {
-    Settings& d = g_session;
-    ImGui::SeparatorText("Sound");
-    if (ImGui::RadioButton("Fast (Dolphin's high-level Zelda sound)", !d.lle_audio)) {
-        d.lle_audio = false;
-        changed();
+const char* adapter_status() {
+    static Uint64 checked;
+    static AdapterState state = AdapterState::NotFound;
+    static const char* last = nullptr;
+    const Uint64 now = SDL_GetTicks();
+    if (checked == 0 || now - checked > 2000) {
+        checked = now;
+        state = adapter_state();
     }
-    if (ImGui::RadioButton("Exact (the sound chip's own program; slower)", d.lle_audio)) {
-        d.lle_audio = true;
-        changed();
+    // What the app's own reader found (gc_adapter.c) is what counts: it opened the device or could not. Windows' device
+    // list only explains a missing adapter (no driver bound) when the reader has nothing.
+    const BluewakeGcaStatus reader = bluewake_gc_adapter_status();
+    const char* text = reader == BLUEWAKE_GCA_CONNECTED || reader == BLUEWAKE_GCA_REPLAY ? "Connected"
+                       : reader == BLUEWAKE_GCA_IN_USE                                    ? "In Use by Another Program"
+                       : state == AdapterState::Ready          ? "Connected"
+                       : state == AdapterState::DriverNeeded ? "Driver Needed"
+                                                             : "Not Found";
+    if (text != last) {
+        last = text;
+        std::fprintf(stderr, "[settings] GameCube adapter: %s\n", text);
     }
-    restart_note(d.lle_audio != g_launched.lle_audio);
-    ImGui::Spacing();
-    ImGui::SeparatorText("Your files");
-    ImGui::TextDisabled("Saves, settings and logs are kept apart from the build:");
-    ImGui::TextUnformatted(g_data_dir.c_str());
-    if (ImGui::Button("Open that folder"))
-        open_folder(g_data_dir);
-    ImGui::SameLine();
-    if (ImGui::Button("Open the session logs"))
-        open_folder(g_data_dir + "logs");
+    return text;
+}
+
+// --- the menu's pages -------------------------------------------------------------
+
+void disable_unless(WidgetInfo& w, bool condition, const char* reason) {
+    if (!condition)
+        w.disabledReasons.push_back(reason);
+}
+
+void build_settings() {
+    using shipmenu::Menu;
+    Menu& m = g_menu;
+    const char* H = "Settings";
+
+    // General
+    m.AddSidebar(H, "General", 2);
+    m.AddWidget(H, "General", 0, "Menu Settings", WidgetType::SeparatorText);
+    {
+        std::vector<std::string> themes;
+        for (int i = 0; i < shipmenu::theme_count(); ++i)
+            themes.emplace_back(shipmenu::theme_name(i));
+        m.AddWidget(H, "General", 0, "Menu Theme", WidgetType::CVarCombobox)
+            .CVar(CVAR_SETTING("Menu.Theme"))
+            .Items(themes)
+            .DefaultValue(5)
+            .Tooltip("Changes the color of the menu's widgets.");
+    }
+    m.AddWidget(H, "General", 0, "Menu Controller Navigation", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Menu.ControllerNavigation"))
+        .Tooltip("Allows controller navigation of the menu.\n\nD-pad to move between items, A to select, B to move "
+                 "up in scope.");
+    m.AddWidget(H, "General", 0, "Search In Sidebar", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Menu.SearchInSidebar"))
+        .Tooltip("Displays the search field at the top of the sidebar instead of in the header.");
+    m.AddWidget(H, "General", 0, "Menu Background Opacity: %.0f %%", WidgetType::CVarSliderFloat)
+        .CVar(CVAR_SETTING("Menu.BackgroundOpacity"))
+        .RangeFloat(0.2f, 1.0f, 0.05f)
+        .DefaultFloat(0.85f)
+        .Percent()
+        .Tooltip("Sets how much of the game shows through the menu.");
+    m.AddWidget(H, "General", 0, "General Settings", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 0, "Pause on Focus Lost", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("PauseOnFocusLost"))
+        .Tooltip("Pauses the game when the window is not the focused window.")
+        .Callback([](WidgetInfo&) { aurora_set_pause_on_focus_lost(CVarGetInteger(CVAR_SETTING("PauseOnFocusLost"), 0)); });
+    m.AddWidget(H, "General", 0, "Allow Background Inputs", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("AllowBackgroundInputs"))
+        .DefaultValue(1)
+        .Tooltip("Allows controller inputs to be picked up by the game even when the window is not focused. Off: "
+                 "controllers, the GameCube adapter and the keyboard only reach the game while its window is focused.")
+        .Callback([](WidgetInfo&) {
+            aurora_set_background_input(CVarGetInteger(CVAR_SETTING("AllowBackgroundInputs"), 1) != 0);
+        });
+    m.AddWidget(H, "General", 0, "Open App Files Folder", WidgetType::Button)
+        .Tooltip("Opens the folder that holds the settings, Save, mods, Randomizer and logs folders.")
+        .Callback([](WidgetInfo&) { open_folder(g_data_dir); });
+    m.AddWidget(H, "General", 0, "Open Logs Folder", WidgetType::Button)
+        .Tooltip("Opens the folder of session and crash logs. Attach the newest when reporting a problem.")
+        .Callback([](WidgetInfo&) { open_folder(g_data_dir + "logs"); });
+    m.AddWidget(H, "General", 0, "Boot", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 0, "Precompile Shaders", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("PrecompileShaders"))
+        .Tooltip("Compiles the shaders from earlier play ahead of time, so nothing is missing from the picture the "
+                 "first time it is drawn. Turning it on starts this now, in the background, with a counter in the "
+                 "corner; at the next start the game waits until they are ready before play begins. Otherwise "
+                 "they are made while you play.")
+        .Callback([](WidgetInfo&) { start_shader_warmup(); });
+    m.AddWidget(H, "General", 1, "About", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 1,
+                BLUEWAKE_APP_NAME " is a fork of BlueWake, a static recompilation of The Legend of Zelda: The Wind "
+                "Waker for the GameCube (USA). It plays your own copy of the game.",
+                WidgetType::Text);
+    m.AddWidget(H, "General", 1, "Settings are kept in boat-of-daphnes.json beside the executable.",
+                WidgetType::Text);
+    notifications::BuildMenu(m, H, "General", 1);
+    m.AddWidget(H, "General", 1, "Credits", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 1,
+                "BlueWake by Chris and Elliott, from Elliott's Wind Waker Recomp. Better Wind Waker by WideBoner. "
+                "Swift Sail textures from the Wind Waker Randomizer (LagoLunatic; textures by Hypatia, design by "
+                "MelonSpeedruns).",
+                WidgetType::Text);
+
+    // Audio
+    m.AddSidebar(H, "Audio", 2);
+    m.AddWidget(H, "Audio", 0, "Master Volume: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Audio.MasterVolume"))
+        .Range(0, 100, 1)
+        .DefaultValue(100)
+        .Tooltip("Adjusts the overall volume of the game.")
+        .Callback([](WidgetInfo&) { apply_audio(); });
+    m.AddWidget(H, "Audio", 0, "Music Volume: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Audio.MusicVolume"))
+        .Range(0, 100, 1)
+        .DefaultValue(100)
+        .Tooltip("Adjusts the volume of the background music, inside the game's own audio. 0 plays the game without "
+                 "music (sound effects and voices stay).")
+        .Callback([](WidgetInfo&) { apply_audio(); });
+    m.AddWidget(H, "Audio", 0, "Sound Effects Volume: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Audio.SfxVolume"))
+        .Range(0, 100, 1)
+        .DefaultValue(100)
+        .Tooltip("Adjusts the volume of the sound effects and voices, inside the game's own audio.")
+        .Callback([](WidgetInfo&) { apply_audio(); });
+    m.AddWidget(H, "Audio", 0, "Fanfare Volume: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Audio.FanfareVolume"))
+        .Range(0, 100, 1)
+        .DefaultValue(100)
+        .Tooltip("Adjusts the volume of the short jingles (item get, heart, songs, chests, game over, race end), inside "
+                 "the game's own audio.")
+        .Callback([](WidgetInfo&) { apply_audio(); });
+    m.AddWidget(H, "Audio", 0, "Audio Mode", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Audio.Mode"))
+        .Items({"HLE (Fast)", "LLE (Accurate)"})
+        .Callback([](WidgetInfo&) { bluewake_dsp_request_mode(CVarGetInteger(CVAR_SETTING("Audio.Mode"), 0) == 1); })
+        .Tooltip("Sets how the GameCube's sound chip is run.\n\nHLE: Dolphin's high-level Zelda sound, fast.\n"
+                 "LLE: the sound chip's own program, exact but slower.\n\nChanging it while the game runs takes "
+                 "effect at the next gap between two audio frames, and the sound goes on. (Not from a save state "
+                 "loaded at start: restart for that.)");
+
+    // Graphics
+    m.AddSidebar(H, "Graphics", 2);
+    m.AddWidget(H, "Graphics", 0, "Graphics Options", WidgetType::SeparatorText);
+    m.AddWidget(H, "Graphics", 0, "Toggle Fullscreen", WidgetType::Button)
+        .Tooltip("Toggles fullscreen on and off. (F11 or Alt+Enter)")
+        .Callback([](WidgetInfo&) {
+            if (SDL_Window* w = game_window())
+                set_fullscreen(w, !is_fullscreen(w));
+        });
+    m.AddWidget(H, "Graphics", 0, "Internal Resolution: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Graphics.InternalResolution"))
+        .Range(50, 400, 5)
+        .DefaultValue(100)
+        .Tooltip("Multiplies your output resolution by the value set, as a more demanding but effective form of "
+                 "anti-aliasing.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, !CVarGetInteger(CVAR_SETTING("Graphics.FixedVerticalResolution"), 0),
+                           "Set Fixed Vertical Resolution is on");
+            disable_unless(w, !CVarGetInteger(CVAR_SETTING("Graphics.PixelPerfect"), 0), "Pixel Perfect Mode is on");
+        })
+        .Callback([](WidgetInfo&) { apply_resolution(game_window()); });
+    m.AddWidget(H, "Graphics", 0, "Interpolation FPS: %d", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Graphics.InterpolationFPS"))
+        .Range(30, 240, 30)
+        .DefaultValue(30)
+        .Tooltip("Smooths motion by making frames between the game's own (the game runs at 30 frames a second). "
+                 "30 is the original; 60 or more needs a display that refreshes that fast.")
+        .Callback([](WidgetInfo&) { apply_interpolation(); });
+    m.AddWidget(H, "Graphics", 0, "Match Refresh Rate", WidgetType::Button)
+        .Tooltip("Sets Interpolation FPS to your display's refresh rate.")
+        .Callback([](WidgetInfo&) {
+            int hz = 60;
+            if (SDL_Window* w = game_window())
+                if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(w)))
+                    if (mode->refresh_rate > 0.f)
+                        hz = static_cast<int>(mode->refresh_rate + 0.5f);
+            CVarSetInteger(CVAR_SETTING("Graphics.InterpolationFPS"), std::clamp((hz + 15) / 30 * 30, 30, 240));
+            CVarSaveNextFrame();
+            apply_interpolation();
+        });
+    m.AddWidget(H, "Graphics", 0, "Recommended for This PC", WidgetType::Button)
+        .Tooltip("Sets Interpolation FPS from this PC's processor and display: the display's rate up to 120 with 6 or "
+                 "more cores, up to 60 with 4 or 5, otherwise 30. The first launch does this on its own.")
+        .Callback([](WidgetInfo&) {
+            profile_hardware(game_window(), true);
+            apply_interpolation();
+        });
+    m.AddWidget(H, "Graphics", 0, "Renderer", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.Backend"))
+        .Items({"Auto", "Direct3D 12", "Vulkan", "Direct3D 11"})
+        .DefaultValue(0)
+        .Tooltip("The graphics API the game draws with. Auto tries Direct3D 12, then Vulkan, then Direct3D 11. If the "
+                 "game stutters or runs slowly on your GPU, try another one. Takes effect after a restart.");
+    m.AddWidget(H, "Graphics", 0, "Enable Vsync", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Graphics.Vsync"))
+        .DefaultValue(1)
+        .Tooltip("Removes tearing, but clamps your frame rate to your display's refresh rate.")
+        .Callback([](WidgetInfo&) { aurora_enable_vsync(CVarGetInteger(CVAR_SETTING("Graphics.Vsync"), 1) != 0); });
+    m.AddWidget(H, "Graphics", 0, "Anisotropic Filtering", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.Anisotropy"))
+        .Items({"Off", "2x", "4x", "8x", "16x"})
+        .Tooltip("Sharpens textures seen at an angle, such as the ground into the distance.")
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    m.AddWidget(H, "Graphics", 0, "Show FPS", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Graphics.ShowFPS"))
+        .Tooltip("Shows the frame rate in a corner of the screen. (F9)")
+        .Callback([](WidgetInfo&) { aurora_set_fps_overlay(CVarGetInteger(CVAR_SETTING("Graphics.ShowFPS"), 0) != 0); });
+    m.AddWidget(H, "Graphics", 0, "Widescreen", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.Widescreen"))
+        .Items({"Off (4:3)", "Match Window"})
+        .DefaultValue(1)
+        .Tooltip("Sets the shape of the picture.\n\nOff: the game's own 4:3, with black bars on the sides.\nMatch "
+                 "Window: the picture fills the window, showing more of the scene to the sides.")
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    m.AddWidget(H, "Graphics", 0, "Reset Window Size", WidgetType::Button)
+        .Tooltip("Returns the window to its starting size, centred.")
+        .Callback([](WidgetInfo&) { reset_window(game_window()); });
+    m.AddWidget(H, "Graphics", 1, "Advanced Graphics Options", WidgetType::SeparatorText);
+    m.AddWidget(H, "Graphics", 1, "Resolution", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        int ww = 0, wh = 0;
+        if (SDL_Window* w = game_window())
+            SDL_GetWindowSizeInPixels(w, &ww, &wh);
+        u32 rw = 0, rh = 0;
+        AuroraGetRenderSize(&rw, &rh);
+        ImGui::Text("Window: %d x %d", ww, wh);
+        ImGui::Text("Internal resolution: %u x %u", rw, rh);
+    });
+    m.AddWidget(H, "Graphics", 1, "Force Aspect Ratio", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.ForceAspectRatio"))
+        .Items({"Off", "Original (4:3)", "16:10", "Widescreen (16:9)", "Ultrawide (21:9)", "Super Ultrawide (32:9)",
+                "Custom"})
+        .Tooltip("Keeps the picture at this shape, with black bars filling the rest of the window. Off lets the "
+                 "picture fill the window.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Graphics.Widescreen"), 1) != 0, "Widescreen is Off");
+        })
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    for (const char* axis : {"X", "Y"}) {
+        const bool x = axis[0] == 'X';
+        m.AddWidget(H, "Graphics", 1, x ? "Aspect Ratio X: %d" : "Aspect Ratio Y: %d", WidgetType::CVarSliderInt)
+            .CVar(x ? CVAR_SETTING("Graphics.AspectRatioX") : CVAR_SETTING("Graphics.AspectRatioY"))
+            .Range(1, 64, 1)
+            .DefaultValue(x ? 16 : 9)
+            .Tooltip(x ? "Sets the width of the custom aspect ratio." : "Sets the height of the custom aspect ratio.")
+            .PreFunc([](WidgetInfo& w) {
+                w.hidden = CVarGetInteger(CVAR_SETTING("Graphics.ForceAspectRatio"), 0) != kAspectCustom ||
+                           !CVarGetInteger(CVAR_SETTING("Graphics.Widescreen"), 1);
+            })
+            .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    }
+    m.AddWidget(H, "Graphics", 1, "Set Fixed Vertical Resolution", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Graphics.FixedVerticalResolution"))
+        .Tooltip("Renders the picture at a fixed number of lines whatever the window's size, and scales it to the "
+                 "window. The width follows the picture's shape.")
+        .Callback([](WidgetInfo&) { apply_resolution(game_window()); });
+    m.AddWidget(H, "Graphics", 1, "Vertical Resolution: %d Pixels", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Graphics.VerticalResolution"))
+        .Range(240, 4320, 10)
+        .DefaultValue(480)
+        .Tooltip("Sets the number of lines the picture is rendered with.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Graphics.FixedVerticalResolution"), 0) != 0,
+                           "Set Fixed Vertical Resolution is off");
+        })
+        .Callback([](WidgetInfo&) { apply_resolution(game_window()); });
+    m.AddWidget(H, "Graphics", 1, "Pixel Count Presets", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.PixelCountPreset"))
+        .Items({"Native (480p)", "2x (960p)", "720p", "1080p", "1440p", "4K (2160p)"})
+        .Tooltip("Sets the Vertical Resolution to a common size.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Graphics.FixedVerticalResolution"), 0) != 0,
+                           "Set Fixed Vertical Resolution is off");
+        })
+        .Callback([](WidgetInfo&) {
+            const int preset = std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.PixelCountPreset"), 0), 0, 5);
+            CVarSetInteger(CVAR_SETTING("Graphics.VerticalResolution"), kPixelPresets[preset]);
+            apply_resolution(game_window());
+        });
+    m.AddWidget(H, "Graphics", 1, "Pixel Perfect Mode", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Graphics.PixelPerfect"))
+        .Tooltip("Shows the picture at a whole-number multiple of its rendered size, so every pixel is the same size, "
+                 "with black around it. The picture is rendered at the game's own 480 lines unless Set Fixed Vertical "
+                 "Resolution is on.")
+        .Callback([](WidgetInfo&) {
+            apply_resolution(game_window());
+            apply_graphics(game_window());
+        });
+    m.AddWidget(H, "Graphics", 1, "Automatically Scale Image to Fit Viewport", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Graphics.AutoIntegerScale"))
+        .DefaultValue(1)
+        .Tooltip("Uses the largest whole-number multiple that fits in the window.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Graphics.PixelPerfect"), 0) != 0, "Pixel Perfect Mode is off");
+        })
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    m.AddWidget(H, "Graphics", 1, "Integer Scale Factor: %d", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Graphics.IntegerScaleFactor"))
+        .Range(1, 10, 1)
+        .DefaultValue(2)
+        .Tooltip("Sets the multiple the picture is shown at, or the largest that fits if the window is smaller.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Graphics.PixelPerfect"), 0) != 0, "Pixel Perfect Mode is off");
+            disable_unless(w, !CVarGetInteger(CVAR_SETTING("Graphics.AutoIntegerScale"), 1),
+                           "Automatically Scale Image to Fit Viewport is on");
+        })
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+    m.AddWidget(H, "Graphics", 1, "Output Resampling", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Graphics.OutputResampling"))
+        .Items({"Bilinear", "Area"})
+        .DefaultValue(1)
+        .Tooltip("Sets how the internal resolution is scaled to the window.\n\nBilinear: one sample per pixel, "
+                 "softer when scaled far down.\nArea: averages every covered pixel, sharper when the internal "
+                 "resolution is above the window's.")
+        .Callback([](WidgetInfo&) { apply_graphics(game_window()); });
+
+    // Controls
+    m.AddSidebar(H, "Controls", 2);
+    m.AddSidebar(H, "Controller Bindings", 1);
+    m.AddWidget(H, "Controller Bindings", 0, "Controller Bindings", WidgetType::Window)
+        .CVar(CVAR_WINDOW("ControllerBindings"))
+        .HideInSearch()
+        .Tooltip("Detaches the Controller Bindings into its own window.")
+        .CustomFunction([](WidgetInfo&) { input_editor::DrawEmbedded(shipmenu::MenuScale()); });
+    m.AddWidget(H, "Controls", 0, "Controller", WidgetType::SeparatorText);
+    m.AddWidget(H, "Controls", 0, "Controller Bindings", WidgetType::Button)
+        .Tooltip("Opens the Controller Bindings page: the controller for each port and the buttons, sticks and keys "
+                 "that drive each GameCube control.")
+        .Callback([](WidgetInfo&) {
+            CVarSetString("gSettings.Menu.SettingsSidebarSection", "Controller Bindings");
+            CVarSaveNextFrame();
+        });
+    m.AddWidget(H, "Controls", 0, "Invert Camera X Axis", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Controls.InvertCameraX"))
+        .Tooltip("Inverts the camera's horizontal movement on the C-Stick.")
+        .Callback([](WidgetInfo&) { apply_controller(); });
+    m.AddWidget(H, "Controls", 0, "Invert Camera Y Axis", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Controls.InvertCameraY"))
+        .Tooltip("Inverts the camera's vertical movement on the C-Stick.")
+        .Callback([](WidgetInfo&) { apply_controller(); });
+    m.AddWidget(H, "Controls", 0, "Use 'Switch' Targeting Mode", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Controls.SwitchTargeting"))
+        .Tooltip("Z-Targeting toggles on a press of the target button instead of lasting only while it is held. Holds the "
+                 "game's own Z-Targeting option (Options menu) at Switch while on; off, that option governs again. Works in "
+                 "vanilla and randomizer sessions.")
+        .Callback([](WidgetInfo&) { apply_preferences(); });
+    m.AddWidget(H, "Controls", 0, "GameCube Adapter", WidgetType::SeparatorText);
+    m.AddWidget(H, "Controls", 0, "First Connected Port Is Player 1", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Controls.FirstConnectedIsPlayer1"))
+        .DefaultValue(1)
+        .Tooltip("Makes the first connected controller player 1 even when it is plugged into a later adapter port. "
+                 "Wind Waker only reads port 1 for Link.")
+        .Callback([](WidgetInfo&) { input_editor::ApplyPorts(); });
+    m.AddWidget(H, "Controls", 0, "Controllers Connected", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        ImGui::TextUnformatted(input_editor::Summary());
+    });
+    m.AddWidget(H, "Controls", 0, "Adapter Status", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        const char* status = adapter_status();
+        ImGui::Text("Status: %s", status);
+        if (const unsigned ports = bluewake_gc_adapter_ports()) {
+            char line[64] = "Controllers on the adapter: port";
+            for (unsigned p = 0; p < 4; ++p)
+                if (ports & (1u << p))
+                    std::snprintf(line + std::strlen(line), sizeof line - std::strlen(line), " %u", p + 1);
+            ImGui::TextUnformatted(line);
+        }
+        if (std::strcmp(status, "In Use by Another Program") == 0)
+            ImGui::TextWrapped("The adapter is plugged in and has its driver, but another program has it open (Dolphin, "
+                               "Steam or Slippi, for example). Close that program, or unplug and plug the adapter in "
+                               "again.");
+        if (std::strcmp(status, "Driver Needed") == 0)
+            ImGui::TextWrapped("The adapter is plugged in, but Windows is not using the WinUSB driver for it, so the "
+                               "game cannot read it. Bind it to WinUSB once (for example with Zadig).");
+    });
+    m.AddWidget(H, "Controls", 0, "Install Adapter Driver", WidgetType::Button)
+        .Tooltip("Installs the WinUSB driver the official adapter needs so the game can read it. Windows asks for "
+                 "permission once. The driver package is signed with a certificate made on this PC, which is added to "
+                 "Windows' trusted publishers.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, !adapter_driver::Busy(), "An install is already running");
+            const char* status = adapter_status();
+            disable_unless(w, std::strcmp(status, "Not Found") != 0, "The adapter is not plugged in");
+            disable_unless(w, std::strcmp(status, "Connected") != 0, "The driver is already installed");
+            disable_unless(w, std::strcmp(status, "In Use by Another Program") != 0, "The driver is installed; another program has the adapter");
+        })
+        .Callback([](WidgetInfo&) {
+            g_menu.Ask({"Install Adapter Driver",
+                        "Install the WinUSB driver for the GameCube adapter?\n\nWindows will ask for permission. The "
+                        "driver package is signed with a certificate made on this PC, and that certificate is added to "
+                        "Windows' trusted publishers.",
+                        "Install", "Cancel", [] { adapter_driver::Install(); }});
+        });
+    m.AddWidget(H, "Controls", 0, "Install Status", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        const std::string status = adapter_driver::Status();
+        if (!status.empty())
+            ImGui::TextWrapped("%s", status.c_str());
+    });
+    m.AddWidget(H, "Controls", 1, "Rumble", WidgetType::SeparatorText);
+    m.AddWidget(H, "Controls", 1, "Rumble Mode", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Controls.Rumble.Mode"))
+        .Items({"Off", "Classic", "Enhanced"})
+        .DefaultValue(1)
+        .Tooltip("Sets how the controller vibrates.\n\nClassic: the motor on and off, as the game asks of a "
+                 "GameCube controller.\nEnhanced: hits, falls, explosions and quakes shaped by their strength, "
+                 "with trigger rumble.")
+        .Callback([](WidgetInfo&) { apply_rumble(); });
+    m.AddWidget(H, "Controls", 1, "Rumble Strength: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("Controls.Rumble.Strength"))
+        .Range(0, 100, 5)
+        .DefaultValue(80)
+        .Tooltip("Sets how strongly Enhanced rumble vibrates.")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1) == 2, "Rumble Mode is not Enhanced");
+        })
+        .Callback([](WidgetInfo&) { apply_rumble(); });
+    m.AddWidget(H, "Controls", 1, "Trigger Rumble", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Controls.Rumble.Triggers"))
+        .DefaultValue(1)
+        .Tooltip("Uses the triggers' own motors on controllers that have them (Xbox impulse triggers, DualSense).")
+        .PreFunc([](WidgetInfo& w) {
+            disable_unless(w, CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1) == 2, "Rumble Mode is not Enhanced");
+        })
+        .Callback([](WidgetInfo&) { apply_rumble(); });
+
+    // Tingle Tuner
+    m.AddSidebar(H, "Tingle Tuner", 2);
+    m.AddWidget(H, "Tingle Tuner", 0, "Game Boy Advance", WidgetType::SeparatorText);
+    m.AddWidget(H, "Tingle Tuner", 0, "Mode", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("TingleTuner.Mode"))
+        .Items({"Off", "In-App GBA", "Real GBA (JoyBus bridge)"})
+        .DefaultValue(1)
+        .Tooltip("Where the Tingle Tuner's Game Boy Advance is.\n\nOff: no GBA; using the Tuner says none was found.\n"
+                 "In-App GBA: an emulated GBA on controller port 2 with a free BIOS, shown in a floating window. "
+                 "The game sends the Tingle Tuner program to it, as it does to a real one; nothing else is needed.\n"
+                 "Real GBA: a Game Boy Advance on a GameCube link cable. The Wii U GameCube adapter cannot carry that "
+                 "(it only reports controllers), so this needs a JoyBus bridge, which is not built yet.")
+        .Callback([](WidgetInfo&) { gba_window::ApplyMode(); });
+    m.AddWidget(H, "Tingle Tuner", 0, "Tingle Tuner Status", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        ImGui::TextWrapped("%s", gba_window::Status());
+    });
+    m.AddWidget(H, "Tingle Tuner", 0, "GBA Window", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("TingleTuner.Window"))
+        .Items({"When In Use", "Always", "Never"})
+        .DefaultValue(0)
+        .Tooltip("When the floating Game Boy Advance window is shown. When In Use opens it when the game starts "
+                 "talking to the GBA and hides it a few seconds after that stops.");
+    m.AddWidget(H, "Tingle Tuner", 0, "Integer Scaling", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("TingleTuner.IntegerScale"))
+        .Tooltip("Sizes the window to whole multiples of the GBA's 240 x 160 screen. The window always keeps the "
+                 "screen's 3:2 shape.");
+    m.AddWidget(H, "Tingle Tuner", 0, "Restart GBA", WidgetType::Button)
+        .Tooltip("Starts the emulated GBA again from its BIOS. The Tingle program is gone; call Tingle again.")
+        .Callback([](WidgetInfo&) { gba_window::ResetGba(); });
+    m.AddWidget(H, "Tingle Tuner", 1, "Sound", WidgetType::SeparatorText);
+    m.AddWidget(H, "Tingle Tuner", 1, "Mute GBA", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("TingleTuner.Mute"))
+        .Tooltip("Silences the Game Boy Advance's own sound (Tingle's music and effects).");
+    m.AddWidget(H, "Tingle Tuner", 1, "GBA Volume: %d %%", WidgetType::CVarSliderInt)
+        .CVar(CVAR_SETTING("TingleTuner.Volume"))
+        .Range(0, 100, 5)
+        .DefaultValue(60)
+        .Tooltip("Sets how loud the Game Boy Advance is next to the game.");
+    m.AddWidget(H, "Tingle Tuner", 1, "Controls", WidgetType::SeparatorText);
+    m.AddWidget(H, "Tingle Tuner", 1, "GBA Controller", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        input_editor::DrawGbaController(shipmenu::MenuScale());
+    });
+    m.AddWidget(H, "Tingle Tuner", 1, "GBA Controller Bindings", WidgetType::Button)
+        .Callback([](WidgetInfo&) {
+            CVarSetString("gSettings.Menu.SettingsSidebarSection", "Controller Bindings");
+            CVarSaveNextFrame();
+        })
+        .Tooltip("Opens the bindings page. The GBA is player 2's controller: pick its controller and keys on the "
+                 "Port 2 tab. A and B are A and B, Z is Select, Start is Start, and L and R are L and R.");
+    m.AddWidget(H, "Tingle Tuner", 1, "Use Default Keyboard Layout", WidgetType::Button)
+        .Tooltip("Gives port 2 the keyboard: arrows, X = A, Z = B, Right Shift = Select, Enter = Start, A = L, "
+                 "S = R.")
+        .Callback([](WidgetInfo&) { gba_window::UseDefaultKeys(); });
+
+    // Presets
+    m.AddSidebar(H, "Presets", 1);
+    m.AddWidget(H, "Presets", 0, "Enhancement Presets", WidgetType::SeparatorText);
+    m.AddWidget(H, "Presets", 0, "Preset", WidgetType::CVarCombobox)
+        .CVar(CVAR_SETTING("Presets.Selected"))
+        .Items({kPresetNames[0], kPresetNames[1], kPresetNames[2], kPresetNames[3]})
+        .DefaultValue(1)
+        .Tooltip("Chooses a set of enhancements to apply. The list under it shows what it changes.");
+    m.AddWidget(H, "Presets", 0, "Preset Contents", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        const int preset = std::clamp(CVarGetInteger(CVAR_SETTING("Presets.Selected"), 1), 0, 3);
+        ImGui::TextWrapped("%s", kPresetInfo[preset]);
+    });
+    m.AddWidget(H, "Presets", 0, "Apply Preset", WidgetType::Button)
+        .Tooltip("Sets every enhancement as the chosen preset has it. Graphics, controls and audio are not changed.")
+        .Callback([](WidgetInfo&) {
+            const int preset = std::clamp(CVarGetInteger(CVAR_SETTING("Presets.Selected"), 1), 0, 3);
+            g_menu.Ask({"Apply Preset", std::string("Apply the ") + kPresetNames[preset] + " preset? It replaces your enhancement settings.",
+                        "Apply", "Cancel", [preset] { apply_preset(preset); }});
+        });
+
+    // Mod Menu
+    m.AddSidebar(H, "Mod Menu", 1);
+    mods::BuildMenu(m, H);
+    m.AddWidget(H, "Mod Menu", 0, "Texture Packs", WidgetType::SeparatorText);
+    m.AddWidget(H, "Mod Menu", 0, "Enable Texture Packs", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Mods.TexturePacks"))
+        .Tooltip("Loads the Dolphin-format texture packs in the mods\\textures folder. They load and unload at "
+                 "once, in the background; the picture takes them up as it is drawn again.")
+        .Callback([](WidgetInfo&) { sync_live_textures(); });
+    m.AddWidget(H, "Mod Menu", 0, "Open Mods Folder", WidgetType::Button)
+        .Tooltip("Opens the mods folder beside the executable.")
+        .Callback([](WidgetInfo&) { open_folder(g_data_dir + "mods"); });
+}
+
+void build_enhancements() {
+    using shipmenu::Menu;
+    Menu& m = g_menu;
+    const char* H = "Enhancements";
+    m.AddSidebar(H, "Quality of Life", 2);
+    m.AddSidebar(H, "Skips & Speed-ups", 3);
+    m.AddSidebar(H, "Items", 2);
+    m.AddSidebar(H, "Graphics", 2);
+    m.AddSidebar(H, "Cheats", 1);
+    m.AddSidebar(H, "Cosmetics Editor", 1);
+    m.AddWidget(H, "Cosmetics Editor", 0, "Cosmetics Editor", WidgetType::Window)
+        .CVar(CVAR_WINDOW("CosmeticsEditor"))
+        .HideInSearch()
+        .Tooltip("Detaches the Cosmetics Editor into its own window.")
+        .CustomFunction([](WidgetInfo&) { cosmetics::DrawEmbedded(shipmenu::MenuScale()); });
+
+    // Better Wind Waker's switches, each in its place; a section heading the
+    // first time a section appears in a column.
+    std::map<std::string, bool> sections;
+    for (const auto& row : kBetterWw) {
+        const std::string key = std::string(row.sidebar) + "/" + std::to_string(row.column) + "/" + row.section;
+        if (!sections[key]) {
+            sections[key] = true;
+            m.AddWidget(H, row.sidebar, row.column, row.section, WidgetType::SeparatorText);
+        }
+        auto& widget = m.AddWidget(H, row.sidebar, row.column,
+                                   row.label, WidgetType::CVarCheckbox)
+                           .CVar(better_ww_cvar(row.name))
+                           .DefaultValue(row.def)
+                           .Tooltip(row.tooltip);
+        widget.Callback([name = row.name](WidgetInfo&) { apply_better_ww(name); });
+        if (std::strcmp(row.name, "skip_intro_movie") == 0)
+            m.AddWidget(H, row.sidebar, row.column, "Remove Title and Ending Videos", WidgetType::CVarCheckbox)
+                .CVar(CVAR_ENHANCEMENT("RemoveTitleAndEndingVideos"))
+                .Tooltip("Replaces the movie that plays when the title screen sits idle and the one in the ending with a "
+                         "blank one (wwrando's tweak; saves nothing but the wait). Applies the next time the game opens "
+                         "the movie.")
+                .Callback([](WidgetInfo&) { apply_preferences(); });
+        if (std::strcmp(row.name, "unrestricted_boat") == 0)
+            m.AddWidget(H, row.sidebar, row.column, "Invert Sea Compass X-Axis", WidgetType::CVarCheckbox)
+                .CVar(CVAR_ENHANCEMENT("InvertSeaCompassX"))
+                .Tooltip("Flips the sea compass's left and right on the sailing HUD (wwrando's tweak).")
+                .PreFunc([](WidgetInfo& wi) {
+                    module_tooltip(wi, "Flips the sea compass's left and right on the sailing HUD (wwrando's tweak).",
+                                   "invert_sea_compass_x");
+                })
+                .Callback([](WidgetInfo&) { apply_preferences(); });
+        if (std::strcmp(row.name, "skip_intro_movie") == 0)
+            m.AddWidget(H, row.sidebar, row.column, "Skip Intro Story with Start", WidgetType::CVarCheckbox)
+                .CVar(CVAR_ENHANCEMENT("SkipIntroWithStart"))
+                .DefaultValue(1)
+                .Tooltip("Press Start during the story told when a new game starts to fade out of it and go on to "
+                         "Outset Island.")
+                .Callback([](WidgetInfo&) {
+                    bluewake_intro_skip_set(CVarGetInteger(CVAR_ENHANCEMENT("SkipIntroWithStart"), 1) != 0);
+                });
+    }
+    m.AddWidget(H, "Items", 0, "Treasure Light Up Close", WidgetType::CVarCombobox)
+        .CVar(CVAR_ENHANCEMENT("TreasureLightUpClose"))
+        .Items({"Off", "On (Treasure)", "On (Triforce Pieces)", "On (All)"})
+        .Tooltip("Keeps the light over sunken treasure on as the boat comes close, instead of fading out.\n\n"
+                 "Treasure: Treasure Chart spots.\nTriforce Pieces: Triforce Chart spots.\nAll: every light, "
+                 "the plain glints at sea too.")
+        .Callback([](WidgetInfo&) {
+            bluewake_treasure_glow_set(CVarGetInteger(CVAR_ENHANCEMENT("TreasureLightUpClose"), 0));
+        });
+    m.AddWidget(H, "Quality of Life", 1, "Forest Water", WidgetType::SeparatorText);
+    m.AddWidget(H, "Quality of Life", 1, "Keep Watered Trees", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("KeepWateredTrees"))
+        .Tooltip("Keeps the trees already watered when the Forest Water runs out. Refill and carry on with the "
+                 "trees still to water.")
+        .Callback([](WidgetInfo&) { apply_forest_water(); });
+    m.AddWidget(H, "Quality of Life", 1, "Longer Forest Water Timer", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("LongerForestWaterTimer"))
+        .Tooltip("Gives Forest Water 30 minutes instead of 20. Applies the next time Link scoops it.")
+        .Callback([](WidgetInfo&) { apply_forest_water(); });
+    m.AddWidget(H, "Skips & Speed-ups", 2, "Misc", WidgetType::SeparatorText);
+    m.AddWidget(H, "Skips & Speed-ups", 2, "Faster Transitions", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("FasterTransitions"))
+        .Tooltip("Shortens the fade between areas and skips through the black screen while an area loads.")
+        .Callback([](WidgetInfo&) { apply_fast_transitions(); });
+    m.AddWidget(H, "Skips & Speed-ups", 2, "Quick Doors", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("QuickDoors"))
+        .Tooltip("Skips Link's walk through doors and the door closing behind him.\nNot accounted for in "
+                 "Randomizer logic.")
+        .Callback([](WidgetInfo&) { apply_quick_doors(); });
+    m.AddWidget(H, "Graphics", 0, "Widescreen", WidgetType::SeparatorText);
+    m.AddWidget(H, "Graphics", 0, "Widescreen Actor Culling", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("WidescreenActorCulling"))
+        .DefaultValue(1)
+        .Tooltip("Draws and runs actors in the extra width of a widescreen window, so they do not pop in at the "
+                 "edges of the original 4:3 view.\nChanges which actors run; may affect certain glitches.")
+        .Callback([](WidgetInfo&) { apply_port_options(); });
+    m.AddWidget(H, "Graphics", 0, "HUD at Screen Edges", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("HudAtScreenEdges"))
+        .DefaultValue(1)
+        .Tooltip("Moves the hearts, magic, map and buttons to the edges of a widescreen window. Otherwise they "
+                 "stay where they are in the original 4:3 view.")
+        .Callback([](WidgetInfo&) { apply_port_options(); });
+    m.AddWidget(H, "Quality of Life", 1, "Autosave", WidgetType::SeparatorText);
+    m.AddWidget(H, "Quality of Life", 1, "Autosave Every: %d min (0 = off)", WidgetType::CVarSliderInt)
+        .CVar(CVAR_ENHANCEMENT("Autosave.Minutes"))
+        .Range(0, 30, 1)
+        .DefaultValue(0)
+        .Tooltip("Saves the current file by itself every so many minutes of play (0 is off), the same save as the pause "
+                 "menu's, into the file's own memory card slot. It waits for a quiet moment: no cutscene or menu, "
+                 "Link on his feet or at the helm, no scene change.")
+        .Callback([](WidgetInfo&) { apply_autosave(); });
+    m.AddWidget(H, "Quality of Life", 1, "Autosave When Getting a New Item", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("Autosave.OnNewItem"))
+        .Tooltip("Saves by itself after Link gets a new item, a heart container, a song or a pearl, as soon as the "
+                 "moment is quiet. Works with or without the timer above.")
+        .Callback([](WidgetInfo&) { apply_autosave(); });
+    m.AddWidget(H, "Quality of Life", 1, "Text", WidgetType::SeparatorText);
+    m.AddWidget(H, "Quality of Life", 1, "Crenando", WidgetType::CVarCheckbox)
+        .CVar(CVAR_ENHANCEMENT("Crenando"))
+        .Tooltip("Ganondorf -> Crenando")
+        .Callback([](WidgetInfo&) { bluewake_text_swap_enable(CVarGetInteger(CVAR_ENHANCEMENT("Crenando"), 0) != 0); });
+    m.AddWidget(H, "Cheats", 0, "Save States", WidgetType::SeparatorText);
+    m.AddWidget(H, "Cheats", 0, "I Understand, Enable Save States", WidgetType::CVarCheckbox)
+        .CVar(CVAR_CHEAT("SaveStates"))
+        .Tooltip("F6 to save a state, F8 to load the latest one.\n*WARNING*: States depend on this build of the "
+                 "game. Keep normal saves too.");
+}
+
+void build_dev_tools() {
+    shipmenu::Menu& m = g_menu;
+    const char* H = "Dev Tools";
+    m.AddSidebar(H, "General", 2);
+    m.AddWidget(H, "General", 0, "Menu", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 0, "Popout Menu", WidgetType::CVarCheckbox)
+        .CVar(CVAR_SETTING("Menu.Popout"))
+        .Tooltip("Changes the menu display from an overlay to a movable window.");
+    m.AddWidget(H, "General", 0, "Save States", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 0, "Save State (F6)", WidgetType::Button)
+        .Tooltip("Saves a state now.")
+        .PreFunc([](WidgetInfo& w) { disable_unless(w, CVarGetInteger(CVAR_CHEAT("SaveStates"), 0) != 0, "Save States are not enabled (Enhancements > Cheats)"); })
+        .Callback([](WidgetInfo&) { bluewake_save_state_hotkey(false); });
+    m.AddWidget(H, "General", 0, "Load Latest State (F8)", WidgetType::Button)
+        .Tooltip("Loads the latest save state.")
+        .PreFunc([](WidgetInfo& w) { disable_unless(w, CVarGetInteger(CVAR_CHEAT("SaveStates"), 0) != 0, "Save States are not enabled (Enhancements > Cheats)"); })
+        .Callback([](WidgetInfo&) { bluewake_save_state_hotkey(true); });
+    m.AddWidget(H, "General", 1, "Stats", WidgetType::SeparatorText);
+    m.AddWidget(H, "General", 1, "Frame Rate", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
+        ImGui::Text("Frames shown: %.1f a second", aurora::gfx::calculate_fps());
+        ImGui::Text("Game frames: %.1f a second", aurora::gfx::calculate_game_fps());
+        ImGui::Text("Widescreen squeeze: %.3f", dol_aurora_widescreen_squeeze());
+    });
+    devtools::BuildMenu(m, H);
+}
+
+void build_menu() {
+    if (g_menu_built)
+        return;
+    g_menu_built = true;
+    build_settings();
+    build_enhancements();
+    randomizer::BuildMenu(g_menu);
+    itemtracker::BuildMenu(g_menu);
+    checktracker::BuildMenu(g_menu);
+    inputviewer::BuildMenu(g_menu);
+    online::BuildMenu(g_menu);
+    build_dev_tools();
+    g_menu.onQuit = quit;
+    g_menu.onRestart = soft_restart;
 }
 
 // The UI's size for this window: the display's scale (Windows' own, or more
@@ -1032,16 +1466,9 @@ float ui_scale(SDL_Window* w) {
 }
 
 // On the first frame: a clear font drawn at the screen's scale, the default
-// for everything ImGui draws from the next frame on (the menu and Aurora's
-// frame rate). ImGui's own is a 13-pixel bitmap font, tiny on a 4K screen and
-// blurred when scaled.
-//
-// The font has an atlas of its own, handed to Aurora as an ImGui texture
-// (aurora_imgui_add_texture copies it on the render worker), so it can be
-// made inside the frame. Adding it to ImGui's atlas instead would have the
-// WebGPU backend rebuild and upload that from the main thread while the
-// render worker submits: Dawn's device is not thread-safe here, and the bigger
-// upload crashed early frames.
+// for everything ImGui draws from the next frame on. It has an atlas of its
+// own, handed to Aurora as an ImGui texture (aurora_imgui_add_texture copies
+// it on the render worker), so it can be made inside the frame.
 void load_font(SDL_Window* w) {
     float scale = std::max(1.0f, SDL_GetWindowDisplayScale(w));
     if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(w)))
@@ -1056,10 +1483,9 @@ void load_font(SDL_Window* w) {
     if (length > 0 && length < MAX_PATH - 32) {
         const std::string path = std::string(fonts) + "\\Fonts\\segoeui.ttf";
         if (GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES)
-            font = atlas->AddFontFromFileTTF(path.c_str(), std::round(15.0f * scale), nullptr, ranges);
+            font = atlas->AddFontFromFileTTF(path.c_str(), std::round(16.0f * scale), nullptr, ranges);
     }
     if (font == nullptr) {
-        // ImGui's own, at a whole multiple so its pixels stay square.
         scale = std::max(1.0f, std::round(scale));
         ImFontConfig pixel;
         pixel.SizePixels = 13.0f * scale;
@@ -1075,210 +1501,167 @@ void load_font(SDL_Window* w) {
     atlas->SetTexID(aurora_imgui_add_texture(static_cast<uint32_t>(width), static_cast<uint32_t>(height), pixels));
     atlas->ClearTexData();
     ImGui::GetIO().FontDefault = font;
-    ImGui::GetStyle().ScaleAllSizes(scale);
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsDark(&style);
+    style.WindowRounding = 4.0f;
+    style.ItemSpacing = ImVec2(8.0f, 10.0f);
+    style.FramePadding = ImVec2(8.0f, 5.0f);
+    style.ScaleAllSizes(scale);
     g_font_scale = scale;
     std::fprintf(stderr, "[windows] UI scale %.2f (font atlas %dx%d)\n", scale, width, height);
 }
 
-void draw_menu(SDL_Window* w) {
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    // The controller, read here and handed to ImGui as keys (menu_shared.h).
-    const BwMenuPad pad = bw_menu_controller(g_session.button_map, g_session.controller_swap_ab);
-    const float scale = ui_scale(w);
-    bluewake_ui::begin_theme(scale);
-    if (g_stage_select_question) {
-        if (pad.back) {  // B cancels the question, as Esc does
-            io.AddKeyEvent(ImGuiKey_Escape, true);
-            io.AddKeyEvent(ImGuiKey_Escape, false);
+// --- replacement textures that follow their settings -------------------------------
+// The Swift Sail's red textures (with Swift Sail or Brisk Sail) and the texture
+// packs (Enable Texture Packs) are registered with the renderer while their
+// setting is on and taken out when it is off. Registering bumps the renderer's
+// replacement epoch, so the textures already decoded are looked up again. A
+// folder is read on a thread of its own (a big pack has thousands of files),
+// and the game goes on meanwhile.
+struct LiveTextureSet {
+    struct Job {
+        std::atomic<bool> done{false};
+        aurora::texture::ReplacementGroup group;
+    };
+    const char* kind;            // for the log
+    int32_t priority;
+    std::shared_ptr<Job> job;    // reading the folder
+    bool registered = false;
+    std::string folder;          // the folder being read or registered
+    aurora::texture::ReplacementGroup group;
+};
+
+// want_folder is empty when the set should not be registered.
+void sync_texture_set(LiveTextureSet& set, const std::string& want_folder) {
+    if (set.job) {
+        if (!set.job->done.load(std::memory_order_acquire))
+            return;
+        set.group = std::move(set.job->group);
+        set.job.reset();
+        set.registered = true;
+        std::fprintf(stderr, "[mods] %s=%s replacements=%zu\n", set.kind, set.folder.c_str(),
+                     set.group.registrations.size());
+    }
+    if (set.registered && set.folder != want_folder) {
+        const size_t count = set.group.registrations.size();
+        aurora::texture::unregister_replacements(set.group);
+        set.group = {};
+        set.registered = false;
+        std::fprintf(stderr, "[mods] %s off: %zu replacements removed\n", set.kind, count);
+    }
+    if (!set.registered && !set.job && !want_folder.empty()) {
+        set.folder = want_folder;
+        set.job = std::make_shared<LiveTextureSet::Job>();
+        std::fprintf(stderr, "[mods] %s: reading %s\n", set.kind, want_folder.c_str());
+        std::thread([job = set.job, folder = want_folder, priority = set.priority] {
+            job->group = aurora::texture::load_replacement_directory(
+                std::filesystem::path(folder), aurora::texture::ReplacementOptions{.priority = priority});
+            job->done.store(true, std::memory_order_release);
+        }).detach();
+    }
+}
+
+bool game_option_on(const char* name) {
+    for (uint32_t i = 0;; ++i) {
+        bool on = false;
+        const char* option = bluewake_game_options_describe(i, nullptr, nullptr, &on);
+        if (option == nullptr)
+            return false;
+        if (std::strcmp(option, name) == 0)
+            return on;
+    }
+}
+
+std::string swift_sail_folder() {
+    std::string sail = exe_folder() + "assets\\swift_sail";
+    // The release makes them from the player's disc on first launch, into the prepared game folder.
+    if (const char* made = std::getenv("BLUEWAKE_EXTRAS_DIR")) {
+        const std::string prepared = std::string(made) + "\\assets\\swift_sail";
+        if (GetFileAttributesA(prepared.c_str()) != INVALID_FILE_ATTRIBUTES)
+            sail = prepared;
+    }
+    return sail;
+}
+
+void sync_live_textures() {
+    static LiveTextureSet sail{"builtin-textures", -1};  // below a texture pack, so a pack's texture wins
+    static LiveTextureSet pack{"texture-pack", 0};
+    static bool sail_missing_reported;
+    std::string sail_folder;
+    // What runs is the option's own switch (set from the setting, or by the command line).
+    if (game_option_on("swift_sail") || game_option_on("brisk_sail")) {
+        const std::string folder = swift_sail_folder();
+        if (GetFileAttributesA(folder.c_str()) != INVALID_FILE_ATTRIBUTES)
+            sail_folder = folder;
+        else if (!sail_missing_reported) {
+            sail_missing_reported = true;
+            std::fprintf(stderr, "[windows] Swift Sail textures not found (%s); the sail keeps its colours\n",
+                         folder.c_str());
         }
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
-                                ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowBgAlpha(0.94f);
-        int answer = 0;
-        if (ImGui::Begin("Developers' stage select", nullptr,
-                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::SetWindowFontScale(scale / g_font_scale);
-            answer = bw_stage_select_question();
-        }
-        ImGui::End();
-        bluewake_ui::end_theme();
-        if (answer != 0)
-            set_menu_open(false);
+    }
+    sync_texture_set(sail, sail_folder);
+    const bool packs = !g_safe_mode && CVarGetInteger(CVAR_SETTING("Mods.TexturePacks"), 0) != 0;
+    sync_texture_set(pack, packs ? texture_folder() : std::string());
+}
+
+// Precompile Shaders. The renderer compiles the pipelines its cache lists in
+// the background from the start; with the setting on, the game is also held
+// at its first present until they are done (below). Turning it on while the
+// game runs starts the same watch now, without holding anything: a counter in
+// the corner counts the pipelines still compiling.
+bool g_warmup;
+Uint64 g_warmup_since;
+uint32_t g_warmup_first;
+
+void start_shader_warmup() {
+    if (!CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0)) {
+        g_warmup = false;
+        std::fprintf(stderr, "[windows] precompile shaders off\n");
         return;
     }
-    // A size of its own rather than its contents', so each tab's body scrolls
-    // inside it and the footer stays put, as in the Mac and Linux menu: it opens
-    // in the middle, and can be moved and resized, but only inside the game's window.
-    const ImVec2 display = io.DisplaySize;
-    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(std::min(display.x - 24.f, 900.f * scale),
-                                    std::min(display.y - 24.f, 720.f * scale)), ImGuiCond_Appearing);
-    // Resizing stays between a size that still holds the tabs, hint and buttons
-    // and the edges of the game's window, less a margin, from where the menu is.
-    const ImVec2 largest(std::max(1.f, display.x - 24.f), std::max(1.f, display.y - 24.f));
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(std::min(460.f * scale, largest.x), std::min(320.f * scale, largest.y)), largest,
-        [](ImGuiSizeCallbackData* data) {
-            // Growing stops at the edge; a menu already past it (moved there) isn't shrunk.
-            const ImVec2 screen = ImGui::GetIO().DisplaySize;
-            const auto limit = [](float desired, float current, float room) {
-                return desired <= room ? desired : std::max(room, std::min(current, desired));
-            };
-            data->DesiredSize.x = limit(data->DesiredSize.x, data->CurrentSize.x, screen.x - 12.f - data->Pos.x);
-            data->DesiredSize.y = limit(data->DesiredSize.y, data->CurrentSize.y, screen.y - 12.f - data->Pos.y);
-        });
-    ImGui::SetNextWindowBgAlpha(0.94f);
-    // Dragged, or resized from the top or left, it stays inside the game's
-    // window. ImGui moves a dragged window as the frame starts, so this has to
-    // come before Begin draws it there; if it is ever bigger than the game's
-    // window, the top left (the tabs) stays in view.
-    if (const ImGuiWindow* window = ImGui::FindWindowByName("BlueWake settings")) {
-        const ImVec2 kept(std::max(12.f, std::min(window->Pos.x, display.x - 12.f - window->Size.x)),
-                          std::max(12.f, std::min(window->Pos.y, display.y - 12.f - window->Size.y)));
-        if (kept.x != window->Pos.x || kept.y != window->Pos.y)
-            ImGui::SetNextWindowPos(kept);
+    const AuroraStats* stats = aurora_get_stats();
+    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
+    std::fprintf(stderr, "[windows] precompile shaders: warm-up started in the background, %u shaders to compile\n",
+                 left);
+    if (left == 0u) {
+        std::fprintf(stderr, "[windows] shaders compiled in background: none were waiting\n");
+        return;
     }
-    // A click on the game or outside the menu leaves no window focused, and
-    // then the controller has nothing to move through: give the menu focus back.
-    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
-        ImGui::SetNextWindowFocus();
-    bool open = true;
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-                                   ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin("BlueWake settings", &open, flags)) {
+    g_warmup = true;
+    g_warmup_since = SDL_GetTicks();
+    g_warmup_first = left;
+}
+
+// Once a frame: ends the warm-up when nothing is left (or after two minutes).
+void draw_shader_warmup(SDL_Window* w) {
+    if (!g_warmup)
+        return;
+    const AuroraStats* stats = aurora_get_stats();
+    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
+    const Uint64 waited = SDL_GetTicks() - g_warmup_since;
+    if (!CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0) || left == 0u || waited > 120000) {
+        g_warmup = false;
+        std::fprintf(stderr, "[windows] shaders compiled in background: %u in %.1f s%s\n", g_warmup_first,
+                     waited / 1000.0, left != 0u ? " (stopped waiting)" : "");
+        return;
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    const float scale = ui_scale(w);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 12 * scale, 12 * scale), ImGuiCond_Always, ImVec2(1, 0));
+    ImGui::SetNextWindowBgAlpha(0.6f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##shaderwarmup", nullptr, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
-        // Esc normally closes it in the keyboard hook (bw_settings_key), which
-        // keeps the key from SDL; one that reaches ImGui instead closes it too.
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
-            open = false;
-        // The bumpers switch tabs. Each tab's body scrolls on its own but is
-        // flattened for navigation, so the D-pad moves from the tabs through the
-        // options to the buttons below without A to enter it and B to leave it.
-        static const char* const kTabs[] = {"Display", "Gameplay", "Mods", "Controls", "Sound and files"};
-        constexpr int kTabCount = IM_ARRAYSIZE(kTabs);
-        static int shown = 0;
-        int request = -1;
-        if (pad.tab_step != 0)
-            request = (shown + kTabCount + pad.tab_step) % kTabCount;
-        // The body takes what the footer leaves (menu_shared.h), as on Mac and Linux.
-        const float footer = bw_menu_footer_height(needs_restart());
-        if (ImGui::BeginTabBar("tabs")) {
-            // No title bar, so the mouse's close button sits at the end of the tabs.
-            if (ImGui::TabItemButton("x", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
-                open = false;
-            for (int i = 0; i < kTabCount; ++i) {
-                if (!ImGui::BeginTabItem(kTabs[i], nullptr, i == request ? ImGuiTabItemFlags_SetSelected : 0))
-                    continue;
-                shown = i;
-                ImGui::PushID(i);
-                ImGui::BeginChild("##body", ImVec2(0, -footer), ImGuiChildFlags_NavFlattened);
-                ImGui::PushTextWrapPos(0.f); // text wraps at the menu's edge
-                switch (i) {
-                case 0: tab_display(w); break;
-                case 1: tab_gameplay(); break;
-                case 2: tab_mods(); break;
-                case 3: tab_controls(); break;
-                default: tab_game(); break;
-                }
-                ImGui::PopTextWrapPos();
-                bw_menu_stick_scroll(pad.scroll);
-                ImGui::EndChild();
-                ImGui::PopID();
-                ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
-        }
-        const bool restart_note = needs_restart();
-        bw_menu_footer_note(restart_note);
-        if (restart_note) {
-            ImGui::SameLine();
-            if (ImGui::Button("Restart now"))
-                restart();
-        }
-        switch (bw_menu_footer_buttons(g_path.c_str())) {
-        case BW_MENU_RESUME:
-            open = false;
-            break;
-        case BW_MENU_SAVE_STATE:
-            bluewake_save_state_hotkey(false);
-            open = false;
-            break;
-        case BW_MENU_LOAD_STATE:
-            bluewake_save_state_hotkey(true);
-            open = false;
-            break;
-        case BW_MENU_QUIT: {
-            open = false;
-            if (g_dirty)
-                save_file();
-            SDL_Event quit{};
-            quit.type = SDL_EVENT_QUIT;
-            SDL_PushEvent(&quit);
-            break;
-        }
-        case BW_MENU_NONE:
-            break;
-        }
-        // The game's B ends an edit, closes a dropdown, or closes the menu (menu_shared.h).
-        if (bw_menu_back(pad.back))
-            open = false;
+        ImGui::Text("Compiling shaders: %u to go", left);
     }
     ImGui::End();
-    bluewake_ui::end_theme();
-    if (!open)
-        set_menu_open(false);
 }
 
-// The climbing stamina wheel (climb.c), beside Link in the game's picture: the
-// picture is the window's middle at the game's shape, or the whole window when
-// "keep the picture's shape" is off (DOL_AURORA_ASPECT_FIT=0, set at launch).
-void draw_climb_wheel() {
-    float fraction, x, y, aspect, alpha;
-    bool exhausted;
-    if (!bluewake_climb_hud(&fraction, &exhausted, &x, &y, &aspect, &alpha))
-        return;
-    static const bool fit = [] {
-        const char* v = std::getenv("DOL_AURORA_ASPECT_FIT");
-        return v == nullptr || v[0] != '0';
-    }();
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    float w = display.x, h = display.y, x0 = 0.f, y0 = 0.f;
-    if (h <= 0.f || aspect <= 0.f)
-        return;
-    if (fit && w / h > aspect) {
-        w = h * aspect;
-        x0 = (display.x - w) * 0.5f;
-    } else if (fit) {
-        h = w / aspect;
-        y0 = (display.y - h) * 0.5f;
-    }
-    const float radius = h * 0.03f, thick = radius * 0.45f, pi = 3.14159265f;
-    const ImVec2 center(x0 + x * w + radius * 2.4f, y0 + y * h - radius * 0.6f);
-    ImDrawList* list = ImGui::GetForegroundDrawList();
-    const auto a = [alpha](float v) { return static_cast<int>(v * alpha); };
-    list->PathArcTo(center, radius, 0.f, 2.f * pi, 48);
-    list->PathStroke(IM_COL32(20, 30, 20, a(150.f)), 0, thick + 3.f);
-    if (fraction <= 0.002f)
-        return;
-    ImU32 color = IM_COL32(120, 230, 90, a(245.f));  // green
-    if (exhausted) {
-        const float pulse = 0.65f + 0.35f * std::sin(static_cast<float>(ImGui::GetTime()) * 8.f);
-        color = IM_COL32(235, 70, 50, a(245.f * pulse));  // refilling after running out
-    } else if (fraction < 0.25f) {
-        color = IM_COL32(245, 190, 60, a(245.f));  // nearly out
-    }
-    list->PathArcTo(center, radius, -0.5f * pi, -0.5f * pi + 2.f * pi * fraction, 48);
-    list->PathStroke(color, 0, thick);
-}
-
-// Compile shaders before playing: the game is held at its first present
-// (dol_aurora_set_hold, the picture redrawn under this overlay) until every
-// pipeline the cache queued at start is compiled, or two minutes have passed.
-// They compile on several threads (Aurora's pipeline cache), and while the
-// game is held it asks for nothing new. Otherwise they compile while the game
-// runs, and a draw whose pipeline is not ready yet is left out of its frame.
+// Precompile Shaders (at start): the game is held at its first present (dol_aurora_set_hold,
+// the picture redrawn under this overlay) until every pipeline the cache queued
+// at start is compiled, or two minutes have passed.
 bool g_shader_wait;
 Uint64 g_shader_wait_since;
 uint32_t g_shader_wait_first;
@@ -1315,7 +1698,7 @@ void draw_shader_wait(SDL_Window* w) {
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##bluewake-shaders", nullptr, flags)) {
+    if (ImGui::Begin("##shaders", nullptr, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
         ImGui::Text("Compiling shaders: %u to go", left);
         if (g_shader_wait_first > 0u)
@@ -1325,7 +1708,7 @@ void draw_shader_wait(SDL_Window* w) {
     ImGui::End();
 }
 
-// For the first few seconds, where the settings and fullscreen are.
+// For the first few seconds: how to open the menu.
 void draw_hint(SDL_Window* w) {
     const Uint64 shown = SDL_GetTicks() - g_first_frame_at;
     if (shown > 7000 || g_menu_open)
@@ -1337,11 +1720,82 @@ void draw_hint(SDL_Window* w) {
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##bluewake-hint", nullptr, flags)) {
+    if (ImGui::Begin("##hint", nullptr, flags)) {
         ImGui::SetWindowFontScale(scale / g_font_scale);
-        ImGui::TextUnformatted("F1 settings   F11 fullscreen   F9 frame rate   Click the game to steer the camera");
+        ImGui::TextUnformatted("Press Esc or F1 for the menu");
     }
     ImGui::End();
+}
+
+// Testing: BLUEWAKE_TEST_SET="<frame>:<cvar>=<value>,..." changes settings as
+// the menu would, that many frames after the first, running the widget's own
+// callback, so a scenario can see a setting take effect in a running game. A
+// value that is not a number sets a string CVar (the menu's page, say). Two
+// names are not settings: gSettings.Presets.Apply applies the preset numbered
+// by the value, and gTest.Menu opens (1) or closes (0) the menu.
+void apply_test_changes() {
+    struct Change {
+        unsigned frame;
+        std::string cvar;
+        int value;
+        std::string text;
+        bool is_text;
+        bool done;
+    };
+    static std::vector<Change> changes;
+    static bool parsed;
+    static unsigned frames;
+    if (!parsed) {
+        parsed = true;
+        const char* list = std::getenv("BLUEWAKE_TEST_SET");
+        for (const char* p = list; p != nullptr && *p != '\0';) {
+            char* colon = nullptr;
+            const unsigned long frame = std::strtoul(p, &colon, 10);
+            const char* eq = colon != nullptr && *colon == ':' ? std::strchr(colon, '=') : nullptr;
+            if (eq == nullptr)
+                break;
+            const char* stop = std::strchr(eq, ',');
+            const std::string value(eq + 1, stop != nullptr ? stop : eq + 1 + std::strlen(eq + 1));
+            char* end = nullptr;
+            const long number = std::strtol(value.c_str(), &end, 10);
+            const bool is_text = value.empty() || *end != '\0';
+            changes.push_back({static_cast<unsigned>(frame), std::string(static_cast<const char*>(colon + 1), eq),
+                               static_cast<int>(number), value, is_text, false});
+            p = stop != nullptr ? stop + 1 : "";
+        }
+    }
+    if (changes.empty())
+        return;
+    ++frames;
+    for (auto& change : changes) {
+        if (change.done || frames < change.frame)
+            continue;
+        change.done = true;
+        build_menu();
+        if (change.cvar == "gSettings.Presets.Apply") {
+            apply_preset(change.value);
+            continue;
+        }
+        if (change.cvar == "gTest.CosmeticsPreset") {
+            cosmetics::TestApplyPreset(change.text);
+            continue;
+        }
+        if (change.cvar == "gTest.Menu") {
+            set_menu_open(change.value != 0);
+            continue;
+        }
+        if (change.is_text) {
+            CVarSetString(change.cvar.c_str(), change.text.c_str());
+            changed();
+            std::fprintf(stderr, "[test] set %s=%s at frame %u\n", change.cvar.c_str(), change.text.c_str(), frames);
+            continue;
+        }
+        CVarSetInteger(change.cvar.c_str(), change.value);
+        changed();
+        const bool fired = g_menu.FireCallback(change.cvar);
+        std::fprintf(stderr, "[test] set %s=%d at frame %u (callback %s)\n", change.cvar.c_str(), change.value, frames,
+                     fired ? "ran" : "none");
+    }
 }
 
 // Every presented frame, on the main thread, inside Aurora's frame.
@@ -1349,88 +1803,147 @@ void frame(void*) {
     SDL_Window* w = game_window();
     if (w == nullptr)
         return;
+    // Allow Background Inputs off: no controller input reaches the game while the window has no focus.
+    bluewake_host_set_pad_unfocused_block(!CVarGetInteger(CVAR_SETTING("AllowBackgroundInputs"), 1) &&
+                                          (SDL_GetWindowFlags(w) & SDL_WINDOW_INPUT_FOCUS) == 0);
     if (g_first_frame_at == 0) {
         g_first_frame_at = SDL_GetTicks();
-        apply_live();
+        profile_hardware(w, false);
+        apply_live(w);
+        adapter_status(); // logs the GameCube adapter's state
+        input_editor::ApplyKeyboard(false);
+        input_editor::TestSetup();
+        if (std::getenv("BLUEWAKE_TEST_ADAPTER_DRY")) // builds the package unsigned and never installs
+            std::fprintf(stderr, "[test] adapter driver dry run: %s\n", adapter_driver::DryRun().c_str());
+        online::Launch();
+        randomizer::Launch();
         load_font(w);
         return;  // the font is ImGui's default from the next frame
     }
+    if (!g_placed) {
+        g_placed = true;
+        place_window(w);
+    }
+    apply_test_changes();
     if (g_toggle_fullscreen) {
         g_toggle_fullscreen = false;
-        const bool on = !is_fullscreen(w);
-        set_fullscreen(w, on);
-        bluewake_status_post(on ? "Fullscreen on" : "Fullscreen off");
+        set_fullscreen(w, !is_fullscreen(w));
     }
     if (g_toggle_menu) {
         g_toggle_menu = false;
-        set_menu_open(!g_menu_open);
+        if (online::ChatOverlayOpen())
+            online::CloseChatOverlay();  // Esc (or F1) closes the chat line; the menu stays shut
+        else
+            set_menu_open(!g_menu_open);
     }
     track_window(w);
+    bw_crash_heartbeat();  // the hang watchdog (win_crash.cpp)
+    {
+        // A console reset the game asked for (OSResetSystem, game_options.c): started again, as the console reboots.
+        static bool restarting;
+        if (!restarting && bluewake_host_reset_requested()) {
+            restarting = true;
+            restart();
+        }
+    }
+    {
+        // BLUEWAKE_TEST_HANG_UI=<seconds> (a test of the watchdog): the UI thread stops for 15 s that long after start.
+        static const char* hang = std::getenv("BLUEWAKE_TEST_HANG_UI");
+        static bool hung;
+        if (hang != nullptr && !hung && SDL_GetTicks() >= 1000ull * (Uint64)std::atoi(hang)) {
+            hung = true;
+            std::fprintf(stderr, "[test] the UI thread stops for 15 s\n");
+            SDL_Delay(15000);
+        }
+    }
+    // Internal Resolution follows the window's size.
+    static int pixel_height;
+    int pw = 0, ph = 0;
+    SDL_GetWindowSizeInPixels(w, &pw, &ph);
+    if (ph != pixel_height) {
+        pixel_height = ph;
+        apply_resolution(w);
+    }
     // The frame rate in the session log, a line a second beside the host's
-    // [perf] line: frames shown (60 with Smooth Motion at full speed) and the
-    // game's own (30 at full speed).
-    // With it, where the game thread waited in that second (GXRuntime's
-    // counters): for the GX worker at the game's draw-done barriers, and in
-    // the present, of which end_frame is Aurora's submission.
+    // [perf] line, with where the game thread waited in that second.
     static Uint64 fps_logged;
     static DolAuroraFrameTiming timing_before;
     const Uint64 now = SDL_GetTicks();
     if (now - fps_logged >= 1000) {
-        apply_smooth_rate(w);
         DolAuroraFrameTiming timing{};
         dol_aurora_frame_timing(&timing);
+        // Audio counters for the same second (reading them also resets them).
+        DolAuroraAudioStats audio{};
+        dol_aurora_audio_interval(&audio);
         if (fps_logged != 0)
-            std::fprintf(stderr, "[fps] shown=%.1f game=%.1f drain_ms=%.0f present_ms=%.0f end_frame_ms=%.0f\n",
+            std::fprintf(stderr, "[fps] shown=%.1f game=%.1f drain_ms=%.0f present_ms=%.0f end_frame_ms=%.0f"
+                         " audio_q_ms=%d..%d audio_underruns=%u audio_silent_ms=%u audio_starved=%u"
+                         " audio_gap_ms=%u audio_stretch=%.2f\n",
                          aurora::gfx::calculate_fps(), aurora::gfx::calculate_game_fps(),
                          (timing.drain_us - timing_before.drain_us) / 1000.0,
                          (timing.present_us - timing_before.present_us) / 1000.0,
-                         (timing.end_frame_us - timing_before.end_frame_us) / 1000.0);
+                         (timing.end_frame_us - timing_before.end_frame_us) / 1000.0,
+                         audio.queue_min_ms, audio.queue_max_ms, audio.underruns, audio.underrun_ms,
+                         audio.starved, audio.max_gap_ms, audio.stretch_x100 / 100.0);
         fps_logged = now;
         timing_before = timing;
     }
-    // A controller that connects starts from Aurora's mapping: look twice a
-    // second whether the one on port 0 changed.
+    // A controller that connects or leaves: its camera inversion and the port rule.
     static unsigned frames;
-    apply_key_map();
-    if ((++frames % 30u) == 0u) {
-        const SDL_JoystickID connection = bw_controller_connection(0);
-        if (connection != g_pad_connection) {
-            g_pad_connection = connection;
-            apply_controller();
-        }
-    }
+    if ((++frames % 30u) == 0u)
+        input_editor::Poll();
     static unsigned healthy_frames;
     if (!g_menu_open && ++healthy_frames == 600u && !bw_launch_clear((g_data_dir + "launch.pending").c_str()))
         std::fprintf(stderr, "[safe-mode] could not clear launch marker\n");
     if (g_safe_mode && SDL_GetTicks() - g_first_frame_at < 15000) {
         ImGui::SetNextWindowBgAlpha(0.85f);
-        ImGui::Begin("Launch recovery", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        // A fixed wrap width: TextWrapped in an auto-resizing window wraps to
-        // the window's own width and collapses it to a narrow column.
+        ImGui::Begin("Launch recovery", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
-        ImGui::TextUnformatted("BlueWake didn't finish starting last time, so this time it starts with Fast "
-                               "sound, 4:3 and the mods off. Your earlier settings were saved beside "
-                               "settings.ini. You can turn things back on in the settings (F1).");
+        ImGui::TextUnformatted("The game didn't finish starting last time, so this time it starts with HLE audio, "
+                               "no enhancements and no texture packs. Your settings are "
+                               "unchanged.");
         ImGui::PopTextWrapPos();
         ImGui::End();
     }
-    draw_climb_wheel();
     draw_shader_wait(w);
-    if (bluewake_stage_select_take_question()) {
-        set_menu_open(true);
-        g_stage_select_question = true;
+    draw_shader_warmup(w);
+    sync_live_textures();
+    if (g_menu_open) {
+        build_menu();
+        bool open = true;
+        const float scale = ui_scale(w);
+        g_menu.Draw(&open, scale, scale / g_font_scale);
+        if (!open)
+            set_menu_open(false);
     }
-    if (g_menu_open)
-        draw_menu(w);
+    {
+        const float scale = ui_scale(w);
+        cosmetics::Frame(scale, scale / g_font_scale);
+        hud_colors::Frame();
+        online::Frame(scale, scale / g_font_scale);
+        if (online::ChatOverlayOpen() != g_text_capture) {
+            g_text_capture = online::ChatOverlayOpen();
+            PADBlockInput(g_menu_open || g_text_capture);
+            input_editor::ApplyKeyboard(g_menu_open || g_text_capture);
+            std::fprintf(stderr, "[windows] chat line %s, game input %s\n", g_text_capture ? "open" : "closed",
+                         g_text_capture ? "blocked" : "restored");
+        }
+        input_editor::Frame(scale, scale / g_font_scale);
+        gba_window::Frame(scale, scale / g_font_scale);
+        devtools::Frame(scale, scale / g_font_scale);
+        itemtracker::Frame(scale, scale / g_font_scale);
+        checktracker::Frame(scale, scale / g_font_scale);
+        inputviewer::Frame(scale, scale / g_font_scale);
+        randoflow::Frame(scale);
+        poll_autosave();
+    }
     draw_hint(w);
-    bluewake_ui::draw_status_line(SDL_GetTicks(), ui_scale(w));
-    if (g_dirty && SDL_GetTicks() - g_dirty_at > 1000 && !g_menu_open)
-        save_file();
+    CVarTick();
 }
 
 void save_at_exit() {
-    if (g_dirty)
-        save_file();
+    online::Shutdown();
+    CVarSave();
 }
 
 }  // namespace
@@ -1448,219 +1961,128 @@ extern "C" void bw_settings_capture_environment(void) {
 
 extern "C" void bw_settings_load(const char* data_dir) {
     g_data_dir = data_dir;
-    g_path = g_data_dir + "settings.ini";
-    load_file();
+    CVarInit((g_data_dir + "boat-of-daphnes.json").c_str());
+    // Remove Music became Music Volume 0 (once): a saved Remove Music file keeps its silence.
+    if (CVarExists(CVAR_SETTING("Audio.RemoveMusic"))) {
+        if (CVarGetInteger(CVAR_SETTING("Audio.RemoveMusic"), 0) != 0 && !CVarExists(CVAR_SETTING("Audio.MusicVolume")))
+            CVarSetInteger(CVAR_SETTING("Audio.MusicVolume"), 0);
+        CVarClear(CVAR_SETTING("Audio.RemoveMusic"));
+        CVarSaveNextFrame();
+        std::fprintf(stderr, "[settings] Remove Music is now Music Volume (%d)\n",
+                     CVarGetInteger(CVAR_SETTING("Audio.MusicVolume"), 100));
+    }
     g_safe_mode = env_set("BLUEWAKE_SAFE_MODE") || bw_launch_pending((g_data_dir + "launch.pending").c_str());
     if (g_safe_mode) {
-        if (!bw_launch_backup(g_path.c_str())) {
-            std::fprintf(stderr, "[safe-mode] settings backup failed; refusing to reset preferences\n");
-            // Keep preferences intact; session safety still forces HLE/mods off.
-        } else {
-            Settings defaults;
-            g_saved.aspect = defaults.aspect;
-            g_saved.keep_aspect = defaults.keep_aspect;
-            g_saved.betterww = false;
-            g_saved.options.clear();
-            g_saved.hd_textures = false;
-            g_saved.hd_look = false;
-            g_saved.lle_audio = false;
-            g_saved.movement_extras = false;
-            g_saved.fast_transitions = false;
-            g_saved.quick_doors = false;
-            g_saved.stage_select = false;
-            g_dirty = true;
-            save_file();
-        }
+        // This session only: the settings file is left as it is.
         _putenv_s("BLUEWAKE_DSP_MODE", "hle");
         _putenv_s("BLUEWAKE_MODS", "none");
         _putenv_s("BLUEWAKE_OPTIONS", "none");
-        _putenv_s("BLUEWAKE_ASPECT", "4:3");
-        _putenv_s("DOL_AURORA_ASPECT_FIT", "1");
-        _putenv_s("DOL_AURORA_TEXTURE_PACK", "");
-        _putenv_s("BLUEWAKE_JUMP_BUTTON", "0");
-        _putenv_s("BLUEWAKE_SPRINT_SPEED", "1");
         _putenv_s("BLUEWAKE_FAST_FORWARD", "0");
         _putenv_s("BLUEWAKE_FADE_FRAMES", "0");
         _putenv_s("BLUEWAKE_QUICK_DOORS", "0");
-        _putenv_s("BLUEWAKE_HD_LOOK", "0");
-        // Clear overrides so the HD switch can enable every effect again later.
-        _putenv_s("BLUEWAKE_HD_DISTANT_ISLANDS", "");
-        _putenv_s("BLUEWAKE_HD_BLOOM", "");
-        _putenv_s("BLUEWAKE_HD_FAR_BLUR", "");
-        _putenv_s("BLUEWAKE_HD_AO", "");
-        _putenv_s("BLUEWAKE_HD_CLOUD_SHADOWS", "");
-        _putenv_s("BLUEWAKE_HD_SUN_SHADOWS", "");
-        _putenv_s("BLUEWAKE_HD_EDGE_LIGHT", "");
-        _putenv_s("BLUEWAKE_HD_TORCH_LIGHT", "");
-        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio, no HD look and restart defaults\n");
+        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio and texture packs off\n");
     }
-    g_launched = g_saved;
 }
 
 extern "C" void bw_settings_apply_launch(void) {
-    // What the command line chose wins for this session (and is shown).
-    g_session = g_saved;
-    // apply_hd_look() reads the session later, even if the backup failed.
-    if (g_safe_mode)
-        g_session.hd_look = false;
-    Settings& d = g_session;
-    if (env_set("BLUEWAKE_JUMP_BUTTON"))
-        d.movement_extras = std::getenv("BLUEWAKE_JUMP_BUTTON")[0] != '0';
-    if (env_set("BLUEWAKE_FAST_FORWARD"))
-        d.fast_transitions = std::getenv("BLUEWAKE_FAST_FORWARD")[0] != '0';
-    if (env_set("BLUEWAKE_QUICK_DOORS"))
-        d.quick_doors = std::getenv("BLUEWAKE_QUICK_DOORS")[0] != '0';
-    if (env_set("BLUEWAKE_SPRINT_SPEED")) {
-        const double speed = std::atof(std::getenv("BLUEWAKE_SPRINT_SPEED"));
-        if (speed > 1.01)
-            d.sprint_speed = std::clamp(speed, 1.1, 2.0);
-    }
-    char sprint[16];
-    std::snprintf(sprint, sizeof sprint, "%.2f", d.sprint_speed);
-    env_default("BLUEWAKE_JUMP_BUTTON", d.movement_extras ? "1" : "0");
-    env_default("BLUEWAKE_SPRINT_SPEED", d.movement_extras ? sprint : "1");
-    env_default("BLUEWAKE_FAST_FORWARD", d.fast_transitions ? "1" : "0");
-    env_default("BLUEWAKE_FADE_FRAMES", d.fast_transitions ? "6" : "0");
-    env_default("BLUEWAKE_QUICK_DOORS", d.quick_doors ? "1" : "0");
-    if (env_set("BLUEWAKE_STAGE_SELECT"))
-        d.stage_select = std::getenv("BLUEWAKE_STAGE_SELECT")[0] == '1';
-    env_default("BLUEWAKE_STAGE_SELECT", d.stage_select ? "1" : "0");
-    // The stage select's English names, which the builder installs beside BlueWake.exe.
-    {
-        char exe[MAX_PATH];
-        const DWORD n = GetModuleFileNameA(nullptr, exe, MAX_PATH);
-        if (n > 0 && n < MAX_PATH) {
-            std::string names(exe, n);
-            names = names.substr(0, names.find_last_of("\\/") + 1) + "stage_select";
-            const DWORD attributes = GetFileAttributesA(names.c_str());
-            if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY))
-                env_default("BLUEWAKE_STAGE_SELECT_NAMES", names);
-        }
-    }
-    if (env_set("DOL_AURORA_RENDER_SCALE"))
-        d.render_scale = std::clamp(std::atoi(std::getenv("DOL_AURORA_RENDER_SCALE")), 0, 4);
-    if (env_set("DOL_AURORA_FORCE_ANISO"))
-        d.anisotropy = std::clamp(std::atoi(std::getenv("DOL_AURORA_FORCE_ANISO")), 1, 16);
-    if (env_set("DOL_AURORA_FULLSCREEN"))
-        d.fullscreen = std::getenv("DOL_AURORA_FULLSCREEN")[0] != '0';
-    if (env_set("BLUEWAKE_MOUSE_CAMERA"))
-        d.mouse_camera = std::getenv("BLUEWAKE_MOUSE_CAMERA")[0] != '0';
-    if (env_set("BLUEWAKE_MOUSE_SENSITIVITY"))
-        d.mouse_sensitivity = std::clamp(std::atof(std::getenv("BLUEWAKE_MOUSE_SENSITIVITY")), 0.1, 10.0);
-    if (env_set("BLUEWAKE_MOUSE_INVERT_Y"))
-        d.mouse_invert_y = std::getenv("BLUEWAKE_MOUSE_INVERT_Y")[0] == '1';
-    if (env_set("BLUEWAKE_HAPTICS")) {
-        const char mode = std::getenv("BLUEWAKE_HAPTICS")[0];
-        d.haptics = mode == 'e' || mode == '1' ? 2 : mode == 'c' ? 1 : 0;
-    }
-    if (env_set("BLUEWAKE_HAPTICS_STRENGTH"))
-        d.haptics_strength = std::clamp(std::atoi(std::getenv("BLUEWAKE_HAPTICS_STRENGTH")), 0, 100);
-    if (env_set("BLUEWAKE_HAPTICS_TRIGGERS"))
-        d.haptics_triggers = std::getenv("BLUEWAKE_HAPTICS_TRIGGERS")[0] != '0';
-    env_default("BLUEWAKE_HAPTICS", haptics_name(d.haptics));
-    env_default("BLUEWAKE_HAPTICS_STRENGTH", std::to_string(d.haptics_strength));
-    env_default("BLUEWAKE_HAPTICS_TRIGGERS", d.haptics_triggers ? "1" : "0");
-    if (d.aspect != "4:3")
-        env_default("BLUEWAKE_ASPECT", d.aspect);
-    env_default("DOL_AURORA_ASPECT_FIT", d.keep_aspect ? "1" : "0");
-    if (d.picto_crop)
-        env_default("BLUEWAKE_PICTO_CROP", "1");
-    if (d.betterww)
-        env_default("BLUEWAKE_MODS", "betterww");
-    if (!d.options.empty()) {
-        std::string list;
-        for (const auto& [name, on] : d.options)
-            list += (list.empty() ? "" : ",") + std::string(on ? "" : "-") + name;
-        env_default("BLUEWAKE_OPTIONS", list);
-    }
-    CreateDirectoryA((g_data_dir + "Load").c_str(), nullptr);
-    CreateDirectoryA((g_data_dir + "Load\\Textures").c_str(), nullptr);
+    // Enhancements the host reads once.
+    const bool fast = CVarGetInteger(CVAR_ENHANCEMENT("FasterTransitions"), 0) != 0;
+    env_default("BLUEWAKE_FAST_FORWARD", fast ? "1" : "0");
+    env_default("BLUEWAKE_FADE_FRAMES", fast ? "6" : "0");
+    env_default("BLUEWAKE_QUICK_DOORS", CVarGetInteger(CVAR_ENHANCEMENT("QuickDoors"), 0) ? "1" : "0");
+    // The option-site variant runs with each switch from its own setting: no
+    // Better Wind Waker switch is on unless chosen (vanilla by default), the
+    // port's own options as set.
+    env_default("BLUEWAKE_MODS", "betterww");
+    // Graphics > Renderer: the graphics API Aurora starts with (read once, at start).
+    static const char* const kBackends[] = {"auto", "d3d12", "vulkan", "d3d11"};
+    env_default("DOL_AURORA_BACKEND", kBackends[std::clamp(CVarGetInteger(CVAR_SETTING("Graphics.Backend"), 0), 0, 3)]);
+    // A randomizer session (Quest: Randomizer, chosen on the file select): its mod, card and seed pack.
+    randoflow::Launch(g_data_dir.c_str());
+    std::string options = "none";
+    for (const auto& row : kBetterWw)
+        if (CVarGetInteger(better_ww_cvar(row.name).c_str(), row.def))
+            options += std::string(",") + row.name;
+    if (CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 1))
+        options += ",widescreen_culling";
+    if (CVarGetInteger(CVAR_ENHANCEMENT("HudAtScreenEdges"), 1))
+        options += ",hud_edges";
+    options += ",treasure_glow"; // its hook does nothing until a mode is chosen
+    options += ",player_models"; // its hook does nothing until a model is applied
+    options += ",intro_skip_start"; // its switch is the menu's (live)
+    if (CVarGetInteger(CVAR_ENHANCEMENT("InvertSeaCompassX"), 0))
+        options += ",invert_sea_compass_x";
+    options += ",anchor_puppets"; // its hooks do nothing until Anchor is on (or BLUEWAKE_PUPPET_SELF)
+    options += ",anchor_pvp"; // other players' bodies, targeting and hits (puppet_pvp.c); idle until a puppet is drawn; a module built before it has no such option
+    options += ",rando_file_select"; // the randomizer's file-select sounds (a module built before it has no such option)
+    options += ",gx_array_source"; // the renderer's full array pointers (the cloth's static arrays); a module without it has no such option
+    options += ",link_voice_pitch"; // Cosmetics Editor > Link Voice Pitch (its hook; a module built before it has no such option)
+    options += ",native_search"; // fopAcM_SearchByID answered natively (no setting; a module built before it has no such option)
+    options += ",anchor_switch_sync"; // Anchor: switches shared live (on only while team sync is; switch_sync.c)
+    options += ",runtime_fixes"; // DVDCheckDisk: a disc is in (the three-button reset)
+    bluewake_bunny_hood_enable(CVarGetInteger("gExperimental.BunnyHood", 1) != 0); // on by default (11c)
+    bluewake_text_swap_enable(CVarGetInteger(CVAR_ENHANCEMENT("Crenando"), 0) != 0);
+    options += ",bunny_hood"; // the Bunny Hood's hooks (docs/fork/bunny-hood.md); they do nothing until the hood is owned; a module without it has no such option
+    bluewake_intro_skip_set(CVarGetInteger(CVAR_ENHANCEMENT("SkipIntroWithStart"), 1) != 0);
+    apply_preferences(); // before the game starts: a randomizer session applies its seed at boot
+    env_default("BLUEWAKE_TREASURE_GLOW", std::to_string(CVarGetInteger(CVAR_ENHANCEMENT("TreasureLightUpClose"), 0)));
+    env_default("BLUEWAKE_OPTIONS", options);
+    // The session's settings in one line, for reading a log.
+    std::fprintf(stderr,
+                 "[settings] options=%s interpolation_fps=%d internal_resolution=%d%% force_aspect=%d vsync=%d "
+                 "anisotropy=%d resampling=%d treasure_glow=%d anchor=%d mods=%d texture_packs=%d audio_mode=%d\n",
+                 options.c_str(), CVarGetInteger(CVAR_SETTING("Graphics.InterpolationFPS"), 30),
+                 CVarGetInteger(CVAR_SETTING("Graphics.InternalResolution"), 100),
+                 CVarGetInteger(CVAR_SETTING("Graphics.ForceAspectRatio"), 0),
+                 CVarGetInteger(CVAR_SETTING("Graphics.Vsync"), 1), CVarGetInteger(CVAR_SETTING("Graphics.Anisotropy"), 0),
+                 CVarGetInteger(CVAR_SETTING("Graphics.OutputResampling"), 1),
+                 CVarGetInteger(CVAR_ENHANCEMENT("TreasureLightUpClose"), 0),
+                 CVarGetInteger("gNetwork.Anchor.Enabled", 0), CVarGetInteger("gSettings.Mods.Enabled", 1),
+                 CVarGetInteger(CVAR_SETTING("Mods.TexturePacks"), 0), CVarGetInteger(CVAR_SETTING("Audio.Mode"), 0));
+    // The Swift Sail's red textures and the texture packs are registered while their settings are on
+    // (sync_live_textures, every frame).
+    // The Tingle Tuner's in-app GBA (the host reads it at boot; the menu switches it live).
+    env_default("BLUEWAKE_TINGLE_TUNER", CVarGetInteger(CVAR_SETTING("TingleTuner.Mode"), 1) == 1 ? "auto" : "off");
+    // Rumble and Forest Water (read at attach, then live).
+    env_default("BLUEWAKE_HAPTICS", rumble_name(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1)));
+    env_default("BLUEWAKE_HAPTICS_STRENGTH", std::to_string(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Strength"), 80)));
+    env_default("BLUEWAKE_HAPTICS_TRIGGERS", CVarGetInteger(CVAR_SETTING("Controls.Rumble.Triggers"), 1) ? "1" : "0");
+    env_default("BLUEWAKE_FOREST_WATER_KEEP_TREES", CVarGetInteger(CVAR_ENHANCEMENT("KeepWateredTrees"), 0) ? "1" : "0");
+    env_default("BLUEWAKE_FOREST_WATER_30_MINUTES",
+                CVarGetInteger(CVAR_ENHANCEMENT("LongerForestWaterTimer"), 0) ? "1" : "0");
+    // Texture packs, audio.
+    CreateDirectoryA((g_data_dir + "mods").c_str(), nullptr);
     CreateDirectoryA(texture_folder().c_str(), nullptr);
-    if (d.hd_textures)
-        env_default("DOL_AURORA_TEXTURE_PACK", texture_pack_folder(d));
-    if (d.lle_audio)
+    // BLUEWAKE_MODS_DIR (testing): another folder in place of mods (read only).
+    if (const char* dir = std::getenv("BLUEWAKE_MODS_DIR"); dir != nullptr && dir[0] != '\0')
+        mods::Launch(dir, true);
+    else
+        mods::Launch(g_data_dir + "mods", false);
+    if (CVarGetInteger(CVAR_SETTING("Audio.Mode"), 0) == 1)
         env_default("BLUEWAKE_DSP_MODE", "lle");
-    if (d.fullscreen)
+    // The window and the picture.
+    if (CVarGetInteger(CVAR_SETTING("Graphics.Fullscreen"), 0))
         env_default("DOL_AURORA_FULLSCREEN", "1");
-    int width = d.window_w, height = d.window_h;
-    if (width < 320 || height < 240) {
-        const std::string aspect = env_set("BLUEWAKE_ASPECT") ? std::getenv("BLUEWAKE_ASPECT") : d.aspect;
-        default_window(aspect_ratio(aspect), &width, &height);
-    }
+    int width = CVarGetInteger(CVAR_SETTING("Window.Width"), 0), height = CVarGetInteger(CVAR_SETTING("Window.Height"), 0);
+    if (width < 320 || height < 240)
+        default_window(&width, &height);
     env_default("DOL_AURORA_WINDOW", std::to_string(width) + "x" + std::to_string(height));
-    // Where the window was last time, for the host to create it there
-    // (runtime/host/src/main.c): Aurora shows the window before its first
-    // frame, and nothing moves it after. Otherwise it opens centred: the first
-    // launch, a spot no longer on a monitor, or a fullscreen start, which keeps
-    // the display it always had. Aurora takes no negative position, so a spot
-    // left of or above the main display opens centred too.
-    if (!d.fullscreen && d.window_x != INT_MIN && d.window_y != INT_MIN) {
-        if (!on_a_monitor(d.window_x, d.window_y))
-            std::fprintf(stderr, "[windows] window centred: %d,%d is no longer on a monitor\n", d.window_x,
-                         d.window_y);
-        else if (d.window_x < 0 || d.window_y < 0)
-            std::fprintf(stderr, "[windows] window centred: Aurora cannot open it at %d,%d (negative)\n",
-                         d.window_x, d.window_y);
-        else
-            env_default("BLUEWAKE_WINDOW_POSITION", std::to_string(d.window_x) + "," + std::to_string(d.window_y));
-    }
-    env_default("DOL_AURORA_RENDER_SCALE", std::to_string(d.render_scale));
-    if (d.anisotropy > 1)
-        env_default("DOL_AURORA_FORCE_ANISO", std::to_string(d.anisotropy));
-    if (!d.mouse_camera)
-        env_default("BLUEWAKE_MOUSE_CAMERA", "0");
-    char sensitivity[32];
-    std::snprintf(sensitivity, sizeof sensitivity, "%.2f", d.mouse_sensitivity);
-    env_default("BLUEWAKE_MOUSE_SENSITIVITY", sensitivity);
-    if (d.mouse_invert_y)
-        env_default("BLUEWAKE_MOUSE_INVERT_Y", "1");
-    // Aurora reads these two before main runs; the command line's --smooth
-    // and --fps (which set them) win over the file.
-    if (!env_set("DOL_AURORA_FRAME_INTERP"))
-        aurora_set_frame_interpolation(d.smooth_motion);
-    else
-        d.smooth_motion = std::getenv("DOL_AURORA_FRAME_INTERP")[0] == '1';
-    if (env_set("DOL_AURORA_FRAME_INTERP_STEPS"))
-        d.smooth_steps = bw_smooth_requested(std::getenv("DOL_AURORA_FRAME_INTERP_STEPS"));
-    apply_smooth_rate(game_window());
+    char scale[32];
+    std::snprintf(scale, sizeof scale, "%.4f", render_scale_for(height));
+    env_default("DOL_AURORA_RENDER_SCALE", scale);
+    const int aniso = CVarGetInteger(CVAR_SETTING("Graphics.Anisotropy"), 0);
+    if (aniso > 0)
+        env_default("DOL_AURORA_FORCE_ANISO", std::to_string(kAnisotropy[std::clamp(aniso, 0, 4)]));
     if (!env_set("DOL_AURORA_SHOW_FPS"))
-        aurora_set_fps_overlay(d.show_fps);
-    else
-        d.show_fps = std::getenv("DOL_AURORA_SHOW_FPS")[0] == '1';
-    // Aurora reads DOL_AURORA_FPS_POSITION at its start; set, it is this
-    // session's place only (g_saved keeps the file's until the menu changes it).
-    if (!env_set("DOL_AURORA_FPS_POSITION"))
-        apply_fps_position();
-    else
-        d.fps_position = bw_fps_position(std::getenv("DOL_AURORA_FPS_POSITION"));
-    if (env_set("BLUEWAKE_DSP_MODE")) d.lle_audio = std::strcmp(std::getenv("BLUEWAKE_DSP_MODE"), "lle") == 0;
-    if (env_set("BLUEWAKE_ASPECT")) d.aspect = std::getenv("BLUEWAKE_ASPECT");
-    if (env_set("DOL_AURORA_ASPECT_FIT")) d.keep_aspect = std::getenv("DOL_AURORA_ASPECT_FIT")[0] != '0';
-    if (env_set("BLUEWAKE_MODS")) d.betterww = std::string(std::getenv("BLUEWAKE_MODS")).find("betterww") != std::string::npos;
-    if (env_set("DOL_AURORA_TEXTURE_PACK")) d.hd_textures = true;
-    if (env_set("BLUEWAKE_OPTIONS")) {
-        d.options.clear();
-        std::string options = std::getenv("BLUEWAKE_OPTIONS");
-        d.option_defaults_off = options.rfind("none", 0) == 0;
-        size_t start = 0;
-        while (start < options.size()) {
-            size_t end = options.find(',', start);
-            std::string key = options.substr(start, end - start);
-            bool enabled = !key.empty() && key[0] != '-';
-            if (!enabled) key.erase(0, 1);
-            if (!key.empty() && key != "none") d.options[key] = enabled;
-            if (end == std::string::npos) break;
-            start = end + 1;
-        }
-    }
-    g_launched = g_before_edit = g_session;
+        aurora_set_fps_overlay(CVarGetInteger(CVAR_SETTING("Graphics.ShowFPS"), 0) != 0);
 }
 
 extern "C" void bw_settings_install(void) {
     dol_aurora_set_overlay(frame, nullptr);
     // BLUEWAKE_SHADERS_FIRST=0/1 overrides the setting (testing).
     const char* first = std::getenv("BLUEWAKE_SHADERS_FIRST");
-    g_shader_wait = first != nullptr && first[0] != '\0' ? first[0] != '0' : g_saved.shaders_first;
+    g_shader_wait = first != nullptr && first[0] != '\0' ? first[0] != '0'
+                                                         : CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0) != 0;
     if (g_shader_wait) {
         dol_aurora_set_hold(shader_wait_hold, nullptr);
         dol_aurora_set_hold_redraw(true);
@@ -1671,13 +2093,7 @@ extern "C" void bw_settings_install(void) {
 extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
     switch (virtual_key) {
     case VK_F1:
-        g_toggle_menu = true;
-        return 1;
     case VK_ESCAPE:
-        // Esc first gives the mouse back (the mouse camera sees it); then it
-        // opens and closes the menu.
-        if (!g_menu_open && bluewake_mouse_camera_captured())
-            return 0;
         g_toggle_menu = true;
         return 1;
     case VK_F11:
@@ -1688,37 +2104,45 @@ extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
             return 0;
         g_toggle_fullscreen = true;
         return 1;
-    case VK_F10:
-        g_session.smooth_motion = !aurora_get_frame_interpolation();
-        aurora_set_frame_interpolation(g_session.smooth_motion);
-        changed();
-        std::fprintf(stderr, "[windows] Smooth Motion %s\n", g_session.smooth_motion ? "on" : "off");
-        bluewake_status_post(g_session.smooth_motion ? "Smooth Motion on" : "Smooth Motion off");
-        return 1;
     case VK_F6:
-        // A second save key, unlisted: Wind Waker Recomp's, which players
-        // learned. F5 (save) and F8 (load) are the shared keys (mouse_camera.c),
-        // the same on every build (#320).
-        bluewake_save_state_hotkey(false);
+    case VK_F8:
+        if (!CVarGetInteger(CVAR_CHEAT("SaveStates"), 0))
+            return 0;
+        bluewake_save_state_hotkey(virtual_key == VK_F8);
         return 1;
-    case VK_F2:
-        // The Wind Waker HD look on or off, at once, and kept (#108).
-        g_session.hd_look = !g_session.hd_look;
-        apply_hd_look();
+    case VK_F7:
+        itemtracker::Toggle();
+        return 1;
+    case VK_F4:
+        if (alt)
+            return 0; // Alt+F4 closes the window
+        checktracker::Toggle();
+        return 1;
+    case VK_F9: {
+        const int on = CVarGetInteger(CVAR_SETTING("Graphics.ShowFPS"), 0) ? 0 : 1;
+        CVarSetInteger(CVAR_SETTING("Graphics.ShowFPS"), on);
+        aurora_set_fps_overlay(on != 0);
         changed();
-        std::fprintf(stderr, "[windows] Wind Waker HD look %s (F2)\n", g_session.hd_look ? "on" : "off");
-        bluewake_status_post(g_session.hd_look ? "HD look on" : "HD look off");
         return 1;
-    case VK_F9:
-        g_session.show_fps = !g_session.show_fps;
-        aurora_set_fps_overlay(g_session.show_fps);
-        changed();
-        bluewake_status_post(g_session.show_fps ? "Frame rate on" : "Frame rate off");
-        return 1;
+    }
     default:
         return 0;
     }
 }
+
+extern "C" void bw_settings_restart_now(void) { restart(); }
+
+extern "C" void bw_settings_open_menu_at(const char* header, const char* page) {
+    std::string key;
+    for (const char* c = header; *c != 0; ++c)
+        if (std::isalnum(static_cast<unsigned char>(*c)))
+            key += *c;
+    CVarSetString("gSettings.Menu.ActiveHeader", header);
+    CVarSetString(("gSettings.Menu." + key + "SidebarSection").c_str(), page);
+    set_menu_open(true);
+}
+
+extern "C" bool bw_settings_menu_is_open(void) { return g_menu_open; }
 
 extern "C" int bw_settings_relaunch(void) {
     return !g_restart.take() || relaunch() ? 0 : 1;
@@ -1726,9 +2150,16 @@ extern "C" int bw_settings_relaunch(void) {
 
 extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
     const SDL_Event* event = static_cast<const SDL_Event*>(sdl_event);
+    if (input_editor::OnEvent(event))
+        return true;
+    if (event->type == SDL_EVENT_DROP_FILE) {
+        // A spoiler log or seed.json on the window: the randomizer file select takes it as the seed (rando_flow.cpp).
+        randoflow::OnDrop(event->drop.data);
+        return true;
+    }
     if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && event->gbutton.button == SDL_GAMEPAD_BUTTON_BACK) {
         set_menu_open(!g_menu_open);
         return true;
     }
-    return g_menu_open;
+    return g_menu_open || g_text_capture;
 }

@@ -1,0 +1,11 @@
+# Pins read by scripts/windows/build.py (NAME=value, one per line).
+# The runtime is vendored in runtime/recompcore (runtime/VENDORED.md); only the
+# translator is fetched, into ref/dolrecomp.
+#
+# DolRecomp: elliotttate's copy of chrissotraidis 5c91d6e plus
+# patches/dolrecomp/0019 (runtime option sites); config/dependencies.lock.json.
+DOLRECOMP_URL=https://github.com/elliotttate/DolRecomp.git
+DOLRECOMP_SHA=b8b534591cba8ca7cd43943a655ee6e2591cf5de
+# Digest of the generated composite source (scripts/windows/composite_manifest.py)
+# for GZLE01 USA rev 0 with the translator above: 754 files.
+COMPOSITE_DIGEST=54f54434c3f9c899d43a96373dc0b4c1aed0e50db8b820b9698dfa76571a770a

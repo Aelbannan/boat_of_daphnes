@@ -30,9 +30,8 @@
  * stores on words addresses are loaded from, FP off, quantised pairs, an
  * exception pending, a write journal, aliases over MEM1, the budget or the
  * deadline inside the function, and the host not quiet, the edge filter off
- * or a boundary watched. The guest CPU fields the checkpoint hash copies
- * (host pointers only as present or absent; the cycle suffix included) and
- * RAM must match - or, where the native declines, nothing
+ * or a boundary watched. Every byte of the CPU state (the cycle suffix
+ * included) and of RAM must match - or, where the native declines, nothing
  * may have changed. RAM outside the test area and J3DSys's page is
  * read-only in both images.
  *
@@ -48,7 +47,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
-#include "cpu_state_compare.h"
 
 /* direct_calls.c, linked in for the edge filter's state, names these. */
 BwChunkFn bw_find_chunk(u32 address) {
@@ -188,17 +186,6 @@ static void reset_host(void) {
     bw_host_decrementer_pending = &s_decrementer_pending;
     bw_host_pi_cause = &s_pi_cause;
     bw_host_pi_mask = &s_pi_mask;
-}
-
-/* The module's can-skip observation, as the host's is: allow a direct-call
- * skip wherever the host's interrupt sources are clean and no interrupt the
- * guest would take is pending. The test has no feature dispatch. */
-static bool test_can_skip(void* user, const CPUState* cpu, u32 address) {
-    /* Refuse every direct-call skip: the test compares a native run against the
-     * full-loop translation, and skips would change cycle accounting (the old v1
-     * handshake returned 0, keeping direct calls off). */
-    (void)user; (void)cpu; (void)address;
-    return false;
 }
 
 static const u32 FUNCTIONS[] = {BLUEWAKE_MTXCALC_BASIC, BLUEWAKE_MTXCALC_SOFTIMAGE, BLUEWAKE_MTXCALC_MAYA};
@@ -359,7 +346,9 @@ static void make_trouble(unsigned which, unsigned kind, CPUState* c) {
 }
 
 static void report_cpu(const CPUState* got, const CPUState* want) {
-    bluewake_report_cpu_state(got, want);
+    for (unsigned b = 0; b < sizeof *got; ++b)
+        if (((const u8*)got)[b] != ((const u8*)want)[b])
+            fprintf(stderr, "  CPU byte %u: got %02X want %02X\n", b, ((const u8*)got)[b], ((const u8*)want)[b]);
 }
 
 static int report_ram(const u8* got, const u8* want, u32 at, u32 bytes) {
@@ -412,9 +401,9 @@ int main(int argc, char** argv) {
     CPUState* (*guest_cpu)(void) = (CPUState * (*)(void))(void*)GetProcAddress(lib, "bluewake_composite_guest_cpu");
     void (*set_edge)(int (*)(void*, CPUState*, u32), void*) =
         (void (*)(int (*)(void*, CPUState*, u32), void*))(void*)GetProcAddress(lib, "bluewake_set_edge_service");
-    int (*direct)(bool, const bool*, const bool*, const u32*, const u32*, bool (*)(void*, const CPUState*, u32), void*) =
-        (int (*)(bool, const bool*, const bool*, const u32*, const u32*, bool (*)(void*, const CPUState*, u32), void*))(void*)GetProcAddress(
-            lib, "bluewake_composite_direct_calls_v2");
+    int (*direct)(bool, const bool*, const bool*, const u32*, const u32*) =
+        (int (*)(bool, const bool*, const bool*, const u32*, const u32*))(void*)GetProcAddress(
+            lib, "bluewake_composite_direct_calls");
     int (*filter)(bool) = (int (*)(bool))(void*)GetProcAddress(lib, "bluewake_composite_edge_filter");
     if (get == NULL || guest_cpu == NULL || set_edge == NULL || direct == NULL || filter == NULL) {
         fprintf(stderr, "not a BlueWake Windows module\n");
@@ -427,7 +416,7 @@ int main(int argc, char** argv) {
     }
     static const bool clear = false;
     static const u32 zero = 0u;
-    if (!direct(true, &clear, &clear, &zero, &zero, test_can_skip, NULL) || !filter(true)) {
+    if (!direct(true, &clear, &clear, &zero, &zero) || !filter(true)) {
         fprintf(stderr, "the module's direct calls or edge filter are unavailable\n");
         return 1;
     }
@@ -462,7 +451,7 @@ int main(int argc, char** argv) {
             g_ppc_guest_aliases_overlap_mem1 = false;
             if (!accepted) {
                 declined++;
-                if (bluewake_cpu_state_compare(&native, &untouched) != 0 || !same_regions(before, native_ram)) {
+                if (memcmp(&native, &untouched, sizeof native) != 0 || !same_regions(before, native_ram)) {
                     fprintf(stderr, "case %u (%s): declined but changed state\n", i, NAMES[which]);
                     report_cpu(&native, &untouched);
                     return 1;
@@ -494,7 +483,7 @@ int main(int argc, char** argv) {
             if (which == 2 && reference.downcount < k.cpu.downcount - 250)
                 compensated++;
             if (s_unexpected_service != 0u || (reference.pc & ~3u) != RETURN_ADDRESS ||
-                bluewake_cpu_state_compare(&native, &reference) != 0 || !same_regions(native_ram, reference_ram)) {
+                memcmp(&native, &reference, sizeof native) != 0 || !same_regions(native_ram, reference_ram)) {
                 fprintf(stderr, "case %u (%s, seed %08X): mismatch (service asked %u times, last at %08X; pc %08X)\n",
                         i, NAMES[which], seed, s_unexpected_service, s_unexpected_at, reference.pc);
                 report_cpu(&native, &reference);
