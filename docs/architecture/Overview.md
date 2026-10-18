@@ -82,7 +82,7 @@ package`"]
         Executable --> Package
     end
 
-    subgraph Runtime["Runtime — one application process"]
+    subgraph Runtime["Runtime — one<br/>application process"]
         Startup["Startup"]
         Host["BlueWake host"]
         Game["Game module"]

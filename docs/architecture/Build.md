@@ -47,7 +47,7 @@ flowchart TD
     Extract["Validate and extract<br/>main.dol + 415 RELs"]
     Translate["Build and run<br/>pinned DolRecomp"]
     Composite["Generate and verify<br/>composite source"]
-    Prepare["Apply selected mods and<br/>guarded optimizations"]
+    Prepare["Apply selected<br/>mods and guarded<br/>optimizations"]
     PGO["Optional local<br/>PGO training"]
     Compile["Compile host and<br/>native game module"]
     Package["Package for the<br/>target platform"]
@@ -204,8 +204,8 @@ flowchart TD
     Linux["Linux build.py<br/>dependencies()"]
     Windows["Windows build.py<br/>dependencies()"]
     Apple["Apple build.sh<br/>profile_dependencies()"]
-    Checkout["Shared source dependency output<br/>ROOT/ref/recompcore<br/>pinned RecompCore and DolRecomp checkout"]
-    Dawn["Apple mobile renderer dependency output<br/>ROOT/build/deps<br/>verified Dawn archive"]
+    Checkout["Shared source<br/>dependency output<br/>ROOT/ref/recompcore<br/>pinned RecompCore and<br/>DolRecomp checkout"]
+    Dawn["Apple mobile renderer<br/>dependency output<br/>ROOT/build/deps<br/>verified Dawn archive"]
 
     Profile --> Linux
     Profile --> Windows
@@ -213,8 +213,8 @@ flowchart TD
     Linux -->|fetch and verify| Checkout
     Windows -->|fetch and verify| Checkout
     Apple -->|fetch and verify| Checkout
-    Apple -. "iOS / tvOS only: independent additional fetch" .-> Dawn
-    Lock -. "records origins and roles" .-> Profile
+    Apple -. "iOS / tvOS only:<br/>independent<br/>additional fetch" .-> Dawn
+    Lock -. "records origins<br/>and roles" .-> Profile
 ```
 
 Each platform has a separate implementation that produces the same pinned
@@ -260,13 +260,13 @@ prepare the mobile archive during the dependency hook.
 
 ```mermaid
 flowchart TD
-    Disc["Required extraction input<br/>uncompressed GZLE01 ISO / GCM"]
+    Disc["Required extraction<br/>input<br/>uncompressed GZLE01<br/>ISO / GCM"]
     Linux["Linux build.py<br/>platform adapter"]
     Windows["Windows build.py<br/>platform adapter"]
-    Apple["Apple profile_extract()<br/>platform adapter"]
-    CLI["Shared build-time CLI<br/>scripts/ios/disc_extract.c"]
-    Importer["Shared extraction core<br/>apple/ios/src/disc_import.c"]
-    Output["Build output<br/>OUT/game/main.dol + rels/"]
+    Apple["Apple<br/>profile_extract()<br/>platform adapter"]
+    CLI["Shared build-time CLI<br/>scripts/ios/<br/>disc_extract.c"]
+    Importer["Shared extraction core<br/>apple/ios/src/<br/>disc_import.c"]
+    Output["Build output<br/>OUT/game/main.dol<br/>+ rels/"]
     FirstRun["iOS first-run UI"]
     AppData["iOS app data<br/>prepared game files"]
 
@@ -277,7 +277,7 @@ flowchart TD
     Windows -->|CMake target| CLI
     Apple -->|direct Clang command| CLI
     CLI --> Importer --> Output
-    FirstRun -. "calls the core API directly" .-> Importer
+    FirstRun -. "calls the core API<br/>directly" .-> Importer
     Importer -. "first-run destination" .-> AppData
 ```
 
@@ -310,17 +310,17 @@ and optional Yaz0 compression before producing one uniform REL directory.
 ```mermaid
 flowchart TD
     Disc["GZLE01 disc image"]
-    Header["bluewake_disc_check()<br/>identity and GameCube magic"]
-    Dol["bluewake_disc_prepare()<br/>read offsets and DOL sections"]
+    Header["bluewake_disc_check()<br/>identity and<br/>GameCube magic"]
+    Dol["bluewake_disc_<br/>prepare()<br/>read offsets and<br/>DOL sections"]
     Revision["SHA-1 check<br/>USA revision 0"]
     FST["File-system table"]
     Loose["Loose rels/*.rel"]
     Archive["RELS.arc<br/>RARC archive"]
-    Decode["yaz0_decode() / unpack_rels_arc()<br/>decode modules"]
-    Normalize["write_rel()<br/>set alignment field to 4"]
+    Decode["yaz0_decode() /<br/>unpack_rels_arc()<br/>decode modules"]
+    Normalize["write_rel()<br/>set alignment<br/>field to 4"]
     StagedDol[".import/main.dol"]
     StagedRels[".import/rels/*.rel"]
-    Runtime["Textures, audio, and other assets<br/>remain on the disc image"]
+    Runtime["Textures, audio,<br/>and other assets<br/>remain on the<br/>disc image"]
 
     Disc --> Header
     Header -->|DOL offset| Dol --> Revision --> StagedDol
@@ -342,11 +342,11 @@ Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c),
 flowchart LR
     Prepare["Write complete outputs<br/>under OUT/game/.import"]
     Importer{"Importer checks pass?"}
-    Clean["Remove temporary outputs<br/>keep failure isolated"]
-    Publish["Replace OUT/game/main.dol<br/>and OUT/game/rels"]
+    Clean["Remove temporary<br/>outputs<br/>keep failure isolated"]
+    Publish["Replace<br/>OUT/game/main.dol<br/>and OUT/game/rels"]
     Count{"Exactly 415 RELs?"}
     Stop["Stop the build"]
-    Translate["Continue to translation"]
+    Translate["Continue to<br/>translation"]
 
     Prepare --> Importer
     Importer -->|no| Clean --> Stop
@@ -447,7 +447,7 @@ flowchart LR
         Generate["Compose source"]
         Verify{"Digest match?"}
         Variants["Optional: add<br/>mod variants"]
-        Prepare["Optional: apply guarded<br/>optimizations"]
+        Prepare["Optional: apply<br/>guarded optimizations"]
     end
 
     DolC --> Generate
@@ -457,7 +457,7 @@ flowchart LR
     Verify -->|yes| Base
     Verify -->|no| Stop
     Base --> Variants --> Prepare --> Ready
-    Base -. "mods and optimizations disabled" .-> Ready
+    Base -. "mods and optimizations<br/>disabled" .-> Ready
 ```
 
 Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
@@ -507,7 +507,7 @@ flowchart TD
     Prepared["Stage 5 prepared<br/>C source"]
     Fingerprint["Input<br/>fingerprint"]
     Host["Build or reuse<br/>playback host"]
-    Compile["Stage 6: compile Stage 5<br/>source for training"]
+    Compile["Stage 6: compile<br/>Stage 5 source<br/>for training"]
     Instrumented["Training module<br/>with counters"]
     Playback["Headless<br/>playbacks"]
     Raw["Raw profiles"]

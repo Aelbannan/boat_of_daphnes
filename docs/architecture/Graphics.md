@@ -71,10 +71,10 @@ Vulkan, Metal or D3D12`"]
     GPU["`GPU and display`"]
 
     Game -->|"GX command stream"| GX
-    Host -->|"guest ranges and barriers"| GX
-    GX -->|"normalized render packets"| Aurora
-    Host -->|"window and presentation lifecycle"| Aurora
-    Aurora -->|"WebGPU resources and commands"| Dawn
+    Host -->|"guest ranges<br/>and barriers"| GX
+    GX -->|"normalized<br/>render packets"| Aurora
+    Host -->|"window and<br/>presentation lifecycle"| Aurora
+    Aurora -->|"WebGPU resources<br/>and commands"| Dawn
     Dawn --> API --> GPU
 ```
 
@@ -140,10 +140,13 @@ targets, not every platform that upstream Aurora can build.
 
 ```mermaid
 flowchart TD
-    Target["`BlueWake build target
-Linux, Windows or Apple`"]
+    Target["`BlueWake build
+target
+Linux, Windows
+or Apple`"]
     Provider["`Aurora Dawn provider
-package, system or vendor`"]
+package, system
+or vendor`"]
     Flags["`Platform backend flags
 DAWN_ENABLE_*`"]
     Aurora["`Aurora binary
@@ -177,7 +180,8 @@ flowchart TD
     Auto["`BlueWake requests
 BACKEND_AUTO`"]
     List["`Aurora platform list
-ordered compiled backends`"]
+ordered compiled
+backends`"]
     Window["`SDL native window
 and surface descriptor`"]
     Adapter["`Dawn adapter request
@@ -185,7 +189,8 @@ backend + surface
 high-performance GPU`"]
     Ready{"`Adapter and device
 available?`"}
-    Next["`Destroy candidate window
+    Next["`Destroy candidate
+window
 try next backend`"]
     Device["`Selected WebGPU device
 queue and surface`"]
@@ -214,7 +219,8 @@ and [Dawn adapter request](https://github.com/chrissotraidis/RecompCore/blob/f64
 ```mermaid
 flowchart TD
     Shared["`Shared path
-GXRuntime → Aurora → Dawn`"]
+GXRuntime → Aurora
+→ Dawn`"]
     Linux["`Linux and SteamOS
 X11 or Wayland surface`"]
     Windows["`Windows
@@ -231,8 +237,10 @@ preferred`"]
 fallbacks`"]
     Metal["`Metal
 preferred`"]
-    Null["`Null or host headless
-non-presenting fallback`"]
+    Null["`Null or host
+headless
+non-presenting
+fallback`"]
 
     Shared --> Linux --> Vulkan
     Linux -.-> GLES
@@ -325,7 +333,7 @@ MMIO read value`"]
 presentation`"]
 
     Memory -->|"named by"| Address --> Resolver --> Front --> Resource --> EFB
-    EFB -->|"copy or capture readback"| Copy --> Memory
+    EFB -->|"copy or capture<br/>readback"| Copy --> Memory
     EFB -->|"peek"| Read
     EFB -->|"display copy"| Present
 ```
@@ -412,9 +420,9 @@ and yield state`"| CPU
     Module -->|"GX writes"| Pipe --> GX
     Host <-->|"initialize and inspect"| CPU
     Host <-->|"resolve and update"| Memory
-    Host -->|"connect writer and drain"| Pipe
+    Host -->|"connect writer<br/>and drain"| Pipe
     Memory -->|"bounded resource views"| GX
-    Host <-->|"barriers, tokens and retrace"| GX
+    Host <-->|"barriers, tokens<br/>and retrace"| GX
     GX -->|"normalized render work"| Native
     Native -->|"copy or readback"| Memory
     Host -->|"presentation lifecycle"| Native
@@ -459,7 +467,8 @@ and display lists`"]
     GX["`GXRuntime front end
 GX semantic state`"]
     Packets["`Normalized state,
-resource and draw packets`"]
+resource and draw
+packets`"]
     Aurora["`Aurora renderer
 pipelines and passes`"]
     Dawn["`Dawn
@@ -570,8 +579,10 @@ through display lists. Those variations use the same contracts below.
 
 ```mermaid
 flowchart TD
-    Scene["`Game scene traversal
-selects a tree instance`"]
+    Scene["`Game scene
+traversal
+selects a tree
+instance`"]
     Guest["`Guest memory
 model arrays, texture,
 palette and matrices`"]

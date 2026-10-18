@@ -107,23 +107,23 @@ flowchart TD
     Platform["Platform startup"]
     Data["Persistent player data<br/>saves, settings, SRAM"]
 
-    subgraph Process["BlueWake process — native code and memory"]
+    subgraph Process["BlueWake process —<br/>native code and memory"]
         Host["BlueWake host"]
         Module["Native game module"]
-        Guest["Shared guest state<br/>CPUState and guest memory"]
+        Guest["Shared guest state<br/>CPUState and<br/>guest memory"]
         Services["Compatibility services"]
         Graphics["Graphics stack"]
 
-        Host <-->|"Module ABI<br/>dispatch, callbacks, storage exports"| Module
-        Host <-->|"Initialize, inspect and modify"| Guest
-        Module <-->|"Registers, PC and memory accesses"| Guest
-        Host <-->|"Deadlines and event delivery"| Services
-        Module <-->|"MMIO and HLE calls<br/>results, callbacks and interrupts"| Services
+        Host <-->|"Module ABI<br/>dispatch, callbacks,<br/>storage exports"| Module
+        Host <-->|"Initialize, inspect<br/>and modify"| Guest
+        Module <-->|"Registers, PC and<br/>memory accesses"| Guest
+        Host <-->|"Deadlines and<br/>event delivery"| Services
+        Module <-->|"MMIO and HLE calls<br/>results, callbacks<br/>and interrupts"| Services
         Module -->|"GX gather-pipe data<br/>and display lists"| Graphics
     end
 
-    Platform <-->|"Paths, settings and lifecycle events"| Host
-    Host <-->|"Load and persist through file APIs"| Data
+    Platform <-->|"Paths, settings and<br/>lifecycle events"| Host
+    Host <-->|"Load and persist<br/>through file APIs"| Data
 ```
 
 > This diagram maps contracts, not execution order or threads. Guest state is data stored within the native process. Service interactions may pass through host routing and shared guest state rather than direct module-to-service calls.
