@@ -86,7 +86,7 @@ flowchart TD
 
     subgraph Process["BlueWake process"]
         Host["BlueWake host"]
-        Module["Native game module"]
+        Module["Game module"]
         Guest["Guest state"]
         Services["Services"]
         Graphics["Graphics stack"]
