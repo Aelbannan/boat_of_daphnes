@@ -146,7 +146,8 @@ Because it works from the screen, something off screen casts nothing. `DOL_AUROR
 
 Since RecompCore 0183 they come from a shadow map instead, so a building beside or behind
 the camera still puts Link in its shade. Before each pass of the scene, its solid draws are drawn again from the sun
-into a 2048×2048 depth map covering 5,000 units around a point ahead of the camera; each pixel's place in the world is
+into depth maps, four of them each 2048×2048 and four times wider than the last (1,250 to 80,000 units ahead of
+the camera, so near shadows stay sharp and an island ahead still casts); each pixel's place in the world is
 then looked up there. The game's own culling still leaves out what is far off screen, but at Windfall it hides only a
 few of the town's 42 room pieces, so the buildings are nearly always in the map. Leaves, fences and grass (alpha-tested)
 cast their texture's cutout, the sail and flags cast, and blended furniture (a chest) casts while its vertices stand
@@ -155,7 +156,7 @@ still. The map's shadows are filtered at full resolution over a turned disc of l
 (`DOL_AURORA_GAME_SHADOWS=1` keeps them). Surfaces turned away from the sun are in shade too, which the
 screen's version never did. `DOL_AURORA_SUN_SHADOW_MAP=0` goes back to the screen's version alone, for comparing the two;
 `DOL_AURORA_SUN_SHADOW_MAP_SIZE`, `_RANGE`, `_BIAS`, `_CONTACT` tune it, `_DEBUG=1` shows
-its shadow alone (gray outside the map), `_DEBUG=2` the map itself as contour bands, and `_TRACE=1` logs how many draws it took. It costs 0.04 to 0.07 ms of GPU time
+its shadow alone (gray outside the map), `_DEBUG=2` to `5` each cascade's map as contour bands, `6` the cascades tinted, and `_TRACE=1` logs how many draws it took. With one map it cost 0.04 to 0.07 ms of GPU time
 a frame on an RTX 5070 Ti. [HD_SUN_SHADOW_MAP.md](HD_SUN_SHADOW_MAP.md) has how it works, how it was tested and
 what's left, for whoever works on it next.
 
