@@ -307,7 +307,8 @@ opening and tours`"]
 counter files`"]
     Merge["`Validate and merge
 with llvm-profdata`"]
-    Profile["Private<br/>composite.profdata"]
+    Profile["`Private
+composite.profdata`"]
     Final["`Compile final module
 with
 -fprofile-instr-use`"]

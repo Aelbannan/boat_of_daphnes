@@ -71,10 +71,14 @@ Vulkan, Metal or D3D12`"]
     GPU["`GPU and display`"]
 
     Game -->|"GX command stream"| GX
-    Host -->|"guest ranges<br/>and barriers"| GX
-    GX -->|"normalized<br/>render packets"| Aurora
-    Host -->|"window and<br/>presentation lifecycle"| Aurora
-    Aurora -->|"WebGPU resources<br/>and commands"| Dawn
+    Host -->|"`guest ranges
+and barriers`"| GX
+    GX -->|"`normalized
+render packets`"| Aurora
+    Host -->|"`window and
+presentation lifecycle`"| Aurora
+    Aurora -->|"`WebGPU resources
+and commands`"| Dawn
     Dawn --> API --> GPU
 ```
 
@@ -333,7 +337,8 @@ MMIO read value`"]
 presentation`"]
 
     Memory -->|"named by"| Address --> Resolver --> Front --> Resource --> EFB
-    EFB -->|"copy or capture<br/>readback"| Copy --> Memory
+    EFB -->|"`copy or capture
+readback`"| Copy --> Memory
     EFB -->|"peek"| Read
     EFB -->|"display copy"| Present
 ```
@@ -420,9 +425,11 @@ and yield state`"| CPU
     Module -->|"GX writes"| Pipe --> GX
     Host <-->|"initialize and inspect"| CPU
     Host <-->|"resolve and update"| Memory
-    Host -->|"connect writer<br/>and drain"| Pipe
+    Host -->|"`connect writer
+and drain`"| Pipe
     Memory -->|"bounded resource views"| GX
-    Host <-->|"barriers, tokens<br/>and retrace"| GX
+    Host <-->|"`barriers, tokens
+and retrace`"| GX
     GX -->|"normalized render work"| Native
     Native -->|"copy or readback"| Memory
     Host -->|"presentation lifecycle"| Native

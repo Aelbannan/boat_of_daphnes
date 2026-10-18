@@ -44,13 +44,21 @@ validation, translation, preparation, native compilation, and packaging.
 ```mermaid
 flowchart TD
     Disc["GZLE01 revision-0 disc"]
-    Extract["Validate and extract<br/>main.dol + 415 RELs"]
-    Translate["Build and run<br/>pinned DolRecomp"]
-    Composite["Generate and verify<br/>composite source"]
-    Prepare["Apply selected<br/>mods and guarded<br/>optimizations"]
-    PGO["Optional local<br/>PGO training"]
-    Compile["Compile host and<br/>native game module"]
-    Package["Package for the<br/>target platform"]
+    Extract["`Validate and extract
+main.dol + 415 RELs`"]
+    Translate["`Build and run
+pinned DolRecomp`"]
+    Composite["`Generate and verify
+composite source`"]
+    Prepare["`Apply selected
+mods and guarded
+optimizations`"]
+    PGO["`Optional local
+PGO training`"]
+    Compile["`Compile host and
+native game module`"]
+    Package["`Package for the
+target platform`"]
 
     Disc --> Extract --> Translate --> Composite --> Prepare --> Compile --> Package
     Prepare --> PGO --> Compile
@@ -123,10 +131,12 @@ artifact; it need not be the artifact's historical origin.
 
 ```mermaid
 flowchart TD
-    Profile["bluewake.sh<br/>game profile"]
+    Profile["`bluewake.sh
+game profile`"]
     Linux["Linux build.py"]
     Windows["Windows build.py"]
-    Apple["Apple build.sh<br/>macOS / iOS / tvOS"]
+    Apple["`Apple build.sh
+macOS / iOS / tvOS`"]
 
     Profile -->|reads pins and digest| Linux
     Profile -->|reads pins and digest| Windows
@@ -199,13 +209,25 @@ supported game revision.
 
 ```mermaid
 flowchart TD
-    Profile["bluewake.sh<br/>executable pins"]
-    Lock["dependencies.lock.json<br/>dependency record"]
-    Linux["Linux build.py<br/>dependencies()"]
-    Windows["Windows build.py<br/>dependencies()"]
-    Apple["Apple build.sh<br/>profile_dependencies()"]
-    Checkout["Shared source<br/>dependency output<br/>ROOT/ref/recompcore<br/>pinned RecompCore and<br/>DolRecomp checkout"]
-    Dawn["Apple mobile renderer<br/>dependency output<br/>ROOT/build/deps<br/>verified Dawn archive"]
+    Profile["`bluewake.sh
+executable pins`"]
+    Lock["`dependencies.lock.json
+dependency record`"]
+    Linux["`Linux build.py
+dependencies()`"]
+    Windows["`Windows build.py
+dependencies()`"]
+    Apple["`Apple build.sh
+profile_dependencies()`"]
+    Checkout["`Shared source
+dependency output
+ROOT/ref/recompcore
+pinned RecompCore and
+DolRecomp checkout`"]
+    Dawn["`Apple mobile renderer
+dependency output
+ROOT/build/deps
+verified Dawn archive`"]
 
     Profile --> Linux
     Profile --> Windows
@@ -213,8 +235,11 @@ flowchart TD
     Linux -->|fetch and verify| Checkout
     Windows -->|fetch and verify| Checkout
     Apple -->|fetch and verify| Checkout
-    Apple -. "iOS / tvOS only:<br/>independent<br/>additional fetch" .-> Dawn
-    Lock -. "records origins<br/>and roles" .-> Profile
+    Apple -. "`iOS / tvOS only:
+independent
+additional fetch`" .-> Dawn
+    Lock -. "`records origins
+and roles`" .-> Profile
 ```
 
 Each platform has a separate implementation that produces the same pinned
@@ -260,15 +285,29 @@ prepare the mobile archive during the dependency hook.
 
 ```mermaid
 flowchart TD
-    Disc["Required extraction<br/>input<br/>uncompressed GZLE01<br/>ISO / GCM"]
-    Linux["Linux build.py<br/>platform adapter"]
-    Windows["Windows build.py<br/>platform adapter"]
-    Apple["Apple<br/>profile_extract()<br/>platform adapter"]
-    CLI["Shared build-time CLI<br/>scripts/ios/<br/>disc_extract.c"]
-    Importer["Shared extraction core<br/>apple/ios/src/<br/>disc_import.c"]
-    Output["Build output<br/>OUT/game/main.dol<br/>+ rels/"]
+    Disc["`Required extraction
+input
+uncompressed GZLE01
+ISO / GCM`"]
+    Linux["`Linux build.py
+platform adapter`"]
+    Windows["`Windows build.py
+platform adapter`"]
+    Apple["`Apple
+profile_extract()
+platform adapter`"]
+    CLI["`Shared build-time CLI
+scripts/ios/
+disc_extract.c`"]
+    Importer["`Shared extraction core
+apple/ios/src/
+disc_import.c`"]
+    Output["`Build output
+OUT/game/main.dol
++ rels/`"]
     FirstRun["iOS first-run UI"]
-    AppData["iOS app data<br/>prepared game files"]
+    AppData["`iOS app data
+prepared game files`"]
 
     Disc --> Linux
     Disc --> Windows
@@ -277,7 +316,8 @@ flowchart TD
     Windows -->|CMake target| CLI
     Apple -->|direct Clang command| CLI
     CLI --> Importer --> Output
-    FirstRun -. "calls the core API<br/>directly" .-> Importer
+    FirstRun -. "`calls the core API
+directly`" .-> Importer
     Importer -. "first-run destination" .-> AppData
 ```
 
@@ -310,17 +350,31 @@ and optional Yaz0 compression before producing one uniform REL directory.
 ```mermaid
 flowchart TD
     Disc["GZLE01 disc image"]
-    Header["bluewake_disc_check()<br/>identity and<br/>GameCube magic"]
-    Dol["bluewake_disc_<br/>prepare()<br/>read offsets and<br/>DOL sections"]
-    Revision["SHA-1 check<br/>USA revision 0"]
+    Header["`bluewake_disc_check()
+identity and
+GameCube magic`"]
+    Dol["`bluewake_disc_
+prepare()
+read offsets and
+DOL sections`"]
+    Revision["`SHA-1 check
+USA revision 0`"]
     FST["File-system table"]
     Loose["Loose rels/*.rel"]
-    Archive["RELS.arc<br/>RARC archive"]
-    Decode["yaz0_decode() /<br/>unpack_rels_arc()<br/>decode modules"]
-    Normalize["write_rel()<br/>set alignment<br/>field to 4"]
+    Archive["`RELS.arc
+RARC archive`"]
+    Decode["`yaz0_decode() /
+unpack_rels_arc()
+decode modules`"]
+    Normalize["`write_rel()
+set alignment
+field to 4`"]
     StagedDol[".import/main.dol"]
     StagedRels[".import/rels/*.rel"]
-    Runtime["Textures, audio,<br/>and other assets<br/>remain on the<br/>disc image"]
+    Runtime["`Textures, audio,
+and other assets
+remain on the
+disc image`"]
 
     Disc --> Header
     Header -->|DOL offset| Dol --> Revision --> StagedDol
@@ -340,13 +394,19 @@ Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c),
 
 ```mermaid
 flowchart LR
-    Prepare["Write complete outputs<br/>under OUT/game/.import"]
+    Prepare["`Write complete outputs
+under OUT/game/.import`"]
     Importer{"Importer checks pass?"}
-    Clean["Remove temporary<br/>outputs<br/>keep failure isolated"]
-    Publish["Replace<br/>OUT/game/main.dol<br/>and OUT/game/rels"]
+    Clean["`Remove temporary
+outputs
+keep failure isolated`"]
+    Publish["`Replace
+OUT/game/main.dol
+and OUT/game/rels`"]
     Count{"Exactly 415 RELs?"}
     Stop["Stop the build"]
-    Translate["Continue to<br/>translation"]
+    Translate["`Continue to
+translation`"]
 
     Prepare --> Importer
     Importer -->|no| Clean --> Stop
@@ -382,15 +442,21 @@ the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ```mermaid
 flowchart TD
-    Source["DolRecomp<br/>source"]
-    Build["CMake<br/>+ Ninja"]
-    Tool["DolRecomp<br/>executable"]
+    Source["`DolRecomp
+source`"]
+    Build["`CMake
++ Ninja`"]
+    Tool["`DolRecomp
+executable`"]
     Dol["Main DOL"]
     Rels["415 RELs"]
-    Frontend["GameCube input<br/>Gekko CPU"]
-    Backend["Portable C<br/>backend"]
+    Frontend["`GameCube input
+Gekko CPU`"]
+    Backend["`Portable C
+backend`"]
     DolC["DOL C chunks"]
-    RelC["REL-grouped<br/>C chunks"]
+    RelC["`REL-grouped
+C chunks`"]
 
     Source --> Build --> Tool
     Tool -. "contains" .-> Frontend
@@ -438,16 +504,21 @@ The table below links the corresponding BlueWake invocation on each platform.
 flowchart LR
     DolC["DOL C chunks"]
     RelC["REL C chunks"]
-    Binaries["DOL + REL<br/>metadata"]
-    Base["Verified composite<br/>source"]
-    Ready["Compile-ready<br/>source"]
+    Binaries["`DOL + REL
+metadata`"]
+    Base["`Verified composite
+source`"]
+    Ready["`Compile-ready
+source`"]
     Stop["Stop the build"]
 
     subgraph BlueWake["BlueWake logic"]
         Generate["Compose source"]
         Verify{"Digest match?"}
-        Variants["Optional: add<br/>mod variants"]
-        Prepare["Optional: apply<br/>guarded optimizations"]
+        Variants["`Optional: add
+mod variants`"]
+        Prepare["`Optional: apply
+guarded optimizations`"]
     end
 
     DolC --> Generate
@@ -457,7 +528,8 @@ flowchart LR
     Verify -->|yes| Base
     Verify -->|no| Stop
     Base --> Variants --> Prepare --> Ready
-    Base -. "mods and optimizations<br/>disabled" .-> Ready
+    Base -. "`mods and optimizations
+disabled`" .-> Ready
 ```
 
 Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
@@ -504,18 +576,28 @@ without changing game behavior; no machine-learning model is trained.
 
 ```mermaid
 flowchart TD
-    Prepared["Stage 5 prepared<br/>C source"]
-    Fingerprint["Input<br/>fingerprint"]
-    Host["Build or reuse<br/>playback host"]
-    Compile["Stage 6: compile<br/>Stage 5 source<br/>for training"]
-    Instrumented["Training module<br/>with counters"]
-    Playback["Headless<br/>playbacks"]
+    Prepared["`Stage 5 prepared
+C source`"]
+    Fingerprint["`Input
+fingerprint`"]
+    Host["`Build or reuse
+playback host`"]
+    Compile["`Stage 6: compile
+Stage 5 source
+for training`"]
+    Instrumented["`Training module
+with counters`"]
+    Playback["`Headless
+playbacks`"]
     Raw["Raw profiles"]
     Merge["Merge profiles"]
-    Profile["Optional PGO<br/>profile data"]
+    Profile["`Optional PGO
+profile data`"]
     Disabled["No PGO profile"]
-    Final["Stage 7 final<br/>module compile"]
-    Module["Final native<br/>game module"]
+    Final["`Stage 7 final
+module compile`"]
+    Module["`Final native
+game module`"]
 
     Prepared -->|training enabled| Fingerprint
     Fingerprint -->|cache miss| Host --> Playback
@@ -550,13 +632,20 @@ inside the private `OUT` tree and are not release artifacts.
 
 ```mermaid
 flowchart TD
-    Composite["Prepared game<br/>source"]
-    Runtime["BlueWake host<br/>+ RecompCore"]
-    Module["Native game<br/>module"]
-    Host["Platform host<br/>application"]
-    Assemble["Assemble host,<br/>module, data,<br/>and provenance"]
+    Composite["`Prepared game
+source`"]
+    Runtime["`BlueWake host
++ RecompCore`"]
+    Module["`Native game
+module`"]
+    Host["`Platform host
+application`"]
+    Assemble["`Assemble host,
+module, data,
+and provenance`"]
     Package{"Package target"}
-    Desktop["Desktop app<br/>or folder"]
+    Desktop["`Desktop app
+or folder`"]
     AppImage["AppImage"]
     IPA["Unsigned IPA"]
 

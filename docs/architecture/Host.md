@@ -65,9 +65,12 @@ and tvOS entry`"]
     Host["`Shared host
 entry`"]
 
-    Linux -->|"paths and<br/>configuration"| Host
-    Windows -->|"paths and<br/>configuration"| Host
-    Mobile -->|"paths and<br/>configuration"| Host
+    Linux -->|"`paths and
+configuration`"| Host
+    Windows -->|"`paths and
+configuration`"| Host
+    Mobile -->|"`paths and
+configuration`"| Host
     Mac -->|"enters directly"| Host
 ```
 
@@ -84,13 +87,18 @@ entry`"]
 flowchart TD
     Start["Linux process startup"]
     Entry["Linux entry layer"]
-    Resources["Application<br/>resources<br/>module, disc,<br/>DSP files"]
-    Data["Writable player data<br/>settings, saves, logs"]
+    Resources["`Application
+resources
+module, disc,
+DSP files`"]
+    Data["`Writable player data
+settings, saves, logs`"]
     Host["Shared host"]
 
     Start --> Entry
     Resources -->|"resolve paths"| Entry
-    Data <-->|"select paths and<br/>read settings"| Entry
+    Data <-->|"`select paths and
+read settings`"| Entry
     Entry -->|"prepared arguments"| Host
 ```
 
@@ -116,15 +124,19 @@ recovery, and passes the module path to `bluewake_host_main`.
 
 ```mermaid
 flowchart TD
-    Start["Windows process<br/>startup"]
+    Start["`Windows process
+startup`"]
     Entry["Windows entry layer"]
-    Resources["Executable-relative<br/>resources"]
-    Data["Windows player-data<br/>paths"]
+    Resources["`Executable-relative
+resources`"]
+    Data["`Windows player-data
+paths`"]
     Host["Shared host"]
 
     Start --> Entry
     Resources -->|"resolve paths"| Entry
-    Data -->|"resolve writable<br/>locations"| Entry
+    Data -->|"`resolve writable
+locations`"| Entry
     Entry -->|"prepared arguments"| Host
 ```
 
@@ -148,17 +160,22 @@ SDL metadata, and the settings hotkey before entering the shared host.
 
 ```mermaid
 flowchart TD
-    Start["Apple application<br/>startup"]
+    Start["`Apple application
+startup`"]
     Entry["Apple entry layer"]
-    Bundle["App bundle<br/>packaged resources"]
-    Storage["Writable application<br/>storage"]
+    Bundle["`App bundle
+packaged resources`"]
+    Storage["`Writable application
+storage`"]
     Host["`Shared host entry
 bluewake_host_main`"]
 
     Start --> Entry
     Bundle -->|"resolve resource paths"| Entry
-    Storage -->|"resolve player-data<br/>paths"| Entry
-    Entry -->|"configured host<br/>startup"| Host
+    Storage -->|"`resolve player-data
+paths`"| Entry
+    Entry -->|"`configured host
+startup`"| Host
 ```
 
 On iOS and iPadOS, SDL starts `UIApplicationMain` before the Objective-C entry
@@ -195,8 +212,10 @@ Resources`"]
 player data`"]
 
     Start -->|"enters directly"| Host
-    Bundle -->|"resolve packaged<br/>inputs"| Host
-    Storage <-->|"settings, saves,<br/>and logs"| Host
+    Bundle -->|"`resolve packaged
+inputs`"| Host
+    Storage <-->|"`settings, saves,
+and logs`"| Host
 ```
 
 macOS does not use the UIKit entry shim or rename the shared entry point. Its
@@ -214,10 +233,14 @@ and optional DSP files from `Contents/Resources`.
 
 ```mermaid
 flowchart TD
-    Input["Platform-provided<br/>configuration"]
-    Parse["Parse arguments<br/>and options"]
-    Validate["Validate required<br/>inputs"]
-    Init["Continue into host<br/>initialization"]
+    Input["`Platform-provided
+configuration`"]
+    Parse["`Parse arguments
+and options`"]
+    Validate["`Validate required
+inputs`"]
+    Init["`Continue into host
+initialization`"]
 
     Input --> Parse --> Validate --> Init
 ```
@@ -257,12 +280,20 @@ execution with service work.
 
 ```mermaid
 flowchart TD
-    Configure["Configure settings<br/>and validate inputs"]
-    Load["Load game module<br/>and validate ABI"]
-    Initialize["Initialize guest<br/>state, services,<br/>and graphics"]
+    Configure["`Configure settings
+and validate inputs`"]
+    Load["`Load game module
+and validate ABI`"]
+    Initialize["`Initialize guest
+state, services,
+and graphics`"]
     Run["Run translated code"]
-    Service["Service deadlines,<br/>callbacks, and<br/>interrupts"]
-    Stop["Finish pending writes,<br/>close services, and<br/>shut down"]
+    Service["`Service deadlines,
+callbacks, and
+interrupts`"]
+    Stop["`Finish pending writes,
+close services, and
+shut down`"]
 
     Configure --> Load --> Initialize --> Run
     Run <--> Service
@@ -282,32 +313,53 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph Host["BlueWake host"]
-        Check{"Execution limit or<br/>stop reason reached?"}
-        Turn["Apply per-turn<br/>host work and begin<br/>guest-time turn"]
-        Quit{"Platform quit<br/>requested?"}
-        Ready["Service ready<br/>host work and pending<br/>interrupts"]
-        Budget["Prepare cycle budget<br/>and device deadline"]
-        Mapped{"Dispatch resolved<br/>or recovered?"}
-        End["End guest-time turn<br/>and advance devices"]
-        Events["Deliver ready<br/>callbacks,<br/>decrementer, and<br/>exceptions"]
+        Check{"`Execution limit or
+stop reason reached?`"}
+        Turn["`Apply per-turn
+host work and begin
+guest-time turn`"]
+        Quit{"`Platform quit
+requested?`"}
+        Ready["`Service ready
+host work and pending
+interrupts`"]
+        Budget["`Prepare cycle budget
+and device deadline`"]
+        Mapped{"`Dispatch resolved
+or recovered?`"}
+        End["`End guest-time turn
+and advance devices`"]
+        Events["`Deliver ready
+callbacks,
+decrementer, and
+exceptions`"]
         Outcome{"Turn outcome?"}
         Record["Record completed turn"]
-        Stop["Leave loop and<br/>report stop reason"]
+        Stop["`Leave loop and
+report stop reason`"]
     end
 
     subgraph Module["Native game module"]
-        Dispatch["Resolve guest PC<br/>and run translated<br/>DOL or REL code"]
-        Boundary{"Timing, exception,<br/>callback, or<br/>service boundary?"}
+        Dispatch["`Resolve guest PC
+and run translated
+DOL or REL code`"]
+        Boundary{"`Timing, exception,
+callback, or
+service boundary?`"}
         Dispatch --> Boundary
-        Boundary -->|"continue translated<br/>execution"| Dispatch
+        Boundary -->|"`continue translated
+execution`"| Dispatch
     end
 
     Check -->|"no"| Turn --> Quit
     Check -->|"yes"| Stop
     Quit -->|"yes"| Stop
     Quit -->|"no"| Ready --> Budget
-    Budget -->|"call module dispatcher<br/>for this guest-time<br/>turn"| Dispatch
-    Dispatch -->|"guest address<br/>not mapped"| Mapped
+    Budget -->|"`call module dispatcher
+for this guest-time
+turn`"| Dispatch
+    Dispatch -->|"`guest address
+not mapped`"| Mapped
     Boundary -->|"yield control to host"| Mapped
     Mapped -->|"no"| Stop
     Mapped -->|"yes"| End --> Events --> Outcome
