@@ -156,7 +156,8 @@ still. The map's shadows are filtered at full resolution over a turned disc of l
 screen's version never did. `DOL_AURORA_SUN_SHADOW_MAP=0` goes back to the screen's version alone, for comparing the two;
 `DOL_AURORA_SUN_SHADOW_MAP_SIZE`, `_RANGE`, `_BIAS`, `_CONTACT` tune it, `_DEBUG=1` shows
 its shadow alone (gray outside the map), `_DEBUG=2` the map itself as contour bands, and `_TRACE=1` logs how many draws it took. It costs 0.04 to 0.07 ms of GPU time
-a frame on an RTX 5070 Ti.
+a frame on an RTX 5070 Ti. [HD_SUN_SHADOW_MAP.md](HD_SUN_SHADOW_MAP.md) has how it works, how it was tested and
+what's left, for whoever works on it next.
 
 Checked on Arch (i5-12600KF, RTX 5070 Ti) from the stage select, headless warps to Windfall rendered at noon and 4 pm:
 at noon Link, the boat and the tower cast shadows on the pier and the water; at 4 pm the town square is in the shade of
