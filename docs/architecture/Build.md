@@ -47,11 +47,9 @@ flowchart TD
     Extract["Extract DOL + RELs"]
     Translate["Translate to C"]
     Composite["Compose source"]
-    Prepare["`Apply mods +
-optimizations`"]
+    Prepare["Apply variants"]
     PGO["Optional PGO"]
-    Compile["`Compile module
-and host`"]
+    Compile["Compile outputs"]
     Package["Package app"]
 
     Disc --> Extract --> Translate --> Composite --> Prepare --> Compile --> Package
@@ -206,8 +204,7 @@ flowchart TD
     Linux["Linux builder"]
     Windows["Windows builder"]
     Apple["Apple builder"]
-    Checkout["`RecompCore +
-DolRecomp`"]
+    Checkout["Pinned toolchain"]
     Dawn["Mobile Dawn"]
 
     Profile --> Linux
@@ -318,8 +315,7 @@ flowchart TD
     Revision["Revision check"]
     FST["FST"]
     Loose["Loose RELs"]
-    Archive["`RELS.arc
-RARC archive`"]
+    Archive["RELS.arc"]
     Decode["Decode RELs"]
     Normalize["Normalize RELs"]
     StagedDol[".import/main.dol"]
@@ -394,8 +390,7 @@ flowchart TD
     Frontend["Gekko frontend"]
     Backend["C backend"]
     DolC["DOL C chunks"]
-    RelC["`REL-grouped
-C chunks`"]
+    RelC["REL C chunks"]
 
     Source --> Build --> Tool
     Tool -. "contains" .-> Frontend
@@ -557,11 +552,9 @@ flowchart TD
     Runtime["Host + RecompCore"]
     Module["Game module"]
     Host["Host application"]
-    Assemble["`Assemble app +
-provenance`"]
+    Assemble["Assemble app"]
     Package{"Package target"}
-    Desktop["`Desktop app
-or folder`"]
+    Desktop["Desktop output"]
     AppImage["AppImage"]
     IPA["Unsigned IPA"]
 
