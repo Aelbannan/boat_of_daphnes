@@ -43,22 +43,16 @@ validation, translation, preparation, native compilation, and packaging.
 
 ```mermaid
 flowchart TD
-    Disc["GZLE01 revision-0 disc"]
-    Extract["`Validate and extract
-main.dol + 415 RELs`"]
-    Translate["`Build and run
-pinned DolRecomp`"]
-    Composite["`Generate and verify
-composite source`"]
-    Prepare["`Apply selected
-mods and guarded
+    Disc["GZLE01 disc"]
+    Extract["Extract DOL + RELs"]
+    Translate["Translate to C"]
+    Composite["Compose source"]
+    Prepare["`Apply mods +
 optimizations`"]
-    PGO["`Optional local
-PGO training`"]
-    Compile["`Compile host and
-native game module`"]
-    Package["`Package for the
-target platform`"]
+    PGO["Optional PGO"]
+    Compile["`Compile module
+and host`"]
+    Package["Package app"]
 
     Disc --> Extract --> Translate --> Composite --> Prepare --> Compile --> Package
     Prepare --> PGO --> Compile
@@ -131,16 +125,14 @@ artifact; it need not be the artifact's historical origin.
 
 ```mermaid
 flowchart TD
-    Profile["`bluewake.sh
-game profile`"]
+    Profile["bluewake.sh"]
     Linux["Linux build.py"]
     Windows["Windows build.py"]
-    Apple["`Apple build.sh
-macOS / iOS / tvOS`"]
+    Apple["Apple build.sh"]
 
-    Profile -->|reads pins and digest| Linux
-    Profile -->|reads pins and digest| Windows
-    Profile -->|variables and build hooks| Apple
+    Profile -->|pins + digest| Linux
+    Profile -->|pins + digest| Windows
+    Profile -->|hooks| Apple
 ```
 
 ### `bluewake.sh` game profile
@@ -209,37 +201,23 @@ supported game revision.
 
 ```mermaid
 flowchart TD
-    Profile["`bluewake.sh
-executable pins`"]
-    Lock["`dependencies.lock.json
-dependency record`"]
-    Linux["`Linux build.py
-dependencies()`"]
-    Windows["`Windows build.py
-dependencies()`"]
-    Apple["`Apple build.sh
-profile_dependencies()`"]
-    Checkout["`Shared source
-dependency output
-ROOT/ref/recompcore
-pinned RecompCore and
-DolRecomp checkout`"]
-    Dawn["`Apple mobile renderer
-dependency output
-ROOT/build/deps
-verified Dawn archive`"]
+    Profile["bluewake.sh pins"]
+    Lock["Dependency record"]
+    Linux["Linux builder"]
+    Windows["Windows builder"]
+    Apple["Apple builder"]
+    Checkout["`RecompCore +
+DolRecomp`"]
+    Dawn["Mobile Dawn"]
 
     Profile --> Linux
     Profile --> Windows
     Profile --> Apple
-    Linux -->|fetch and verify| Checkout
-    Windows -->|fetch and verify| Checkout
-    Apple -->|fetch and verify| Checkout
-    Apple -. "`iOS / tvOS only:
-independent
-additional fetch`" .-> Dawn
-    Lock -. "`records origins
-and roles`" .-> Profile
+    Linux -->|fetch| Checkout
+    Windows -->|fetch| Checkout
+    Apple -->|fetch| Checkout
+    Apple -. "iOS / tvOS" .-> Dawn
+    Lock -. "provenance" .-> Profile
 ```
 
 Each platform has a separate implementation that produces the same pinned
@@ -285,29 +263,15 @@ prepare the mobile archive during the dependency hook.
 
 ```mermaid
 flowchart TD
-    Disc["`Required extraction
-input
-uncompressed GZLE01
-ISO / GCM`"]
-    Linux["`Linux build.py
-platform adapter`"]
-    Windows["`Windows build.py
-platform adapter`"]
-    Apple["`Apple
-profile_extract()
-platform adapter`"]
-    CLI["`Shared build-time CLI
-scripts/ios/
-disc_extract.c`"]
-    Importer["`Shared extraction core
-apple/ios/src/
-disc_import.c`"]
-    Output["`Build output
-OUT/game/main.dol
-+ rels/`"]
+    Disc["GZLE01 ISO / GCM"]
+    Linux["Linux builder"]
+    Windows["Windows builder"]
+    Apple["Apple builder"]
+    CLI["disc_extract.c"]
+    Importer["disc_import.c"]
+    Output["OUT/game"]
     FirstRun["iOS first-run UI"]
-    AppData["`iOS app data
-prepared game files`"]
+    AppData["iOS app data"]
 
     Disc --> Linux
     Disc --> Windows
@@ -316,9 +280,8 @@ prepared game files`"]
     Windows -->|CMake target| CLI
     Apple -->|direct Clang command| CLI
     CLI --> Importer --> Output
-    FirstRun -. "`calls the core API
-directly`" .-> Importer
-    Importer -. "first-run destination" .-> AppData
+    FirstRun -. "direct API" .-> Importer
+    Importer -. "destination" .-> AppData
 ```
 
 | Boundary | Shared | Platform-specific |
@@ -350,31 +313,18 @@ and optional Yaz0 compression before producing one uniform REL directory.
 ```mermaid
 flowchart TD
     Disc["GZLE01 disc image"]
-    Header["`bluewake_disc_check()
-identity and
-GameCube magic`"]
-    Dol["`bluewake_disc_
-prepare()
-read offsets and
-DOL sections`"]
-    Revision["`SHA-1 check
-USA revision 0`"]
-    FST["File-system table"]
-    Loose["Loose rels/*.rel"]
+    Header["Disc check"]
+    Dol["Read DOL layout"]
+    Revision["Revision check"]
+    FST["FST"]
+    Loose["Loose RELs"]
     Archive["`RELS.arc
 RARC archive`"]
-    Decode["`yaz0_decode() /
-unpack_rels_arc()
-decode modules`"]
-    Normalize["`write_rel()
-set alignment
-field to 4`"]
+    Decode["Decode RELs"]
+    Normalize["Normalize RELs"]
     StagedDol[".import/main.dol"]
     StagedRels[".import/rels/*.rel"]
-    Runtime["`Textures, audio,
-and other assets
-remain on the
-disc image`"]
+    Runtime["Runtime assets"]
 
     Disc --> Header
     Header -->|DOL offset| Dol --> Revision --> StagedDol
@@ -393,20 +343,14 @@ Code: [`bluewake_disc_check`](../../apple/ios/src/disc_import.c),
 **Safe publication and builder gate**
 
 ```mermaid
-flowchart LR
-    Prepare["`Write complete outputs
-under OUT/game/.import`"]
+flowchart TD
+    Prepare["Stage outputs"]
     Importer{"Importer checks pass?"}
-    Clean["`Remove temporary
-outputs
-keep failure isolated`"]
-    Publish["`Replace
-OUT/game/main.dol
-and OUT/game/rels`"]
+    Clean["Discard staging"]
+    Publish["Publish outputs"]
     Count{"Exactly 415 RELs?"}
     Stop["Stop the build"]
-    Translate["`Continue to
-translation`"]
+    Translate["Translate"]
 
     Prepare --> Importer
     Importer -->|no| Clean --> Stop
@@ -442,18 +386,13 @@ the platform commands in [`docs/BUILD_YOUR_OWN.md`](../BUILD_YOUR_OWN.md).
 
 ```mermaid
 flowchart TD
-    Source["`DolRecomp
-source`"]
-    Build["`CMake
-+ Ninja`"]
-    Tool["`DolRecomp
-executable`"]
+    Source["DolRecomp source"]
+    Build["CMake + Ninja"]
+    Tool["DolRecomp"]
     Dol["Main DOL"]
     Rels["415 RELs"]
-    Frontend["`GameCube input
-Gekko CPU`"]
-    Backend["`Portable C
-backend`"]
+    Frontend["Gekko frontend"]
+    Backend["C backend"]
     DolC["DOL C chunks"]
     RelC["`REL-grouped
 C chunks`"]
@@ -501,25 +440,18 @@ The table below links the corresponding BlueWake invocation on each platform.
 ## 5. Compose and prepare
 
 ```mermaid
-flowchart LR
+flowchart TD
     DolC["DOL C chunks"]
     RelC["REL C chunks"]
-    Binaries["`DOL + REL
-metadata`"]
-    Base["`Verified composite
-source`"]
-    Ready["`Compile-ready
-source`"]
+    Binaries["Metadata"]
+    Base["Verified source"]
+    Ready["Prepared source"]
     Stop["Stop the build"]
 
-    subgraph BlueWake["BlueWake logic"]
-        Generate["Compose source"]
-        Verify{"Digest match?"}
-        Variants["`Optional: add
-mod variants`"]
-        Prepare["`Optional: apply
-guarded optimizations`"]
-    end
+    Generate["Compose source"]
+    Verify{"Digest match?"}
+    Variants["Optional mods"]
+    Prepare["Optional optimizations"]
 
     DolC --> Generate
     RelC --> Generate
@@ -528,8 +460,7 @@ guarded optimizations`"]
     Verify -->|yes| Base
     Verify -->|no| Stop
     Base --> Variants --> Prepare --> Ready
-    Base -. "`mods and optimizations
-disabled`" .-> Ready
+    Base -. "none selected" .-> Ready
 ```
 
 Stage 5 is where BlueWake-specific build logic turns DolRecomp's generic
@@ -576,28 +507,18 @@ without changing game behavior; no machine-learning model is trained.
 
 ```mermaid
 flowchart TD
-    Prepared["`Stage 5 prepared
-C source`"]
-    Fingerprint["`Input
-fingerprint`"]
-    Host["`Build or reuse
-playback host`"]
-    Compile["`Stage 6: compile
-Stage 5 source
-for training`"]
-    Instrumented["`Training module
-with counters`"]
-    Playback["`Headless
-playbacks`"]
+    Prepared["Prepared C"]
+    Fingerprint["Fingerprint"]
+    Host["Playback host"]
+    Compile["Training build"]
+    Instrumented["Counters"]
+    Playback["Playbacks"]
     Raw["Raw profiles"]
     Merge["Merge profiles"]
-    Profile["`Optional PGO
-profile data`"]
+    Profile["PGO profile"]
     Disabled["No PGO profile"]
-    Final["`Stage 7 final
-module compile`"]
-    Module["`Final native
-game module`"]
+    Final["Final compile"]
+    Module["Native module"]
 
     Prepared -->|training enabled| Fingerprint
     Fingerprint -->|cache miss| Host --> Playback
@@ -632,17 +553,12 @@ inside the private `OUT` tree and are not release artifacts.
 
 ```mermaid
 flowchart TD
-    Composite["`Prepared game
-source`"]
-    Runtime["`BlueWake host
-+ RecompCore`"]
-    Module["`Native game
-module`"]
-    Host["`Platform host
-application`"]
-    Assemble["`Assemble host,
-module, data,
-and provenance`"]
+    Composite["Prepared source"]
+    Runtime["Host + RecompCore"]
+    Module["Game module"]
+    Host["Host application"]
+    Assemble["`Assemble app +
+provenance`"]
     Package{"Package target"}
     Desktop["`Desktop app
 or folder`"]
