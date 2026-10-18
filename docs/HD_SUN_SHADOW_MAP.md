@@ -62,6 +62,12 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
    - the casters' own slope bias, one texel (two lifted the shadow off thin casters' bases).
    And nothing at the sea's height or below shades the water or the sand at its edge: the islands' models carry their
    sea floor up to the waterline, and the waves dip below it, so the water read the sea floor as something above it.
+7. **Sunset and night.** The map's shadows hold at full strength until the sun is 2.9 degrees up, so the long shadows
+   of a low sun show, and fade out by 0.6. Below the horizon the map is drawn from the moon, which the game puts
+   opposite the sun (`dScnKy_env_light_c`'s `mMoonPos` is the eye minus the sun's offset), at half the sun's
+   strength; its shadows come in once the dusk has gone, from 12 degrees up, full at 27. Only the map's own copy of
+   the light changes: the edge light and the other effects keep the sun. Windfall is a good place to watch it: its
+   clock runs from 18:00 to 23:00 (about 25 seconds a game hour), so a state saved at sunset plays into the night.
    The
    old screen steps are off (`DOL_AURORA_SUN_SHADOW_MAP_STEPS=1` brings them back for what the map leaves out); when
    on, a step counts only where the map doesn't already hold that surface, which stops a second shadow of Link
@@ -82,6 +88,9 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 | `DOL_AURORA_SUN_SHADOW_MAP_SLOPE`, `_SLOPE_NEAR` | 10, 1 | Texels of the surface's own slope added to the bias, far from and near the camera |
 | `DOL_AURORA_SUN_SHADOW_MAP_NORMAL_OFFSET`, `_NORMAL_NEAR` | 2, 0.5 | Texels the lookup moves out along the surface's normal, far and near |
 | `DOL_AURORA_SUN_SHADOW_MAP_FAR_START`, `_FAR_END` | 1500, 5000 | World units from the camera over which "near" turns into "far" |
+| `DOL_AURORA_SUN_SHADOW_MAP_FADE_LOW`, `_FADE_HIGH` | 0.01, 0.05 | The sun's height (sine of its elevation) where its shadows are gone, and full (0.6 and 2.9 degrees) |
+| `DOL_AURORA_MOON_SHADOWS_STRENGTH` | 0.5 | The moon's shadows, a share of the sun's (`0` leaves them out) |
+| `DOL_AURORA_MOON_SHADOWS_FADE_LOW`, `_FADE_HIGH` | 0.2, 0.45 | The same for the moon (12 and 27 degrees) |
 | `DOL_AURORA_SUN_SHADOW_MAP_CONTACT` | 300 | Reach of the screen steps, when they're on |
 | `DOL_AURORA_SUN_SHADOW_MAP_STEPS` | off | Bring back the screen steps |
 | `DOL_AURORA_SUN_SHADOWS_STRENGTH` | 0.35 | How dark the shadow is |
@@ -134,14 +143,23 @@ The loop was short: change RecompCore, build host-only, play, look, repeat.
   - The projection the draws really use, logged next to the camera the host reads, matched (aspect 2.24 at 21:9), so
     the shadows aren't shifted by the widescreen camera.
 
+## Questions for reviewers
+
+- **How close to Wind Waker HD should this be?** None of the shadow map work was compared with the Wii U version;
+  it was judged by eye. Some of it may go beyond what HD does: moon shadows at night, long shadows down to a sun a
+  few degrees up, and surfaces turned away from the sun shaded. If someone can check HD (their own copy, or footage)
+  at sunset, at night and between Windfall's buildings, it would tell us which parts to keep as the HD look and which
+  to put behind a switch of their own.
+- **Should moon shadows follow the moon's phase?** The game shows phases that change from night to night. The
+  moon's shadow strength could follow it, none at new moon and full at full moon (a small host change: read the
+  phase and scale `DOL_AURORA_MOON_SHADOWS_STRENGTH`). It only makes sense if moon shadows stay at all.
+
 ## What's left, with leads
 
 - **A blue Chuchu's oval.** The game draws it itself (it stays with the HD look off) and it doesn't go through
   either of the paths the map skips (`DOL_AURORA_GAME_SHADOWS` on or off makes no difference). The goal is no
   GameCube-style darkening next to the HD shadows: find what makes that draw distinct (a frame-interp trace on a state
   with a Chuchu) and leave it out while the map is on.
-- **Moon shadows at night.** When the sun is below the horizon, cast from the moon instead: the decomp puts the moon
-  at the eye minus the sun's offset (`mMoonPos`), at a lower strength.
 - **A thin caster's shadow far away starts behind its base.** From Outset's lookout, the palm trunks across the
   beach (in the 5,000-unit cascade) have their shadows start a little back from the trunk, from the far slope term
   (10 texels) that keeps the far beach from shading itself. Turning that term down (to 3, or 0) made the far

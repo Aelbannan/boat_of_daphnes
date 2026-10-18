@@ -147,7 +147,8 @@ Because it works from the screen, something off screen casts nothing. `DOL_AUROR
 Since RecompCore 0183 they come from a shadow map instead, so a building beside or behind
 the camera still puts Link in its shade. Before each pass of the scene, its solid draws are drawn again from the sun
 into depth maps, four of them each 2048×2048 and four times wider than the last (1,250 to 80,000 units ahead of
-the camera, so near shadows stay sharp and an island ahead still casts); each pixel's place in the world is
+the camera, so near shadows stay sharp and an island ahead still casts; long shadows hold until the sun is 3
+degrees up, and at night the moon casts at half strength); each pixel's place in the world is
 then looked up there. The game's own culling still leaves out what is far off screen, but at Windfall it hides only a
 few of the town's 42 room pieces, so the buildings are nearly always in the map. Leaves, fences and grass (alpha-tested)
 cast their texture's cutout, the sail and flags cast, and blended furniture (a chest) casts while its vertices stand

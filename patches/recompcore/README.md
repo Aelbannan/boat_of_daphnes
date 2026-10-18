@@ -172,6 +172,7 @@ fences) casts its texture's cutout, the sail and flags cast, and blended furnitu
 the game's own shadows are left out while the map is on (`DOL_AURORA_GAME_SHADOWS=1` keeps them). In an in-between
 frame the draws take their blended constants and the map that frame's camera. The map is four cascades (1,250 to
 80,000 units, 2048 texels each), with a bias for a low sun that grows with the surface's angle to it and nothing at
-the sea's height shading the water. The pin still carries local debug
+the sea's height shading the water. Its long shadows hold until the sun is 3 degrees up, and at night it is drawn
+from the moon (opposite the sun) at half strength, from 12 degrees up. The pin still carries local debug
 commits (F3 frame dump, `_DEBUG=2`, `DOL_AURORA_SUN_SHADOW_MAP_ALL`, `DOL_AURORA_SUN_CASTER_LOG`) that come out before
 a pull request.

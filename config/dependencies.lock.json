@@ -112,7 +112,7 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "6431e33307f883f6c91d72bec05e2870429a892a",
+      "sha": "e5c99f49339e31308c21edcbc4594b51b7fb8070",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
@@ -632,11 +632,11 @@
           "evidence": "pdale-boop's RecompCore#40 (#136): Smooth Motion's in-between frames get the HD look on every step (it was only the first of 3 at 120 FPS, 5 at 180), its shadows and lights come from the in-between camera, clouds and wave crests drawn with the view matrix are paired by their vertices' centre (and colours) instead of their place in the list, and the ripples, trail and wake of a swimming Link are paired and blended vertex by vertex. Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12: the HD look no longer drops out on in-between frames and its shadows stay on the scenery at 60, 120 and 180 FPS; the title screen's clouds no longer flicker (in-between frames with a cloud brighter or darker than both real frames: 384 to 7 on the title pan); swimming, the rings and wake move smoothly, checked frame by frame in dumps at 180 FPS. Debian (clang 19) compiled the first three commits; Linux, Mac and iOS not played."
         },
         "sun_shadow_map": {
-          "runtime": "6431e33307f883f6c91d72bec05e2870429a892a",
+          "runtime": "e5c99f49339e31308c21edcbc4594b51b7fb8070",
           "tracked_patches": [
             "patches/recompcore/0183-Aurora-sun-shadows-from-a-shadow-map.patch"
           ],
-          "evidence": "pdale-boop's RecompCore sun shadow map (6431e33, still carrying local debug commits), the method of BLUEWAKE_HD_SUN_SHADOWS (still off by default): with sun shadows on, the scene's solid draws drawn again from the sun into a depth map, so what is off screen still casts. Arch (i5-12600KF, RTX 5070 Ti, Vulkan), host-only over a trained build, warped to Windfall headless and rendered: the map's 0.04-0.07 ms of GPU time a frame at 60 retraces with Smooth Motion at the display's rate; at 4 pm the town square is in the shadow of a building behind the camera, which the screen's shadows missed. Outset played by hand with sun shadows on: no long streaks. Windows (same PC, Direct3D 12), the later commits played by hand: alpha cutouts, the sail and flags, pots and a chest cast; the game's own shadows left out. Arch, October 18, four cascades and the low-sun bias (6431e33): at Outset in the evening (sun 20 degrees) played by hand from the lookout, the beach and the dock; the rectangle around Link, the island and sea shading themselves and the band on the sea gone, Link's shadow under his shoes; a far palm trunk's shadow starts a little behind its base. Mac and iOS not built."
+          "evidence": "pdale-boop's RecompCore sun shadow map (e5c99f4, still carrying local debug commits), the method of BLUEWAKE_HD_SUN_SHADOWS (still off by default): with sun shadows on, the scene's solid draws drawn again from the sun into a depth map, so what is off screen still casts. Arch (i5-12600KF, RTX 5070 Ti, Vulkan), host-only over a trained build, warped to Windfall headless and rendered: the map's 0.04-0.07 ms of GPU time a frame at 60 retraces with Smooth Motion at the display's rate; at 4 pm the town square is in the shadow of a building behind the camera, which the screen's shadows missed. Outset played by hand with sun shadows on: no long streaks. Windows (same PC, Direct3D 12), the later commits played by hand: alpha cutouts, the sail and flags, pots and a chest cast; the game's own shadows left out. Arch, October 18, four cascades and the low-sun bias (6431e33): at Outset in the evening (sun 20 degrees) played by hand from the lookout, the beach and the dock; the rectangle around Link, the island and sea shading themselves and the band on the sea gone, Link's shadow under his shoes; a far palm trunk's shadow starts a little behind its base. Then (e5c99f4) Windfall from 18:00 into the night: long shadows down to a sun 3 degrees up, the moon's from 12 degrees up. Mac and iOS not built."
         }
       }
     },
