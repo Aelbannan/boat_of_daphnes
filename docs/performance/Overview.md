@@ -285,6 +285,9 @@ not machine learning: the builder runs an instrumented copy of the translated
 game module, records LLVM execution counters, and supplies those counts to
 Clang when compiling the final module.
 
+The corresponding build stages, cache paths, and platform code references are
+mapped in [Build: Training pipeline](../architecture/Build.md#training-pipeline).
+
 The generated module contains hundreds of thousands of translated blocks. The
 compiler can understand each function's static control flow, but it cannot know
 which translated routes a player will execute frequently. Training supplies
