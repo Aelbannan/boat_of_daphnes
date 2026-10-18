@@ -509,7 +509,7 @@ placed in the fixed above-arena boot area, above `ArenaHi`; it does not point
 into that reserved interval.
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph MEM1["`MEM1 native backing
 — 32 MiB
 cached ranges
