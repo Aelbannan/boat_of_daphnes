@@ -33,9 +33,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 
 ## Where things stand on October 17
 
-**The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
-Nothing has been released since. **0.8.0 is frozen** (#376): [its release record](status/RELEASE_0.8.0.md) lists
-what it contains, the candidate commit and the checks before Chris publishes it. The October 15 version of this section
+**The latest download is 0.8.0** (published October 18 from `f2611b1`): the Windows zip, the iPhone and iPad app for
+PadMint, the recipe and the source. [Its release record](status/RELEASE_0.8.0.md) lists what it contains and every
+check. The freeze is over: the menu stack (#384 to #388), #371 and #392 are next. The October 15 version of this section
 is in [the October 15 snapshot](status/GOAL_LOOP_2026-10-15.md).
 
 **Merged on October 17:** the Android port as an experimental own-disc build (LiquidAzir, #93, with the app-only
