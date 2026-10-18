@@ -55,30 +55,19 @@ consumer needs the backing bytes.
 
 ```mermaid
 flowchart TD
-    Game["`BlueWake
-translated game module`"]
-    Host["`BlueWake host
-memory, timing
-and lifecycle`"]
-    GX["`RecompCore / GXRuntime
-retail GX front end`"]
-    Aurora["`Aurora
-native renderer`"]
-    Dawn["`Dawn
-WebGPU implementation`"]
-    API["`Native graphics API
-Vulkan, Metal or D3D12`"]
-    GPU["`GPU and display`"]
+    Game["BlueWake<br>translated game module"]
+    Host["BlueWake host<br>memory, timing<br>and lifecycle"]
+    GX["RecompCore / GXRuntime<br>retail GX front end"]
+    Aurora["Aurora<br>native renderer"]
+    Dawn["Dawn<br>WebGPU implementation"]
+    API["Native graphics API<br>Vulkan, Metal or D3D12"]
+    GPU["GPU and display"]
 
     Game -->|"GX command stream"| GX
-    Host -->|"`guest ranges
-and barriers`"| GX
-    GX -->|"`normalized
-render packets`"| Aurora
-    Host -->|"`window and
-presentation lifecycle`"| Aurora
-    Aurora -->|"`WebGPU resources
-and commands`"| Dawn
+    Host -->|"guest ranges<br>and barriers"| GX
+    GX -->|"normalized<br>render packets"| Aurora
+    Host -->|"window and<br>presentation lifecycle"| Aurora
+    Aurora -->|"WebGPU resources<br>and commands"| Dawn
     Dawn --> API --> GPU
 ```
 
@@ -144,17 +133,10 @@ targets, not every platform that upstream Aurora can build.
 
 ```mermaid
 flowchart TD
-    Target["`BlueWake build
-target
-Linux, Windows
-or Apple`"]
-    Provider["`Aurora Dawn provider
-package, system
-or vendor`"]
-    Flags["`Platform backend flags
-DAWN_ENABLE_*`"]
-    Aurora["`Aurora binary
-compiled backend list`"]
+    Target["BlueWake build<br>target<br>Linux, Windows<br>or Apple"]
+    Provider["Aurora Dawn provider<br>package, system<br>or vendor"]
+    Flags["Platform backend flags<br>DAWN_ENABLE_*"]
+    Aurora["Aurora binary<br>compiled backend list"]
 
     Target --> Provider --> Flags --> Aurora
 ```
@@ -181,25 +163,14 @@ and high-performance adapter for that backend.
 
 ```mermaid
 flowchart TD
-    Auto["`BlueWake requests
-BACKEND_AUTO`"]
-    List["`Aurora platform list
-ordered compiled
-backends`"]
-    Window["`SDL native window
-and surface descriptor`"]
-    Adapter["`Dawn adapter request
-backend + surface
-high-performance GPU`"]
-    Ready{"`Adapter and device
-available?`"}
-    Next["`Destroy candidate
-window
-try next backend`"]
-    Device["`Selected WebGPU device
-queue and surface`"]
-    API["`Platform API driver
-and GPU`"]
+    Auto["BlueWake requests<br>BACKEND_AUTO"]
+    List["Aurora platform list<br>ordered compiled<br>backends"]
+    Window["SDL native window<br>and surface descriptor"]
+    Adapter["Dawn adapter request<br>backend + surface<br>high-performance GPU"]
+    Ready{"Adapter and device<br>available?"}
+    Next["Destroy candidate<br>window<br>try next backend"]
+    Device["Selected WebGPU device<br>queue and surface"]
+    API["Platform API driver<br>and GPU"]
 
     Auto --> List --> Window --> Adapter --> Ready
     Ready -->|"no"| Next --> List
@@ -222,29 +193,16 @@ and [Dawn adapter request](https://github.com/chrissotraidis/RecompCore/blob/f64
 
 ```mermaid
 flowchart TD
-    Shared["`Shared path
-GXRuntime → Aurora
-→ Dawn`"]
-    Linux["`Linux and SteamOS
-X11 or Wayland surface`"]
-    Windows["`Windows
-Win32 surface`"]
-    Apple["`macOS, iOS and tvOS
-Metal-layer surface`"]
-    Vulkan["`Vulkan
-preferred`"]
-    GLES["`OpenGL ES
-fallback`"]
-    D3D12["`Direct3D 12
-preferred`"]
-    WinFallback["`Vulkan, then D3D11
-fallbacks`"]
-    Metal["`Metal
-preferred`"]
-    Null["`Null or host
-headless
-non-presenting
-fallback`"]
+    Shared["Shared path<br>GXRuntime → Aurora<br>→ Dawn"]
+    Linux["Linux and SteamOS<br>X11 or Wayland surface"]
+    Windows["Windows<br>Win32 surface"]
+    Apple["macOS, iOS and tvOS<br>Metal-layer surface"]
+    Vulkan["Vulkan<br>preferred"]
+    GLES["OpenGL ES<br>fallback"]
+    D3D12["Direct3D 12<br>preferred"]
+    WinFallback["Vulkan, then D3D11<br>fallbacks"]
+    Metal["Metal<br>preferred"]
+    Null["Null or host<br>headless<br>non-presenting<br>fallback"]
 
     Shared --> Linux --> Vulkan
     Linux -.-> GLES
@@ -316,29 +274,18 @@ resources when that data is consumed.
 
 ```mermaid
 flowchart TD
-    Memory["`Guest memory
-vertices, textures
-and display lists`"]
-    Address["`32-bit guest address
-in GX state`"]
-    Resolver["`BlueWake resolver
-bounded native view`"]
-    Front["`GXRuntime
-format and state`"]
-    Resource["`Aurora and Dawn
-native GPU resource`"]
-    EFB["`Native EFB
-representation`"]
-    Copy["`Guest-memory
-copy destination`"]
-    Read["`CPU-visible
-MMIO read value`"]
-    Present["`VI-timed
-presentation`"]
+    Memory["Guest memory<br>vertices, textures<br>and display lists"]
+    Address["32-bit guest address<br>in GX state"]
+    Resolver["BlueWake resolver<br>bounded native view"]
+    Front["GXRuntime<br>format and state"]
+    Resource["Aurora and Dawn<br>native GPU resource"]
+    EFB["Native EFB<br>representation"]
+    Copy["Guest-memory<br>copy destination"]
+    Read["CPU-visible<br>MMIO read value"]
+    Present["VI-timed<br>presentation"]
 
     Memory -->|"named by"| Address --> Resolver --> Front --> Resource --> EFB
-    EFB -->|"`copy or capture
-readback`"| Copy --> Memory
+    EFB -->|"copy or capture<br>readback"| Copy --> Memory
     EFB -->|"peek"| Read
     EFB -->|"display copy"| Present
 ```
@@ -396,40 +343,27 @@ and [GPU copy encoding](https://github.com/chrissotraidis/RecompCore/blob/f647d0
 
 ```mermaid
 flowchart TD
-    Module["`Translated
-game module`"]
-    Host["`BlueWake host
-coordination`"]
-    Pipe["`Gather pipe
-ordered GX bytes`"]
+    Module["Translated<br>game module"]
+    Host["BlueWake host<br>coordination"]
+    Pipe["Gather pipe<br>ordered GX bytes"]
 
     subgraph Guest["Guest machine model"]
-        CPU["`CPUState
-registers, PC
-and timing`"]
-        Memory["`MEM1 and REL aliases
-game and resource data`"]
-        GX["`GXRuntime state
-FIFO, CP, XF,
-BP, PE and VI`"]
+        CPU["CPUState<br>registers, PC<br>and timing"]
+        Memory["MEM1 and REL aliases<br>game and resource data"]
+        GX["GXRuntime state<br>FIFO, CP, XF,<br>BP, PE and VI"]
     end
 
-    Native["`Aurora and Dawn
-native renderer state`"]
-    Display["`Native GPU
-and display`"]
+    Native["Aurora and Dawn<br>native renderer state"]
+    Display["Native GPU<br>and display"]
 
-    Module <-->|"`read, update
-and yield state`"| CPU
+    Module <-->|"read, update<br>and yield state"| CPU
     Module <-->|"guest loads and stores"| Memory
     Module -->|"GX writes"| Pipe --> GX
     Host <-->|"initialize and inspect"| CPU
     Host <-->|"resolve and update"| Memory
-    Host -->|"`connect writer
-and drain`"| Pipe
+    Host -->|"connect writer<br>and drain"| Pipe
     Memory -->|"bounded resource views"| GX
-    Host <-->|"`barriers, tokens
-and retrace`"| GX
+    Host <-->|"barriers, tokens<br>and retrace"| GX
     GX -->|"normalized render work"| Native
     Native -->|"copy or readback"| Memory
     Host -->|"presentation lifecycle"| Native
@@ -467,24 +401,14 @@ Two concrete flows show the boundary in both directions:
 
 ```mermaid
 flowchart TD
-    Game["`Translated game code
-scene and draw logic`"]
-    FIFO["`Gather pipe, FIFO
-and display lists`"]
-    GX["`GXRuntime front end
-GX semantic state`"]
-    Packets["`Normalized state,
-resource and draw
-packets`"]
-    Aurora["`Aurora renderer
-pipelines and passes`"]
-    Dawn["`Dawn
-native API bridge`"]
-    GPU["`Native GPU
-and display`"]
-    Host["`BlueWake host
-memory, timing
-and barriers`"]
+    Game["Translated game code<br>scene and draw logic"]
+    FIFO["Gather pipe, FIFO<br>and display lists"]
+    GX["GXRuntime front end<br>GX semantic state"]
+    Packets["Normalized state,<br>resource and draw<br>packets"]
+    Aurora["Aurora renderer<br>pipelines and passes"]
+    Dawn["Dawn<br>native API bridge"]
+    GPU["Native GPU<br>and display"]
+    Host["BlueWake host<br>memory, timing<br>and barriers"]
 
     Game --> FIFO --> GX --> Packets --> Aurora --> Dawn --> GPU
     Host -->|"guest ranges"| GX
@@ -542,20 +466,12 @@ BlueWake for a bounded native view of the corresponding bytes.
 
 ```mermaid
 flowchart TD
-    Request["`Guest address,
-size, space,
-resource kind`"]
-    Cache["`Resolver cache
-for current alias
-generation`"]
-    Alias{"`Linked REL
-alias?`"}
-    Memory["`Guest MEM1
-resolution`"]
-    Range["`Bounded native view
-plus guest address`"]
-    GX["`GXRuntime
-consumer`"]
+    Request["Guest address,<br>size, space,<br>resource kind"]
+    Cache["Resolver cache<br>for current alias<br>generation"]
+    Alias{"Linked REL<br>alias?"}
+    Memory["Guest MEM1<br>resolution"]
+    Range["Bounded native view<br>plus guest address"]
+    GX["GXRuntime<br>consumer"]
 
     Request --> Cache --> Alias
     Alias -->|yes| Range
@@ -586,37 +502,18 @@ through display lists. Those variations use the same contracts below.
 
 ```mermaid
 flowchart TD
-    Scene["`Game scene
-traversal
-selects a tree
-instance`"]
-    Guest["`Guest memory
-model arrays, texture,
-palette and matrices`"]
-    Setup["`Translated GX setup
-CP, XF and BP writes`"]
-    Draw["`Draw command
-inline indices or
-display list`"]
-    Pipe["`Gather pipe
-ordered guest bytes`"]
-    Resolve["`BlueWake resolver
-bounded guest ranges`"]
-    Front["`GXRuntime front end
-decode state, vertices
-and resources`"]
-    Packet["`Immutable draw packet
-geometry, transforms,
-material and textures`"]
-    Render["`Aurora
-shader, pipeline,
-resources and draw`"]
-    Native["`Dawn and native API
-GPU submission`"]
-    EFB["`EFB result
-tree pixels and depth`"]
-    VI["`Copy and VI boundary
-presented frame`"]
+    Scene["Game scene<br>traversal<br>selects a tree<br>instance"]
+    Guest["Guest memory<br>model arrays, texture,<br>palette and matrices"]
+    Setup["Translated GX setup<br>CP, XF and BP writes"]
+    Draw["Draw command<br>inline indices or<br>display list"]
+    Pipe["Gather pipe<br>ordered guest bytes"]
+    Resolve["BlueWake resolver<br>bounded guest ranges"]
+    Front["GXRuntime front end<br>decode state, vertices<br>and resources"]
+    Packet["Immutable draw packet<br>geometry, transforms,<br>material and textures"]
+    Render["Aurora<br>shader, pipeline,<br>resources and draw"]
+    Native["Dawn and native API<br>GPU submission"]
+    EFB["EFB result<br>tree pixels and depth"]
+    VI["Copy and VI boundary<br>presented frame"]
 
     Scene --> Setup --> Draw --> Pipe --> Front --> Packet --> Render --> Native --> EFB --> VI
     Guest --> Setup
@@ -704,18 +601,12 @@ resolves guest display-list ranges at the point of consumption.
 
 ```mermaid
 flowchart TD
-    State["`GX state snapshot
-CP, XF, BP and PE`"]
-    Geometry["`Decoded geometry
-and guest ranges`"]
-    Resources["`Texture and TLUT
-views`"]
-    Packet["`Normalized
-render packet`"]
-    Pipeline["`Aurora shader
-and pipeline key`"]
-    Commands["`Dawn buffers,
-bindings and draw`"]
+    State["GX state snapshot<br>CP, XF, BP and PE"]
+    Geometry["Decoded geometry<br>and guest ranges"]
+    Resources["Texture and TLUT<br>views"]
+    Packet["Normalized<br>render packet"]
+    Pipeline["Aurora shader<br>and pipeline key"]
+    Commands["Dawn buffers,<br>bindings and draw"]
 
     State --> Packet
     Geometry --> Packet
@@ -761,20 +652,13 @@ immediate host-window present.
 
 ```mermaid
 flowchart TD
-    Draws["`Aurora draws
-color and depth`"]
-    EFB["`Current EFB
-representation`"]
-    Copy{"`Requested
-operation`"}
-    Guest["`Guest-visible copy
-or EFB read`"]
-    Frame["`Completed display
-image`"]
-    Retrace["`Guest VI
-retrace boundary`"]
-    Present["`Host services
-pending presentation`"]
+    Draws["Aurora draws<br>color and depth"]
+    EFB["Current EFB<br>representation"]
+    Copy{"Requested<br>operation"}
+    Guest["Guest-visible copy<br>or EFB read"]
+    Frame["Completed display<br>image"]
+    Retrace["Guest VI<br>retrace boundary"]
+    Present["Host services<br>pending presentation"]
 
     Draws --> EFB --> Copy
     Copy -->|"copy, peek or poke"| Guest
