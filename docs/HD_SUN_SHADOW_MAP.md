@@ -79,7 +79,8 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 |---|---|---|
 | `BLUEWAKE_HD_SUN_SHADOWS` | off | Sun shadows on, using the map |
 | `DOL_AURORA_SUN_SHADOW_MAP` | follows the above | `0` keeps the screen-only version, for A/B |
-| `DOL_AURORA_SUN_SHADOW_MAP_SIZE` | 2048 | Texels a side, every cascade |
+| `DOL_AURORA_SUN_SHADOW_QUALITY` | `high` | `high` (map 4096), `medium` (2048) or `low` (2048, three cascades, six filter lookups, no gap fill); each switch below still wins |
+| `DOL_AURORA_SUN_SHADOW_MAP_SIZE` | 4096 | Texels a side, every cascade (4096 is 256 MB of video memory for four cascades, 2048 is 64 MB, 8192 is 1 GB) |
 | `DOL_AURORA_SUN_SHADOW_MAP_CASCADES` | 4 | How many cascades (1 to 4) |
 | `DOL_AURORA_SUN_SHADOW_MAP_RANGE` | 1250 | The first cascade's world units from its centre to its edge |
 | `DOL_AURORA_SUN_SHADOW_MAP_SPREAD` | 4 | Each next cascade this many times wider |
@@ -88,6 +89,10 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 | `DOL_AURORA_SUN_SHADOW_MAP_SLOPE`, `_SLOPE_NEAR` | 10, 1 | Texels of the surface's own slope added to the bias, far from and near the camera |
 | `DOL_AURORA_SUN_SHADOW_MAP_NORMAL_OFFSET`, `_NORMAL_NEAR` | 2, 0.5 | Texels the lookup moves out along the surface's normal, far and near |
 | `DOL_AURORA_SUN_SHADOW_MAP_FAR_START`, `_FAR_END` | 1500, 5000 | World units from the camera over which "near" turns into "far" |
+| `DOL_AURORA_SUN_SHADOW_MAP_SMOOTH` | on | The bias, normal offset, slope term and filter reach grow continuously from one cascade's inner edge to its outer one (4x); `0` steps them at each edge, as before |
+| `DOL_AURORA_SUN_SHADOW_MAP_GAP_FILL` | on | Steps toward the sun through the depth buffer over the bias's reach, so shadows meet their casters' feet when zoomed out; `0` turns it off |
+| `DOL_AURORA_SUN_SHADOW_MAP_TAPS` | 12 | Lookups in each shadow's filter disc (6 to 12) |
+| `DOL_AURORA_SUN_SHADOW_MAP_SEA_LOW`, `_SEA_RISE` | 40, 15 | Up to this far above the sea a surface counts as sea; what stands no higher than this above the water there doesn't shade it (scaled down with the sun's height) |
 | `DOL_AURORA_SUN_SHADOW_MAP_FADE_LOW`, `_FADE_HIGH` | 0.01, 0.05 | The sun's height (sine of its elevation) where its shadows are gone, and full (0.6 and 2.9 degrees) |
 | `DOL_AURORA_MOON_SHADOWS_STRENGTH` | 0.5 | The moon's shadows, a share of the sun's (`0` leaves them out) |
 | `DOL_AURORA_MOON_SHADOWS_FADE_LOW`, `_FADE_HIGH` | 0.2, 0.45 | The same for the moon (12 and 27 degrees) |
@@ -97,11 +102,13 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 | `DOL_AURORA_GAME_SHADOWS` | off with the map | `1` keeps the game's own shadows |
 | `DOL_AURORA_SUN_SHADOW_MAP_DEBUG` | off | `1` shows the shadow term alone (gray outside the maps), `2` to `5` each cascade's map as contour bands, `6` tints the cascades red, green, blue and yellow |
 | `DOL_AURORA_SUN_SHADOW_MAP_TRACE` | off | Logs how many draws the map took, and the sun's direction and elevation with the camera |
+| `BLUEWAKE_HD_PALM_CULL` | off | Palm trees keep drawing (and casting) while their shadow could still reach the view: their cull boxes widened by 2,500 units |
 
-Debug only, to be removed before review (they're separate commits in #42): `DOL_AURORA_SUN_SHADOW_MAP_ALL=1` lets
+Debug tools for testers (separate commits in #42): `DOL_AURORA_SUN_SHADOW_MAP_ALL=1` lets
 alpha-tested draws cast solid (to see which shadows a rule is costing), `DOL_AURORA_SUN_CASTER_LOG=1` says why each
-scope's draws did or didn't cast, and `DOL_AURORA_FRAME_INTERP_DUMP_KEY=N` makes F3 dump the next N game frames
-(Windows only, for now).
+scope's draws did or didn't cast, `DOL_AURORA_GAME_SHADOW_LOG=1` logs the blended textured draws the game-shadow
+rules test, and `DOL_AURORA_FRAME_INTERP_DUMP_KEY=N` with `DOL_AURORA_FRAME_INTERP_DUMP=<folder>` makes F3 dump the
+next N game frames (every platform).
 
 ## How it was worked on
 
