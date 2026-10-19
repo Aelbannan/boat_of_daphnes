@@ -107,23 +107,34 @@ extern u32 bw_edge_watch_table[BW_EDGE_WATCH_SLOTS];
 extern bool bw_edge_watch_ready;
 extern bool bw_edge_filter_enabled;
 
+/* Diagnostic builds only: count raw-address locality without changing the
+ * answer or caching it. Normal builds contain neither counters nor calls. */
+#if defined(BLUEWAKE_EDGE_WATCH_PROFILE)
+void bw_edge_watch_profile(u32 address, u32 probes, bool unwatched);
+#define BW_WATCH_RESULT(result, probes) \
+    do { bw_edge_watch_profile(address, probes, result); return result; } while (0)
+#else
+#define BW_WATCH_RESULT(result, probes) return result
+#endif
+
 static inline bool bw_edge_unwatched(u32 address) {
     const u32 canonical = address & ~0x40000000u;
     const bool main_code = canonical >= 0x80003100u && canonical < 0x80400000u;
     const bool rel_code = address >= 0xC0400000u && address < 0xC2000000u;
     if (!(main_code || rel_code))
-        return false;
+        BW_WATCH_RESULT(false, 0u);
     u32 slot = (canonical * 0x9E3779B1u) >> 20;
     for (u32 probes = 0; probes < BW_EDGE_WATCH_SLOTS; ++probes) {
         const u32 entry = bw_edge_watch_table[slot];
         if (entry == 0u)
-            return true;
+            BW_WATCH_RESULT(true, probes + 1u);
         if (entry == canonical)
-            return false;
+            BW_WATCH_RESULT(false, probes + 1u);
         slot = (slot + 1u) & (BW_EDGE_WATCH_SLOTS - 1u);
     }
-    return false;
+    BW_WATCH_RESULT(false, BW_EDGE_WATCH_SLOTS);
 }
+#undef BW_WATCH_RESULT
 
 /* An indirect call's target run the way the dispatcher would run it, when the
  * host would have nothing to do at it: false sends the call round the loop.

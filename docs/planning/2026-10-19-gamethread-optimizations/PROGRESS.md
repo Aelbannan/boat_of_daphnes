@@ -1,10 +1,15 @@
 # PROGRESS — Shorten the Steam Deck game update
 
-Status: Deferred upstream; exploratory fork roadmap. No Deck qualification claimed.
+Status: Initial desktop diagnostic batch implemented; Deck baseline and qualification pending.
 
 Review route: [#397 combined plan/foundation](https://github.com/chrissotraidis/bluewake/pull/397) → [#424 consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424)
 as needed → one benchmarked optimization at a time. #406–#411 are superseded;
 #412–#417 are deferred. The research milestones below are not a required merge chain.
+
+Desktop investigation supports M0-T02/M2-T01 without satisfying their Deck gates.
+See the [watched-address experiment](EDGE_WATCH_EXPERIMENT.md) for measurements,
+instrumentation validation and the decision to defer a one-entry cache. No
+optimization is retained and no speedup is claimed.
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
