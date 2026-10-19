@@ -3,6 +3,9 @@
 **Most players should download the ready-made Windows build** from the [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest): unpack it,
 run `BlueWake.exe` and choose your own disc image (`.iso` or `.gcm`).
 
+If your browser or Windows says the download is a virus, see
+[If Windows says it's a virus](#if-windows-says-its-a-virus).
+
 This page is about building it yourself. BlueWake builds as a native Windows x86-64 program from your own disc:
 the game's code is translated from that disc during the build, so **the folder you build is yours alone: never
 share or upload it.**
@@ -313,3 +316,24 @@ at 30 Hz. A display slower than 120 Hz, or one whose rate isn't known yet, uses
 moving the window to another screen takes effect within a second. When the PC
 can't keep up, the shown rate can drop. `--smooth` turns it on at 60 FPS for
 that session and leaves a saved rate alone unless you change it in the menu.
+
+## If Windows says it's a virus
+
+BlueWake isn't code-signed yet, so every new release is a program Windows has never seen, and antivirus
+programs sometimes block a brand-new one. 0.8.0 was flagged by Microsoft Defender as `Tecabans.STV!cl` on its
+first day. When Chrome or Edge says "Failed – Virus detected", it's Windows' antivirus that blocked the file.
+
+1. Get BlueWake only from the [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest).
+   There are no mirrors, and nobody from the project sends download links in messages.
+2. Check the zip. In PowerShell, in the folder you saved it to, run
+   `Get-FileHash .\BlueWake-vX.Y.Z-windows-x64.zip` (with the real file name). The result must match the zip's
+   line in that release's `SHA256SUMS`. If it doesn't, delete the zip and don't run anything from it.
+3. If it matches, you can wait while we ask Microsoft to clear it, keep playing the version you have, or open
+   Windows Security › Virus & threat protection › Protection history, pick the BlueWake entry and choose
+   **Allow on device** (or **Restore**). Your saves in `%APPDATA%\BlueWake` work with every version.
+4. Tell us the detection name it showed, on Discord or in an
+   [issue](https://github.com/chrissotraidis/bluewake/issues). It helps us get the release cleared.
+
+Please don't turn your antivirus off. If it finds something outside the BlueWake folder, such as a program that
+keeps coming back in `AppData`, that didn't come from BlueWake: run a Microsoft Defender Offline scan
+(Windows Security › Scan options) and change your passwords from another device.

@@ -14,6 +14,18 @@ if(NOT WIN32)
 endif()
 
 get_filename_component(BLUEWAKE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
+# Windows shows the version and publisher under BlueWake.exe's Properties > Details. The version comes
+# from version.json, as it does for the Mac and iPhone apps, so it can't fall behind the release.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${BLUEWAKE_REPO_ROOT}/version.json)
+file(READ ${BLUEWAKE_REPO_ROOT}/version.json BLUEWAKE_VERSION_JSON)
+string(JSON BLUEWAKE_VERSION GET "${BLUEWAKE_VERSION_JSON}" version)
+if(NOT BLUEWAKE_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "version.json: expected a version like 0.8.0, got '${BLUEWAKE_VERSION}'")
+endif()
+string(REPLACE "." "," BLUEWAKE_VERSION_COMMAS "${BLUEWAKE_VERSION},0")
+configure_file(src/bluewake_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/bluewake_version.h @ONLY)
+
 # RecompCore's checkout: ref/recompcore, or another (a worktree) for a build
 # beside the usual one.
 set(BLUEWAKE_RECOMPCORE ${BLUEWAKE_REPO_ROOT}/ref/recompcore CACHE PATH "The RecompCore checkout to build with")
@@ -116,6 +128,7 @@ if(TARGET imgui)
 endif()
 set_target_properties(BlueWake PROPERTIES LINKER_LANGUAGE CXX OUTPUT_NAME BlueWake)
 target_include_directories(BlueWake PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${BLUEWAKE_COMPAT_INCLUDES}
     ${BLUEWAKE_HOST_SRC}
     ${BLUEWAKE_REPO_ROOT}/apple/ios/src
