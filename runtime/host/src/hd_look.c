@@ -17,6 +17,8 @@ static bool g_edge_shown;
 static int g_torch = -1;   // torch light, the same (on every stage)
 static bool g_torch_shown;
 static bool g_islands_were_on;
+static bool g_palms;       // BLUEWAKE_HD_PALM_CULL=1: palm trees culled by their shadow's reach (off by default)
+static bool g_palms_were_on;
 static bool g_trace;
 
 static int setting(const char* key) {  // 1, 0, or -1 when unset
@@ -56,6 +58,7 @@ void bluewake_hd_look_reload(void) {
     // screen still casts. DOL_AURORA_SUN_SHADOW_MAP=0 keeps the screen's
     // version alone, for comparing the two.
     const int sun_map = setting("DOL_AURORA_SUN_SHADOW_MAP") >= 0 ? setting("DOL_AURORA_SUN_SHADOW_MAP") : g_sun;
+    g_palms = setting("BLUEWAKE_HD_PALM_CULL") == 1;
     g_edge = setting("BLUEWAKE_HD_EDGE_LIGHT") >= 0 ? setting("BLUEWAKE_HD_EDGE_LIGHT") : all;
     g_torch = setting("BLUEWAKE_HD_TORCH_LIGHT") >= 0 ? setting("BLUEWAKE_HD_TORCH_LIGHT") : all;
     if (bloom >= 0)
@@ -410,6 +413,49 @@ static void clouds(CPUState* cpu, unsigned long long retrace) {
     }
 }
 
+// Palm trees' cull boxes, widened by their shadows' reach. A palm stops
+// drawing once its box (350 units out from the trunk, 1300 tall) leaves the
+// view, so with the sun behind Link its long shadow on the ground ahead
+// vanished from the sun shadow map as soon as the trunk went behind the
+// camera. The box is widened across by kPalmReach, about a 1300-unit palm's
+// shadow with the sun 30 degrees up. A widened box carries a quarter unit more
+// on its top as the mark, so it is changed once and can be changed back, also
+// in a save state. fopAc_ac_c::cull.box is at +0x230: min x, y, z, max x, y, z.
+enum {
+    kLpalm = 0x004Bu,  // fpcNm_Obj_Lpalm_e, d_a_obj_lpalm
+    kVyasi = 0x0087u,  // fpcNm_Obj_Vyasi_e, d_a_obj_vyasi (Gale Isle's palms in the wind)
+    kCullBox = 0x230u,
+};
+static const float kPalmReach = 2500.0f;
+static const float kPalmMark = 0.25f;
+
+static void palms(CPUState* cpu, bool on) {
+    unsigned changed = 0;
+    u32 node = mem_read32(cpu, kActorQueue);
+    for (u32 n = 0; n < kMaxActors && guest_pointer(node); ++n, node = mem_read32(cpu, node + kNodeNext)) {
+        const u32 actor = mem_read32(cpu, node + kTagActor);
+        if (!guest_pointer(actor))
+            continue;
+        const u16 name = mem_read16(cpu, actor + kProcName);
+        if (name != kLpalm && name != kVyasi)
+            continue;
+        const u32 box = actor + kCullBox;
+        const float top = read_float(cpu, box + 0x10u);
+        const bool widened = fmodf(fabsf(top), 1.0f) == kPalmMark;
+        if (widened == on)
+            continue;
+        const float d = on ? kPalmReach : -kPalmReach;
+        write_float(cpu, box + 0x00u, read_float(cpu, box + 0x00u) - d);
+        write_float(cpu, box + 0x08u, read_float(cpu, box + 0x08u) - d);
+        write_float(cpu, box + 0x0Cu, read_float(cpu, box + 0x0Cu) + d);
+        write_float(cpu, box + 0x14u, read_float(cpu, box + 0x14u) + d);
+        write_float(cpu, box + 0x10u, top + (on ? kPalmMark : -kPalmMark));
+        changed++;
+    }
+    if (changed != 0u && g_trace)
+        fprintf(stderr, "[hd-look] palms: %u cull boxes %s\n", changed, on ? "widened" : "back to the game's");
+}
+
 void bluewake_hd_look_retrace(CPUState* cpu) {
     static unsigned long long retrace;
     retrace++;
@@ -418,6 +464,9 @@ void bluewake_hd_look_retrace(CPUState* cpu) {
     if (bluewake_hd_distant_islands || g_islands_were_on || g_trace)
         islands(cpu, bluewake_hd_distant_islands, retrace);
     g_islands_were_on = bluewake_hd_distant_islands;
+    if (g_palms || g_palms_were_on)
+        palms(cpu, g_palms);
+    g_palms_were_on = g_palms;
     clouds(cpu, retrace);
     if (g_trace && retrace % 300u == 0u)
         trace_islands(cpu, retrace);
