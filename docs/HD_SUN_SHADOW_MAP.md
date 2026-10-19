@@ -108,7 +108,10 @@ scope's draws did or didn't cast, and `DOL_AURORA_FRAME_INTERP_DUMP_KEY=N` makes
 The loop was short: change RecompCore, build host-only, play, look, repeat.
 
 - **Host-only builds.** All of this is renderer code, so `--host-only` over an existing trained build is enough and
-  takes seconds to minutes. Point the builder at a local RecompCore checkout to skip pushing between tries.
+  takes seconds to minutes, including after a `RECOMPCORE_SHA` bump: it checks out the new pin, keeps the last
+  build's training, and recompiles only the game-module files the change affects: from none of the 850 to all of
+  them, depending on the change. Against main this branch affects none, so only the app is rebuilt. Point the
+  builder at a local RecompCore checkout to skip pushing between tries.
 - **Playing by hand first.** pdale-boop played each step and described what looked wrong: "Link's shadow is a blob",
   "the sail casts nothing", "a dark patch at his feet inside a building's shade". Each of those became one commit.
   Save states (`BLUEWAKE_LOAD_STATE=<file>.bwstate`) pinned the places where something looked off, so every try

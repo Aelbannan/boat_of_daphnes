@@ -1,4 +1,4 @@
-From e5c99f49339e31308c21edcbc4594b51b7fb8070 Mon Sep 17 00:00:00 2001
+From f7219ed9f9f00c506cfff9a3e29e2f7bc338746e Mon Sep 17 00:00:00 2001
 From: pdale-boop <237306950+pdale-boop@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 14:28:02 -0500
 Subject: [PATCH] Aurora: sun shadows from a shadow map, so what is off screen
@@ -31,7 +31,7 @@ render() takes the HD look's camera once for each frame it encodes
 that picks a draw's in-between ranges is collect_parts(), shared with the map.
 
 
-The commits since, squashed into this patch (be07338..e5c99f4):
+The commits since, squashed into this patch (be07338..f7219ed):
 
 - b5f97e0bf9 Aurora: the sun shadow map's screen steps leave out what the map holds
 - d0e3b56450 local debug: F3 dumps the next frames (DOL_AURORA_FRAME_INTERP_DUMP_KEY)
@@ -47,15 +47,16 @@ The commits since, squashed into this patch (be07338..e5c99f4):
 - bdeac61beb Aurora: blended furniture casts when its vertices stand still
 - 6431e33307 Aurora: the sun shadow map in four cascades, and a bias for a low sun
 - e5c99f4933 Aurora: the sun shadow map's long shadows at sunset, and the moon's at night
+- f7219ed9f9 Aurora: the host's switch decides the sun shadow map unless the variable is set
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   5 +
  GXRuntime/graphics/aurora/lib/gfx/common.cpp  |  87 ++-
  .../graphics/aurora/lib/gfx/frame_interp.cpp  |  35 +-
  .../graphics/aurora/lib/gfx/gxcore_draw.cpp   | 478 ++++++++++++--
  .../graphics/aurora/lib/gfx/gxcore_draw.hpp   |  16 +
- GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp | 608 +++++++++++++++++-
+ GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp | 610 +++++++++++++++++-
  GXRuntime/graphics/aurora/lib/gfx/post_fx.hpp |  36 +-
- 7 files changed, 1200 insertions(+), 65 deletions(-)
+ 7 files changed, 1202 insertions(+), 65 deletions(-)
 
 diff --git a/GXRuntime/graphics/aurora/include/aurora/aurora.h b/GXRuntime/graphics/aurora/include/aurora/aurora.h
 index e167cd84d3ee174c963adcb2f5e0eb3859ed91bd..7db2b1b4d52249b0a4821ce817474470819827b3 100644
@@ -840,7 +841,7 @@ index 975982988aa64ab8a94f07ed7bf7e6938add5e1b..65f6542827157d6782590166444e2363
  // Perform one EFB copy-to-texture (63/S16): resolve the current EFB region into
  // a texture keyed by the copy destination address, so a later draw binding that
 diff --git a/GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp b/GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp
-index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592e807f4a0 100644
+index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..310a86a0f7cb833ce50f9caafa3c563513fe8d9e 100644
 --- a/GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp
 +++ b/GXRuntime/graphics/aurora/lib/gfx/post_fx.cpp
 @@ -33,6 +33,38 @@ uint32_t g_lightCount = 0;
@@ -1294,12 +1295,14 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
  } // namespace
  
  void initialize() {
-@@ -1099,6 +1508,32 @@ void initialize() {
+@@ -1099,6 +1508,34 @@ void initialize() {
    g_cloudScale = env_float("DOL_AURORA_CLOUD_SHADOWS_SCALE", g_cloudScale, 1.f, 1e7f);
    g_sunStrength = env_float("DOL_AURORA_SUN_SHADOWS_STRENGTH", g_sunStrength, 0.f, 1.f);
    g_sunReach = env_float("DOL_AURORA_SUN_SHADOWS_REACH", g_sunReach, 1.f, 1e6f);
-+  const char* sunMap = std::getenv("DOL_AURORA_SUN_SHADOW_MAP");
-+  g_sunMapOn.store(sunMap != nullptr && sunMap[0] == '1', std::memory_order_relaxed);
++  // The host decides through set_sun_shadow_map(); the variable overrides it only when it is set.
++  if (const char* sunMap = std::getenv("DOL_AURORA_SUN_SHADOW_MAP"); sunMap != nullptr) {
++    g_sunMapOn.store(sunMap[0] == '1', std::memory_order_relaxed);
++  }
 +  g_sunMapSize = static_cast<uint32_t>(env_float("DOL_AURORA_SUN_SHADOW_MAP_SIZE", static_cast<float>(g_sunMapSize), 256.f, 8192.f));
 +  g_sunMapRange = env_float("DOL_AURORA_SUN_SHADOW_MAP_RANGE", g_sunMapRange, 500.f, 100000.f);
 +  g_sunMapSpread = env_float("DOL_AURORA_SUN_SHADOW_MAP_SPREAD", g_sunMapSpread, 1.5f, 16.f);
@@ -1327,7 +1330,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
    g_edgeStrength = env_float("DOL_AURORA_EDGE_LIGHT_STRENGTH", g_edgeStrength, 0.f, 4.f);
    g_torchStrength = env_float("DOL_AURORA_TORCH_LIGHT_STRENGTH", g_torchStrength, 0.f, 4.f);
    g_torchRadiusScale = env_float("DOL_AURORA_TORCH_LIGHT_REACH", g_torchRadiusScale, 0.1f, 50.f);
-@@ -1214,6 +1649,48 @@ void initialize() {
+@@ -1214,6 +1651,48 @@ void initialize() {
    const wgpu::PipelineLayoutDescriptor torchPipelineLayoutDescriptor{.bindGroupLayoutCount = 1,
                                                                       .bindGroupLayouts = &g_torchLayout};
    g_torchPipelineLayout = g_device.CreatePipelineLayout(&torchPipelineLayoutDescriptor);
@@ -1376,7 +1379,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
  }
  
  void shutdown() {
-@@ -1227,6 +1704,15 @@ void shutdown() {
+@@ -1227,6 +1706,15 @@ void shutdown() {
    g_sunPass = {};
    g_sunSamples = 0;
    g_sunModule = {};
@@ -1392,7 +1395,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
    g_edgePass = {};
    g_edgeSamples = 0;
    g_edgeModule = {};
-@@ -1275,6 +1761,104 @@ bool sun_shadows_enabled() noexcept { return g_sun.load(std::memory_order_relaxe
+@@ -1275,6 +1763,104 @@ bool sun_shadows_enabled() noexcept { return g_sun.load(std::memory_order_relaxe
  
  void set_sun_shadows(bool enabled) noexcept { g_sun.store(enabled, std::memory_order_relaxed); }
  
@@ -1497,7 +1500,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
  bool torch_light_enabled() noexcept { return g_torch.load(std::memory_order_relaxed) && webgpu::g_hasCoreFeatures; }
  
  void set_torch_light(bool enabled) noexcept { g_torch.store(enabled, std::memory_order_relaxed); }
-@@ -1343,7 +1927,7 @@ bool any_enabled() noexcept {
+@@ -1343,7 +1929,7 @@ bool any_enabled() noexcept {
  
  void encode(const wgpu::CommandEncoder& cmd, const wgpu::TextureView& scene, const wgpu::TextureView& depthView,
              const wgpu::Extent3D& size, wgpu::TextureFormat format, const wgpu::TextureView& dst,
@@ -1506,7 +1509,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
    // Ambient occlusion and the far blur need single-sample depth (the depth
    // buffer is multisampled with MSAA).
    if (ambient_occlusion_enabled() && g_module && depthView && msaaSamples == 1 && size.width >= 4 && size.height >= 4) {
-@@ -1359,10 +1943,22 @@ void encode(const wgpu::CommandEncoder& cmd, const wgpu::TextureView& scene, con
+@@ -1359,10 +1945,22 @@ void encode(const wgpu::CommandEncoder& cmd, const wgpu::TextureView& scene, con
      if (camera.valid) {
        const webgpu::gpu_prof::Zone zone{cmd, "Sun shadows"};
        ensure_targets(size, format, msaaSamples);
@@ -1533,7 +1536,7 @@ index 345e538e4fb0ba6e4c011b550b5feb8ff1b1b6aa..06562ab74659aa2a90bf284bfff7d592
      }
    }
    if (edge_light_enabled() && g_module && depthView && msaaSamples == 1) {
-@@ -1439,6 +2035,8 @@ void aurora_set_sun_shadows(bool enabled) { aurora::gfx::post_fx::set_sun_shadow
+@@ -1439,6 +2037,8 @@ void aurora_set_sun_shadows(bool enabled) { aurora::gfx::post_fx::set_sun_shadow
  
  void aurora_set_sun_direction(float x, float y, float z) { aurora::gfx::post_fx::set_sun_direction(x, y, z); }
  
