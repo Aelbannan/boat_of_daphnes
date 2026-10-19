@@ -474,7 +474,10 @@ static void palms(CPUState* cpu, bool on) {
             // width had an edge where the shadow, longer at a low sun, popped
             // with the smallest turn of the camera.
             const float up = fmaxf(g_sun_up, 0.02f);
-            const float shadow = 1300.0f * sqrtf(fmaxf(1.0f - up * up, 0.0f)) / up;
+            // From its top down to the sea (y 0), whichever is more: on a cliff
+            // its shadow falls on to the water far below it.
+            const float top = fmaxf(read_float(cpu, actor + 0x1FCu) + 1300.0f, 1300.0f);
+            const float shadow = top * sqrtf(fmaxf(1.0f - up * up, 0.0f)) / up;
             const float half = on ? 350.0f + fminf(fmaxf(shadow * 1.5f + 500.0f, 2500.0f), 20000.0f) : 350.0f;
             if (!on && !widened)
                 continue;
@@ -571,7 +574,14 @@ void bluewake_hd_look_room_clip(CPUState* cpu, u32 address) {
             lo[k] = read_float(cpu, joint + 0x40u + k * 4u);
             hi[k] = read_float(cpu, joint + 0x4Cu + k * 4u);
         }
-        const float length = fminf((hi[1] - lo[1]) * per_height * 1.5f + 500.0f, kRoomReach);
+        // The joint's height, or its top's height over the sea (y 0) when that
+        // is more: a cliff top's shadow falls all the way to the water.
+        float top = -1e30f;
+        for (int c = 0; c < 8; ++c)
+            top = fmaxf(top, anm[4] * ((c & 1) ? hi[0] : lo[0]) + anm[5] * ((c & 2) ? hi[1] : lo[1]) +
+                                 anm[6] * ((c & 4) ? hi[2] : lo[2]) + anm[7]);
+        const float height = fmaxf(hi[1] - lo[1], top);
+        const float length = fminf(height * per_height * 1.5f + 500.0f, kRoomReach);
         int outside[6] = {0, 0, 0, 0, 0, 0};
         bool in_view = false;
         for (int c = 0; c < 16 && !in_view; ++c) {
