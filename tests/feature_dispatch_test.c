@@ -11,6 +11,17 @@ bool bluewake_widescreen_active;
 bool bluewake_draw_tags_enabled;
 bool bluewake_forest_water_enabled;
 u32 bluewake_forest_water_tree_timer_check;
+/* Hooks added after this test was written: never armed here. */
+bool bluewake_sound_trace_on;
+void bluewake_sound_trace(CPUState* cpu, u32 address) {
+    (void)cpu; (void)address;
+}
+bool bluewake_puppet_mat_observes(u32 address) {
+    (void)address; return false;
+}
+void bluewake_puppet_mat_enter(CPUState* cpu, u32 address) {
+    (void)cpu; (void)address;
+}
 static unsigned calls[6];
 static unsigned order;
 void bluewake_quick_doors_enter(CPUState* cpu) {

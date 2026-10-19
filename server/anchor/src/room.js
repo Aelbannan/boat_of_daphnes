@@ -12,6 +12,8 @@ import { DurableObject } from 'cloudflare:workers';
 import { roomLog, roomLogWho } from './room_log.js';
 
 const MAX_PLAYERS = 32;
+const OFFLINE_KEEP_MS = 30 * 60 * 1000; // an offline player's entry (their seat, for a reconnect) is kept this long
+const OFFLINE_KEEP_MAX = 8;              // and at most this many offline entries, the most recent
 const MAX_QUEUE = 2000;          // stored packets per team
 const MAX_MESSAGE = 64 * 1024;   // bytes
 const PVP_MODES = ['off', 'no_damage', 'on'];
@@ -59,6 +61,27 @@ export class Room extends DurableObject {
 
   who(c, id, a) {
     return roomLogWho(c, id, a);
+  }
+
+  // Offline entries: a seat kept for a reconnect, not a list of everyone who ever came. Dropped: entries offline longer
+  // than OFFLINE_KEEP_MS (or from before offline times were kept), entries with the name of a player who has just
+  // joined (their own stale seats from older builds, which sent no install token), and all but the OFFLINE_KEEP_MAX
+  // most recent. The owner is never an offline entry here (left() moves it on).
+  static prune(s, joinedName) {
+    const now = Date.now();
+    const offline = Object.entries(s.clients).filter(([, c]) => !c.online);
+    const drop = new Set();
+    for (const [id, c] of offline) {
+      if (!c.leftAt || now - c.leftAt > OFFLINE_KEEP_MS) drop.add(id);
+      else if (joinedName && c.name === joinedName) drop.add(id);
+    }
+    const kept = offline.filter(([id]) => !drop.has(id)).sort(([, x], [, y]) => (y.leftAt || 0) - (x.leftAt || 0));
+    for (const [id] of kept.slice(OFFLINE_KEEP_MAX)) drop.add(id);
+    for (const id of drop) {
+      delete s.clients[id];
+      if (s.tokens) delete s.tokens[id];
+    }
+    return drop.size;
   }
 
   static minutes(ms) {
@@ -229,7 +252,9 @@ export class Room extends DurableObject {
     a.clientId = id;
     ws.serializeAttachment(a);
     s.clients[id] = { ...(s.clients[id] || {}), ...(msg.clientState || {}), online: true };
+    delete s.clients[id].leftAt;
     if (token) s.tokens[id] = token;
+    Room.prune(s, s.clients[id].name);
     if (!s.owner || !s.clients[s.owner] || !s.clients[s.owner].online) {
       s.owner = id;
       if (msg.roomState && typeof msg.roomState === 'object') s.roomState = cleanInteraction({ ...s.roomState, ...msg.roomState });
@@ -285,6 +310,8 @@ export class Room extends DurableObject {
     const stillHere = this.sockets().some(({ ws: other, a: o }) => other !== ws && o.clientId === a.clientId);
     if (stillHere) return;
     s.clients[a.clientId].online = false;
+    s.clients[a.clientId].leftAt = Date.now();
+    Room.prune(s);
     const remaining = Object.values(s.clients).filter((c) => c.online).length;
     if (remaining === 0)
       this.log('closed', 'Room closed', [

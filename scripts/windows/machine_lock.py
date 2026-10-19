@@ -26,6 +26,14 @@ def lock_path(name: str) -> Path:
 def _alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # another user's process
+        return True
     out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
     return str(pid) in out
 

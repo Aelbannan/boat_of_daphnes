@@ -6,6 +6,7 @@
 #endif
 
 #include "item_found.h"
+#include "platform/bod_platform.h"
 
 #include "gx_texture.h"
 #include "png_decode.h"
@@ -385,10 +386,10 @@ std::string swift_sail_icon() {
     static bool tried;
     if (!tried) {
         tried = true;
-        const char* name = "assets\\swift_sail\\tex1_48x48_22e7a81247c4caa5_fe1212280187026e_9.png";
+        const char* name = "assets" BOD_SEP "swift_sail" BOD_SEP "tex1_48x48_22e7a81247c4caa5_fe1212280187026e_9.png";
         std::vector<std::string> bases;
         if (const char* extras = std::getenv("BLUEWAKE_EXTRAS_DIR"))
-            bases.push_back(std::string(extras) + "\\");
+            bases.push_back(std::string(extras) + BOD_SEP);
         if (const char* base = SDL_GetBasePath())
             bases.push_back(base);
         for (const std::string& b : bases) {

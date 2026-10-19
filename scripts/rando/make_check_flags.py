@@ -27,9 +27,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / "windows" / "rando_runtime")
+RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime")
 if sys.version_info[:2] != (3, 12):
-    sys.exit(subprocess.run([str(RUNTIME / "python" / "python.exe"), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)
+    sys.exit(subprocess.run([str(RUNTIME / "python" / ("python.exe" if os.name == "nt" else "bin/python3")), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)
 for _p in (RUNTIME / "wwrando", RUNTIME / "gclib", RUNTIME / "site-packages"):
     sys.path.insert(0, str(_p))
 

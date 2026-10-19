@@ -351,6 +351,59 @@ bool bluewake_text_swap_wants_fiber(void) {
     return false;
 }
 
+// A test aid: the text of message `id` in every message file in guest memory (control codes shown as '~'), the text the game will read.
+static void log_message_texts(CPUState* cpu, u32 id) {
+    const u8* ram = cpu->ram;
+    for (u32 offset = 0; offset + 8u <= cpu->ram_size;) {
+        const u8* hit = memmem(ram + offset, cpu->ram_size - offset, "MESGbmg1", 8);
+        if (hit == NULL)
+            break;
+        const u32 bmg = 0x80000000u + (u32)(hit - ram);
+        offset = (u32)(hit - ram) + 8u;
+        const u32 blocks = mem_read32(cpu, bmg + 8u), sections = mem_read32(cpu, bmg + 12u);
+        if (blocks < 2u || blocks > 0x00400000u / 32u || sections == 0u || sections > 16u)
+            continue;
+        u32 inf = 0u, dat = 0u, at = bmg + 32u;
+        for (u32 i = 0u; i < sections && at < bmg + blocks * 32u; ++i) {
+            const u32 magic = mem_read32(cpu, at), size = mem_read32(cpu, at + 4u);
+            if (size < 8u)
+                break;
+            if (magic == 0x494E4631u)
+                inf = at;
+            else if (magic == 0x44415431u)
+                dat = at;
+            at += size;
+        }
+        if (inf == 0u || dat == 0u)
+            continue;
+        const u32 entries = mem_read16(cpu, inf + 8u), entry_size = mem_read16(cpu, inf + 10u);
+        for (u32 i = 0u; entry_size >= 14u && i < entries; ++i) {
+            const u32 entry = inf + 16u + i * entry_size;
+            if (mem_read16(cpu, entry + 4u) != id)
+                continue;
+            char text[400];
+            u32 n = 0u;
+            for (u32 p = dat + 8u + mem_read32(cpu, entry); n + 1u < sizeof text && p < 0x81800000u; ++p) {
+                const u8 c = mem_read8(cpu, p);
+                if (c == 0u)
+                    break;
+                if (c == 0x1Au) {
+                    const u32 len = mem_read8(cpu, p + 1u);
+                    if (len < 2u)
+                        break;
+                    p += len - 1u;
+                    text[n++] = '~';
+                    continue;
+                }
+                text[n++] = c == 10 ? '|' : (char)c;
+            }
+            text[n] = 0;
+            fprintf(stderr, "[test] message file 0x%08X: message %u reads: %s\n", bmg, id, text);
+            break;
+        }
+    }
+}
+
 void bluewake_text_swap_fiber(GuestCoro* co, CPUState* cpu) {
     if (g_on && g_buf == 0u && g_fail_alloc < 4u) {
         const u32 heap = bluewake_guest_call(co, FN_ARCHIVE_HEAP, 0, 0, 0, 0, 0, 0);
@@ -370,6 +423,7 @@ void bluewake_text_swap_fiber(GuestCoro* co, CPUState* cpu) {
         if (g_tests[i].done || g_frame < g_tests[i].at || mem_read32(cpu, 0x803CA754u) == 0u) // wants a scene with Link
             continue;
         g_tests[i].done = true;
+        log_message_texts(cpu, g_tests[i].id);
         const u32 pid = bluewake_guest_call(co, FN_MESSAGE_SET, g_tests[i].id, 0, 0, 0, 0, 0);
         fprintf(stderr, "[test] message 0x%X shown at retrace %u: process id %08X (Crenando %s)\n", g_tests[i].id, g_frame,
                 pid, g_on ? "on" : "off");

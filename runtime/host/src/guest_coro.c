@@ -4,14 +4,30 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+/* A body runs on its own stack and hands guest calls back to the loop that stepped it: Win32 fibers on Windows, ucontext on
+ * Linux x86-64. Elsewhere there are none (the stubs below). */
+#if defined(_WIN32)
 #include <windows.h>
+#define GUEST_CORO_FIBERS 1
+#elif defined(__linux__) && defined(__x86_64__)
+#include <sys/mman.h>
+#include <ucontext.h>
+#define GUEST_CORO_FIBERS 1
+#endif
+
+#ifdef GUEST_CORO_FIBERS
 
 struct GuestCoro {
     GuestCoroBody body;
     void* arg;
+#ifdef _WIN32
     LPVOID fiber;
     LPVOID caller;
+#else
+    ucontext_t fiber;
+    ucontext_t caller;
+    void* stack; /* the fiber's stack, mapped when first stepped */
+#endif
     CPUState* cpu;
     u32 site;
     u32 sp;
@@ -28,6 +44,9 @@ struct GuestCoro {
     u32 lr, ctr, cr, xer, fpscr;
 };
 
+#define CORO_STACK_SIZE (512u * 1024u)
+
+#ifdef _WIN32
 static void CALLBACK fiber_main(LPVOID param) {
     GuestCoro* co = (GuestCoro*)param;
     for (;;) {
@@ -36,6 +55,17 @@ static void CALLBACK fiber_main(LPVOID param) {
         SwitchToFiber(co->caller);
     }
 }
+#else
+/* makecontext passes ints: the pointer comes in as two halves. */
+static void fiber_main(unsigned low, unsigned high) {
+    GuestCoro* co = (GuestCoro*)(((uintptr_t)high << 32) | (uintptr_t)low);
+    for (;;) {
+        co->body(co, co->arg);
+        co->done = true;
+        swapcontext(&co->fiber, &co->caller);
+    }
+}
+#endif
 
 GuestCoro* bluewake_coro_create(GuestCoroBody body) {
     GuestCoro* co = (GuestCoro*)calloc(1, sizeof *co);
@@ -74,16 +104,30 @@ u32 bluewake_coro_step(GuestCoro* co, CPUState* cpu, u32 site, void* arg) {
     if (co == NULL)
         return 0u;
     if (!co->active) {
+#ifdef _WIN32
         if (co->caller == NULL) {
             co->caller = IsThreadAFiber() ? GetCurrentFiber() : ConvertThreadToFiber(NULL);
             if (co->caller == NULL)
                 return 0u;
         }
         if (co->fiber == NULL) {
-            co->fiber = CreateFiber(512u * 1024u, fiber_main, co);
+            co->fiber = CreateFiber(CORO_STACK_SIZE, fiber_main, co);
             if (co->fiber == NULL)
                 return 0u;
         }
+#else
+        if (co->stack == NULL) {
+            void* stack = mmap(NULL, CORO_STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+            if (stack == MAP_FAILED || getcontext(&co->fiber) != 0)
+                return 0u;
+            co->stack = stack;
+            co->fiber.uc_stack.ss_sp = stack;
+            co->fiber.uc_stack.ss_size = CORO_STACK_SIZE;
+            co->fiber.uc_link = NULL;
+            makecontext(&co->fiber, (void (*)(void))fiber_main, 2, (unsigned)((uintptr_t)co & 0xFFFFFFFFu),
+                        (unsigned)((uintptr_t)co >> 32));
+        }
+#endif
         save_regs(co, cpu);
         co->cpu = cpu;
         co->site = site;
@@ -101,7 +145,11 @@ u32 bluewake_coro_step(GuestCoro* co, CPUState* cpu, u32 site, void* arg) {
         co->waiting = false;
     }
     co->cpu = cpu;
+#ifdef _WIN32
     SwitchToFiber(co->fiber);
+#else
+    swapcontext(&co->caller, &co->fiber);
+#endif
     if (co->done) {
         restore_regs(co, cpu);
         co->active = false;
@@ -122,7 +170,11 @@ u32 bluewake_guest_call(GuestCoro* co, u32 function, u32 a0, u32 a1, u32 a2, u32
     co->args[3] = a3;
     co->args[4] = a4;
     co->args[5] = a5;
+#ifdef _WIN32
     SwitchToFiber(co->caller);
+#else
+    swapcontext(&co->fiber, &co->caller);
+#endif
     return co->result;
 }
 

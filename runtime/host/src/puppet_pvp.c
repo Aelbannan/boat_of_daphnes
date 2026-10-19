@@ -689,12 +689,18 @@ static void execute(CPUState* cpu) {
     }
 }
 
+// The play scene's process id as the execute hook last saw it (0: not yet): the draw hook's site has no register
+// holding the scene.
+static u32 g_exec_scene_id;
+uint32_t bluewake_pvp_scene_id(void) { return g_exec_scene_id; }
+
 u32 bluewake_pvp_execute_hook(CPUState* cpu) {
     const u32 scene = cpu->gpr[3];
     // The draw hook's scene id is not this one's (at that site r30 is not the play scene in every module build), so the
     // execute hook keeps its own: the first frame of a new play scene is skipped, the bodies follow the draw's frames.
     static u32 last_id;
     const u32 id = guest_ptr(scene) ? mem_read32(cpu, scene + 4u) : 0u;
+    g_exec_scene_id = id;
     if (id != last_id) {
         last_id = id;
         return 0u;

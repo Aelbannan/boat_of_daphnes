@@ -11,12 +11,7 @@
 #define PICOJSON_USE_INT64
 #include "picojson.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#include <bcrypt.h>
-#include <winhttp.h>
+#include "platform/bod_platform.h"
 
 #include <algorithm>
 #include <condition_variable>
@@ -67,9 +62,9 @@ std::vector<int> g_cleared;
 
 fs::path cache_dir() {
     static const fs::path dir = [] {
-        wchar_t exe[MAX_PATH * 2];
-        const DWORD n = GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(sizeof exe / sizeof *exe));
-        fs::path p = n ? fs::path(std::wstring(exe, n)).parent_path() : fs::current_path();
+        fs::path p = bodplat::DataFolder();
+        if (p.empty())
+            p = fs::current_path();
         return p / "cache" / "anchor-content";
     }();
     return dir;
@@ -116,80 +111,11 @@ void enqueue(std::function<void()> job) {
 
 // ----------------------------------------------------------------- HTTP ----
 
-struct Http {
-    bool ok = false;
-    int status = 0;
-    std::vector<uint8_t> body;
-};
+using Http = bodplat::HttpResult;
 
-std::wstring widen(const std::string& s) {
-    if (s.empty())
-        return L"";
-    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
-    return w;
-}
-
-Http request(const std::string& base, const wchar_t* method, const std::string& path, const std::vector<uint8_t>* body,
+Http request(const std::string& base, const char* method, const std::string& path, const std::vector<uint8_t>* body,
              size_t max_response) {
-    Http r;
-    URL_COMPONENTS u{};
-    u.dwStructSize = sizeof u;
-    wchar_t host[256];
-    u.lpszHostName = host;
-    u.dwHostNameLength = 256;
-    u.dwSchemeLength = static_cast<DWORD>(-1);
-    u.dwUrlPathLength = static_cast<DWORD>(-1);   // pointers into the URL for the path and what follows it
-    u.dwExtraInfoLength = static_cast<DWORD>(-1);
-    const std::wstring url = widen(base + path);
-    if (!WinHttpCrackUrl(url.c_str(), static_cast<DWORD>(url.size()), 0, &u))
-        return r;
-    HINTERNET session = WinHttpOpen(L"boat-of-daphnes", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME,
-                                    WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!session)
-        return r;
-    WinHttpSetTimeouts(session, 8000, 8000, 30000, 60000);
-    HINTERNET connection = WinHttpConnect(session, host, u.nPort, 0);
-    HINTERNET req = nullptr;
-    if (connection) {
-        const std::wstring object = std::wstring(u.lpszUrlPath, u.dwUrlPathLength) + std::wstring(u.lpszExtraInfo, u.dwExtraInfoLength);
-        req = WinHttpOpenRequest(connection, method, object.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                 u.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
-    }
-    if (req && WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                  body ? const_cast<uint8_t*>(body->data()) : WINHTTP_NO_REQUEST_DATA,
-                                  body ? static_cast<DWORD>(body->size()) : 0, body ? static_cast<DWORD>(body->size()) : 0, 0) &&
-        WinHttpReceiveResponse(req, nullptr)) {
-        DWORD status = 0, size = sizeof status;
-        WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &size,
-                            WINHTTP_NO_HEADER_INDEX);
-        r.status = static_cast<int>(status);
-        r.ok = true;
-        for (;;) {
-            DWORD avail = 0;
-            if (!WinHttpQueryDataAvailable(req, &avail) || avail == 0)
-                break;
-            if (r.body.size() + avail > max_response) {
-                r.ok = false; // larger than it may be
-                break;
-            }
-            const size_t at = r.body.size();
-            r.body.resize(at + avail);
-            DWORD got = 0;
-            if (!WinHttpReadData(req, r.body.data() + at, avail, &got)) {
-                r.ok = false;
-                break;
-            }
-            r.body.resize(at + got);
-        }
-    }
-    if (req)
-        WinHttpCloseHandle(req);
-    if (connection)
-        WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
-    return r;
+    return bodplat::HttpRequest(base, method, path, body, max_response);
 }
 
 // ---------------------------------------------------------------- cache ----
@@ -239,7 +165,8 @@ void store(const std::string& hash, const std::vector<uint8_t>& bytes) {
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
     const fs::path dest = cache_dir() / hash;
-    if (!MoveFileExW(tmp.c_str(), dest.c_str(), MOVEFILE_REPLACE_EXISTING))
+    fs::rename(tmp, dest, ec); // replaces an existing file, on Windows too (MoveFileEx with REPLACE_EXISTING)
+    if (ec)
         fs::remove(tmp, ec);
 }
 
@@ -256,7 +183,7 @@ bool fetch_blob(const std::string& base, const std::string& hash, size_t size, s
         touch(cached);
         return true;
     }
-    const Http h = request(base, L"GET", "/content/" + hash, nullptr, kMaxFile + 1024);
+    const Http h = request(base, "GET", "/content/" + hash, nullptr, kMaxFile + 1024);
     if (!h.ok || h.status != 200 || h.body.size() != size || Sha256Hex(h.body.data(), h.body.size()) != hash)
         return false;
     out = h.body;
@@ -316,10 +243,10 @@ void publish(std::string base, std::string model) {
             bool ok = manifest.size() <= kMaxManifest;
             // Only what the server lacks goes up.
             auto upload = [&](const std::string& h, const std::vector<uint8_t>& bytes, const char* kind) {
-                const Http head = request(base, L"HEAD", "/content/" + h, nullptr, 0);
+                const Http head = request(base, "HEAD", "/content/" + h, nullptr, 0);
                 if (head.ok && head.status == 200)
                     return true;
-                const Http put = request(base, L"PUT", "/content/" + h + (kind ? std::string("?kind=") + kind : ""), &bytes, 4096);
+                const Http put = request(base, "PUT", "/content/" + h + (kind ? std::string("?kind=") + kind : ""), &bytes, 4096);
                 if (!put.ok || (put.status != 201 && put.status != 204)) {
                     std::fprintf(stderr, "[content] upload of %.12s failed (%d)\n", h.c_str(), put.status);
                     return false;
@@ -359,7 +286,7 @@ void fetch_peer(std::string base, int id, std::string hash) {
                 touch(cached);
                 return true;
             }
-            const Http h = request(base, L"GET", "/content/" + hash, nullptr, kMaxManifest + 1);
+            const Http h = request(base, "GET", "/content/" + hash, nullptr, kMaxManifest + 1);
             if (!h.ok || h.status != 200 || h.body.empty() || Sha256Hex(h.body.data(), h.body.size()) != hash)
                 return false;
             manifest = h.body;
@@ -418,7 +345,7 @@ void fetch_peer(std::string base, int id, std::string hash) {
 
 std::string Sha256Hex(const uint8_t* data, size_t size) {
     uint8_t digest[32] = {0};
-    if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(data), static_cast<ULONG>(size), digest, 32) < 0)
+    if (!bodplat::Sha256(data, size, digest))
         return "";
     static const char hex[] = "0123456789abcdef";
     std::string out;
@@ -430,7 +357,7 @@ std::string Sha256Hex(const uint8_t* data, size_t size) {
 }
 
 void Tick(const std::string& http_base, bool share, bool connected) {
-    const unsigned long long now = GetTickCount64();
+    const unsigned long long now = bodplat::TickMs();
     std::string model;
     {
         std::lock_guard<std::mutex> lock(g_mutex);

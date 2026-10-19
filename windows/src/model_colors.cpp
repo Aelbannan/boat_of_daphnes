@@ -46,16 +46,22 @@ std::string trim(const std::string& s) {
 // "key: value" lines nested by indentation. Tab indentation counts as two spaces (:72-73).
 // ---------------------------------------------------------------------------
 
+struct Kid;
 struct Node {
     std::string value;
-    std::vector<std::pair<std::string, Node>> kids;
-    const Node* find(const std::string& key) const {
-        for (const auto& k : kids)
-            if (k.first == key)
-                return &k.second;
-        return nullptr;
-    }
+    std::vector<Kid> kids;
+    const Node* find(const std::string& key) const;
 };
+struct Kid { // a key and its node (std::pair<std::string, Node> does not take Node before it is complete)
+    std::string first;
+    Node second;
+};
+inline const Node* Node::find(const std::string& key) const {
+    for (const auto& k : kids)
+        if (k.first == key)
+            return &k.second;
+    return nullptr;
+}
 
 // A scalar as the value of a line: quotes removed, a trailing " # comment" cut from a plain one.
 std::string scalar(const std::string& raw) {

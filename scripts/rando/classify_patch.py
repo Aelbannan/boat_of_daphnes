@@ -43,9 +43,9 @@ except ImportError:  # a release's copy of this script, without the repository's
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / "windows" / "rando_runtime")
+RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime")
 if sys.version_info[:2] != (3, 12):
-    _py = RUNTIME / "python" / "python.exe"
+    _py = RUNTIME / "python" / ("python.exe" if os.name == "nt" else "bin/python3")
     if not _py.is_file():
         sys.exit(f"rando runtime not found at {RUNTIME}; run: python scripts/windows/rando_runtime.py")
     sys.exit(subprocess.run([str(_py), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)

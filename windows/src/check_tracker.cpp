@@ -15,13 +15,7 @@
 
 #include <imgui.h>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+#include "platform/bod_platform.h"
 
 #include <algorithm>
 #include <atomic>
@@ -172,13 +166,16 @@ std::vector<std::string> area_order() {
     return order;
 }
 
+std::string u8str(const fs::path& p) {
+    const auto u = p.u8string();
+    return std::string(u.begin(), u.end());
+}
+
 fs::path tools_dir() {
     // BLUEWAKE_RANDO_DIR (testing): the folder with the scripts, in place of rando\ beside the exe.
     if (const char* env = std::getenv("BLUEWAKE_RANDO_DIR"); env != nullptr && env[0] != '\0')
         return fs::u8path(env);
-    wchar_t path[MAX_PATH * 2];
-    const DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH * 2);
-    const fs::path exe = fs::path(std::wstring(path, n)).parent_path();
+    const fs::path exe = bodplat::ExeFolder();
     std::error_code ec;
     if (fs::exists(exe / "rando" / "check_logic_server.py", ec))
         return exe / "rando";
@@ -455,8 +452,11 @@ public:
             return;
         mQuit = true;
         mCv.notify_all();
-        if (mProcess != nullptr)
-            TerminateProcess(mProcess, 0); // unblocks the worker's read
+        {
+            std::lock_guard<std::mutex> lock(mProcessMutex);
+            if (mProcess != nullptr)
+                mProcess->Kill(); // unblocks the worker's read
+        }
         mThread.join();
         mSeed.clear();
         std::lock_guard<std::mutex> lock(mMutex);
@@ -492,50 +492,31 @@ private:
         const fs::path tools = tools_dir();
         const char* rt = std::getenv("RANDO_RUNTIME");
         const fs::path runtime = rt != nullptr && rt[0] != '\0' ? fs::u8path(rt) : tools;
-        const fs::path python = runtime / "python" / "python.exe";
+        const fs::path python = bodplat::PythonExe(runtime);
         const fs::path script = tools / "check_logic_server.py";
         if (!fs::exists(python) || !fs::exists(script)) {
             SetState("The randomizer runtime is not installed (rando\\ beside the game).");
             return;
         }
-        SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
-        HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr;
-        if (!CreatePipe(&inR, &inW, &sa, 0) || !CreatePipe(&outR, &outW, &sa, 0)) {
-            SetState("The helper's pipes could not be made.");
-            return;
-        }
-        SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
         std::error_code ec;
         const fs::path logPath = fs::u8path(randoflow::SaveFolder()) / "CheckTrackerHelper.log";
         fs::create_directories(logPath.parent_path(), ec);
-        HANDLE log = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, 0, nullptr);
-        STARTUPINFOW si{};
-        si.cb = sizeof si;
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = inR;
-        si.hStdOutput = outW;
-        si.hStdError = log != INVALID_HANDLE_VALUE ? log : GetStdHandle(STD_ERROR_HANDLE);
-        SetEnvironmentVariableW(L"RANDO_RUNTIME", runtime.c_str());
-        SetEnvironmentVariableW(L"PYTHONUTF8", L"1");
-        std::wstring cmd = L"\"" + python.wstring() + L"\" \"" + script.wstring() + L"\" \"" + fs::u8path(seedJson).wstring() + L"\"";
-        std::vector<wchar_t> line(cmd.begin(), cmd.end());
-        line.push_back(0);
-        PROCESS_INFORMATION pi{};
-        const BOOL started = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-        CloseHandle(inR);
-        CloseHandle(outW);
-        if (log != INVALID_HANDLE_VALUE)
-            CloseHandle(log);
-        if (!started) {
-            CloseHandle(inW);
-            CloseHandle(outR);
+        bodplat::Process proc;
+        bodplat::Process::Options helper;
+        helper.program = python;
+        helper.args = {u8str(script), seedJson};
+        helper.env = {{"RANDO_RUNTIME", u8str(runtime)}, {"PYTHONUTF8", "1"}};
+        helper.stderrFile = logPath;
+        helper.pipes = true;
+        if (!proc.Start(helper)) {
             SetState("The logic helper could not be started.");
             return;
         }
-        CloseHandle(pi.hThread);
-        mProcess = pi.hProcess;
-        std::fprintf(stderr, "[checktracker] logic helper started (pid %lu) for %s\n", pi.dwProcessId, seedJson.c_str());
+        {
+            std::lock_guard<std::mutex> lock(mProcessMutex);
+            mProcess = &proc;
+        }
+        std::fprintf(stderr, "[checktracker] logic helper started (pid %lu) for %s\n", proc.Pid(), seedJson.c_str());
 
         std::string buffer;
         auto readLine = [&](std::string* out) {
@@ -549,10 +530,10 @@ private:
                     return true;
                 }
                 char chunk[8192];
-                DWORD got = 0;
-                if (!ReadFile(outR, chunk, sizeof chunk, &got, nullptr) || got == 0)
+                const long got = proc.ReadStdout(chunk, sizeof chunk);
+                if (got <= 0)
                     return false;
-                buffer.append(chunk, got);
+                buffer.append(chunk, static_cast<size_t>(got));
             }
         };
         std::string reply;
@@ -574,8 +555,7 @@ private:
                     mHasPending = false;
                 }
                 const std::string msg = "{\"id\":1,\"items\":" + request + "}\n";
-                DWORD wrote = 0;
-                if (!WriteFile(inW, msg.data(), DWORD(msg.size()), &wrote, nullptr) || !readLine(&reply)) {
+                if (!proc.WriteStdin(msg.data(), msg.size()) || !readLine(&reply)) {
                     if (!mQuit)
                         SetState("The logic helper stopped (see Save\\CheckTrackerHelper.log).");
                     break;
@@ -595,11 +575,12 @@ private:
                 std::fprintf(stderr, "[checktracker] reachable: %zu locations (answer %d)\n", mReachable.size(), mAnswers);
             }
         }
-        CloseHandle(inW);
-        CloseHandle(outR);
-        TerminateProcess(pi.hProcess, 0);
-        CloseHandle(pi.hProcess);
-        mProcess = nullptr;
+        proc.CloseStdin();
+        proc.Kill();
+        {
+            std::lock_guard<std::mutex> lock(mProcessMutex);
+            mProcess = nullptr;
+        }
     }
 
     std::thread mThread;
@@ -608,7 +589,8 @@ private:
     std::string mSeed, mPending, mState;
     bool mHasPending = false, mHave = false;
     std::atomic<bool> mQuit{false};
-    std::atomic<HANDLE> mProcess{nullptr};
+    std::mutex mProcessMutex;
+    bodplat::Process* mProcess = nullptr; // the helper while Run has it, under mProcessMutex
     std::set<std::string> mReachable;
     int mAnswers = 0;
 };
@@ -686,7 +668,7 @@ void update_state(const Save& save) {
     }
     for (size_t i = 0; i < g_locs.size(); ++i)
         if (g_locs[i].collected != bool(was[i])) {
-            const bool team = g_locs[i].collected && GetTickCount64() - g_team_save_at.load() < 8000 && g_team_save_at.load() != 0;
+            const bool team = g_locs[i].collected && bodplat::TickMs() - g_team_save_at.load() < 8000 && g_team_save_at.load() != 0;
             if (team) {
                 g_locs[i].byTeam = true;
                 save_skipped(g_slot);
@@ -896,7 +878,7 @@ void draw_window(float scale, float fontScale) {
 
 } // namespace
 
-void NoteTeamSave() { g_team_save_at = GetTickCount64(); }
+void NoteTeamSave() { g_team_save_at = bodplat::TickMs(); }
 
 void Toggle() {
     const int now = CVarGetInteger(kWindowOpen, 0) ? 0 : 1;

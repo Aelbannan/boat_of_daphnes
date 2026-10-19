@@ -1,6 +1,6 @@
 // The online play connection (Network > Anchor): one WebSocket to the room
-// server (server/anchor, PROTOCOL.md), on its own thread with Windows' WinHTTP
-// WebSocket client. Messages are JSON text; the game side sends and polls.
+// server (server/anchor, PROTOCOL.md), on its own thread with the platform layer's
+// WebSocket client (WinHTTP on Windows, sockets and OpenSSL on Linux). Messages are JSON text; the game side sends and polls.
 #pragma once
 
 #include <string>

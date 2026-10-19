@@ -36,7 +36,7 @@ SCHEMA = "bod.seedpack"
 SCHEMA_VERSION = 1
 
 REPO = Path(__file__).resolve().parents[2]
-RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / "windows" / "rando_runtime")
+RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime")
 
 EXIT_OK, EXIT_ARGS, EXIT_GENERATION, EXIT_RUNTIME = 0, 2, 3, 4
 
@@ -49,7 +49,7 @@ def fail(code: int, message: str, **extra) -> "NoReturn":
 
 def relaunch_under_runtime() -> None:
     """The generator needs Python 3.12 (wwrando breaks on newer versions); hand over to the embedded one."""
-    py = RUNTIME / "python" / "python.exe"
+    py = RUNTIME / "python" / ("python.exe" if os.name == "nt" else "bin/python3")
     if not py.is_file():
         fail(EXIT_RUNTIME, f"rando runtime not found at {RUNTIME}; run: python scripts/windows/rando_runtime.py")
     r = subprocess.run([str(py), str(Path(__file__).resolve()), *sys.argv[1:]])

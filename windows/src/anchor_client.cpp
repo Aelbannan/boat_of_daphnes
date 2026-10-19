@@ -1,15 +1,9 @@
 // The online play connection: see anchor_client.h.
 #include "anchor_client.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <winhttp.h>
+#include "platform/bod_platform.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -47,15 +41,6 @@ void set_status(const Conn& c, Status s) {
         g_status = s;
 }
 
-std::wstring widen(const std::string& s) {
-    if (s.empty())
-        return {};
-    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
-    return w;
-}
-
 std::string url_encode(const std::string& s) {
     static const char* hex = "0123456789ABCDEF";
     std::string out;
@@ -71,9 +56,9 @@ std::string url_encode(const std::string& s) {
     return out;
 }
 
-void fail(const Conn& c, const char* what) {
+void fail(const Conn& c, const char* what, unsigned long code) {
     char buf[160];
-    std::snprintf(buf, sizeof buf, "%s (error %lu)", what, GetLastError());
+    std::snprintf(buf, sizeof buf, "%s (error %lu)", what, code);
     std::lock_guard lock(g_lock);
     if (c.id != g_conn_id)
         return;
@@ -85,62 +70,35 @@ void fail(const Conn& c, const char* what) {
 // One connection, until it drops or Stop. Returns when the socket is gone.
 void session(Conn& c) {
     const Options& options = c.options;
-    HINTERNET session = WinHttpOpen(L"boat-of-daphnes/1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
-                                    WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == nullptr)
-        return fail(c, "cannot start WinHTTP");
-    // Connect, send and receive give up after 10 s instead of WinHTTP's 30-60 s.
-    WinHttpSetTimeouts(session, 10000, 10000, 10000, 10000);
-    HINTERNET connect = WinHttpConnect(session, widen(options.host).c_str(), options.port, 0);
-    const std::wstring path = widen("/ws?room=" + url_encode(options.room));
-    HINTERNET request = connect ? WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
-                                                     WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                                     options.secure ? WINHTTP_FLAG_SECURE : 0)
-                                : nullptr;
-    HINTERNET socket = nullptr;
-    if (request == nullptr) {
-        fail(c, "cannot reach the server");
-    } else if (!WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0) ||
-               !WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-               !WinHttpReceiveResponse(request, nullptr)) {
-        fail(c, "the server did not answer");
-    } else if ((socket = WinHttpWebSocketCompleteUpgrade(request, 0)) == nullptr) {
-        fail(c, "the server refused the connection");
+    bodplat::WebSocket socket;
+    std::string what;
+    unsigned long code = 0;
+    const bool connected = socket.Connect(options.host, options.port, options.secure,
+                                          "/ws?room=" + url_encode(options.room), &what, &code);
+    if (!connected)
+        fail(c, what.c_str(), code);
+    if (connected && !c.run) {
+        socket.Close(); // stopped while connecting
+        return;
     }
-    if (request)
-        WinHttpCloseHandle(request);
-    if (socket != nullptr && !c.run) {
-        WinHttpCloseHandle(socket); // stopped while connecting
-        socket = nullptr;
-    }
-    if (socket != nullptr) {
+    if (connected) {
         set_status(c, Status::Connected);
         std::fprintf(stderr, "[anchor] connected to %s room\n", options.host.c_str());
         // A reader thread; this thread writes and pings.
         std::atomic<bool> open{true};
         std::thread reader([&] {
             std::string message;
-            std::vector<char> buffer(16 * 1024);
             while (open) {
-                DWORD read = 0;
-                WINHTTP_WEB_SOCKET_BUFFER_TYPE type{};
-                if (WinHttpWebSocketReceive(socket, buffer.data(), static_cast<DWORD>(buffer.size()), &read, &type) !=
-                    NO_ERROR) {
+                const bodplat::WebSocket::Result type = socket.Receive(&message);
+                if (type == bodplat::WebSocket::Result::Error || type == bodplat::WebSocket::Result::Closed) {
                     open = false;
                     break;
                 }
-                if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
-                    open = false;
-                    break;
-                }
-                message.append(buffer.data(), read);
-                if (type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) {
+                if (type == bodplat::WebSocket::Result::Text) {
                     std::lock_guard lock(g_lock);
                     if (c.id == g_conn_id && message != "{\"type\":\"PONG\"}")
                         g_inbox.push_back(std::move(message));
                     message.clear();
-                } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE) {
-                    message.clear(); // reserved for a later pose format
                 }
             }
         });
@@ -153,33 +111,27 @@ void session(Conn& c) {
                     out.swap(g_outbox);
             }
             for (const std::string& m : out)
-                if (WinHttpWebSocketSend(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
-                                         const_cast<char*>(m.data()), static_cast<DWORD>(m.size())) != NO_ERROR) {
+                if (!socket.SendText(m)) {
                     open = false;
                     break;
                 }
             const auto now = std::chrono::steady_clock::now();
             if (now - last_ping > std::chrono::seconds(30)) {
-                static const char ping[] = "{\"type\":\"PING\"}";
-                WinHttpWebSocketSend(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, const_cast<char*>(ping),
-                                     sizeof ping - 1);
+                socket.SendText("{\"type\":\"PING\"}");
                 last_ping = now;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         open = false;
-        // Send the close frame without waiting for the server's (WinHttpWebSocketClose waits), then close the handle,
-        // which ends the reader's pending receive.
-        WinHttpWebSocketShutdown(socket, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, nullptr, 0);
-        WinHttpCloseHandle(socket);
+        // Send the close frame without waiting for the server's, then let go of the socket, which ends the reader's
+        // pending receive.
+        socket.Shutdown();
+        socket.Close();
         reader.join();
         if (current(c) && g_status == Status::Connected)
             g_status = c.run ? Status::Connecting : Status::Disconnected;
         std::fprintf(stderr, "[anchor] disconnected\n");
     }
-    if (connect)
-        WinHttpCloseHandle(connect);
-    WinHttpCloseHandle(session);
 }
 
 void run(std::shared_ptr<Conn> c) {

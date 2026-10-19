@@ -36,15 +36,7 @@
 #include "input_viewer.h"
 #include "ship/cvar.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#include <setupapi.h>
+#include "platform/bod_platform.h"
 
 #include <SDL3/SDL.h>
 #include <aurora/aurora.h>
@@ -124,7 +116,6 @@ using shipmenu::WidgetInfo;
 using shipmenu::WidgetType;
 
 std::string g_data_dir;
-std::vector<wchar_t> g_environment;  // as the game was started, for Restart
 RestartRequest g_restart;
 bool g_safe_mode;
 bool g_menu_open;
@@ -219,19 +210,14 @@ bool env_set(const char* name) {
 
 void env_default(const char* name, const std::string& value) {
     if (!env_set(name))
-        _putenv_s(name, value.c_str());
+        bodplat::SetEnv(name, value.c_str());
 }
 
 // A window a good size for this screen: the tallest multiple of 240 lines that
 // fits in 80 percent of the primary screen's work area, at 4:3.
 void default_window(int* w, int* h) {
-    MONITORINFO info{};
-    info.cbSize = sizeof info;
     int work_w = 1280, work_h = 1024;
-    if (GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &info)) {
-        work_w = info.rcWork.right - info.rcWork.left;
-        work_h = info.rcWork.bottom - info.rcWork.top;
-    }
+    bodplat::PrimaryWorkArea(&work_w, &work_h);
     int height = std::max(480, static_cast<int>(work_h * 0.8) / 240 * 240);
     int width = height * 4 / 3;
     if (width > work_w * 9 / 10) {
@@ -246,17 +232,15 @@ void default_window(int* w, int* h) {
 std::string texture_folder() {
     if (const char* dir = std::getenv("BLUEWAKE_TEXTURES_DIR"); dir != nullptr && dir[0] != '\0')
         return dir;
-    return g_data_dir + "mods\\textures";
+    return g_data_dir + "mods" BOD_SEP "textures";
 }
 
 // The executable's folder, ending in a separator.
 std::string exe_folder() {
-    char path[MAX_PATH * 2];
-    const DWORD length = GetModuleFileNameA(nullptr, path, sizeof path);
-    if (length == 0 || length >= sizeof path)
+    const auto folder = bodplat::ExeFolder().u8string();
+    if (folder.empty())
         return g_data_dir;
-    std::string folder(path, length);
-    return folder.substr(0, folder.find_last_of("\\/") + 1);
+    return std::string(folder.begin(), folder.end()) + BOD_SEP;
 }
 
 // Internal Resolution is a percentage of the window's pixels, as in SoH. The
@@ -356,16 +340,16 @@ void apply_controller() { input_editor::ApplyCamera(); }
 const char* rumble_name(int mode) { return mode == 0 ? "off" : mode == 1 ? "classic" : "enhanced"; }
 
 void apply_rumble() {
-    _putenv_s("BLUEWAKE_HAPTICS", rumble_name(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1)));
-    _putenv_s("BLUEWAKE_HAPTICS_STRENGTH",
+    bodplat::SetEnv("BLUEWAKE_HAPTICS", rumble_name(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Mode"), 1)));
+    bodplat::SetEnv("BLUEWAKE_HAPTICS_STRENGTH",
               std::to_string(CVarGetInteger(CVAR_SETTING("Controls.Rumble.Strength"), 80)).c_str());
-    _putenv_s("BLUEWAKE_HAPTICS_TRIGGERS", CVarGetInteger(CVAR_SETTING("Controls.Rumble.Triggers"), 1) ? "1" : "0");
+    bodplat::SetEnv("BLUEWAKE_HAPTICS_TRIGGERS", CVarGetInteger(CVAR_SETTING("Controls.Rumble.Triggers"), 1) ? "1" : "0");
     bluewake_haptics_reload();
 }
 
 void apply_forest_water() {
-    _putenv_s("BLUEWAKE_FOREST_WATER_KEEP_TREES", CVarGetInteger(CVAR_ENHANCEMENT("KeepWateredTrees"), 0) ? "1" : "0");
-    _putenv_s("BLUEWAKE_FOREST_WATER_30_MINUTES",
+    bodplat::SetEnv("BLUEWAKE_FOREST_WATER_KEEP_TREES", CVarGetInteger(CVAR_ENHANCEMENT("KeepWateredTrees"), 0) ? "1" : "0");
+    bodplat::SetEnv("BLUEWAKE_FOREST_WATER_30_MINUTES",
               CVarGetInteger(CVAR_ENHANCEMENT("LongerForestWaterTimer"), 0) ? "1" : "0");
     bluewake_forest_water_reload();
 }
@@ -398,32 +382,18 @@ struct Hardware {
 
 Hardware read_hardware(SDL_Window* w) {
     Hardware hw;
-    DWORD bytes = 0;
-    GetLogicalProcessorInformation(nullptr, &bytes);
-    std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> info(bytes / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    if (!info.empty() && GetLogicalProcessorInformation(info.data(), &bytes))
-        for (const auto& i : info)
-            if (i.Relationship == RelationProcessorCore) {
-                ++hw.cores;
-                for (ULONG_PTR m = i.ProcessorMask; m != 0; m &= m - 1)
-                    ++hw.threads;
-            }
+    const bodplat::CpuCounts cpu = bodplat::Cpu();
+    hw.cores = cpu.cores;
+    hw.threads = cpu.threads;
     if (hw.cores == 0)
         hw.cores = hw.threads = static_cast<int>(std::thread::hardware_concurrency());
-    MEMORYSTATUSEX mem{sizeof mem};
-    if (GlobalMemoryStatusEx(&mem))
-        hw.ram_gb = static_cast<int>((mem.ullTotalPhys + (512ull << 20)) >> 30);
+    if (const uint64_t memory = bodplat::TotalMemoryBytes())
+        hw.ram_gb = static_cast<int>((memory + (512ull << 20)) >> 30);
     if (w != nullptr)
         if (const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(w)))
             if (mode->refresh_rate > 0.f)
                 hw.hz = static_cast<int>(mode->refresh_rate + 0.5f);
-    DISPLAY_DEVICEA dev{sizeof dev};
-    std::vector<std::string> seen;
-    for (DWORD i = 0; EnumDisplayDevicesA(nullptr, i, &dev, 0); ++i, dev.cb = sizeof dev)
-        if (std::find(seen.begin(), seen.end(), dev.DeviceString) == seen.end()) {
-            seen.emplace_back(dev.DeviceString);
-            hw.gpus += (hw.gpus.empty() ? "" : " + ") + seen.back();
-        }
+    hw.gpus = bodplat::GpuNames();
     return hw;
 }
 
@@ -519,15 +489,15 @@ void poll_autosave() {
 // Faster Transitions and Quick Doors: the host's switches, read again.
 void apply_fast_transitions() {
     const bool fast = CVarGetInteger(CVAR_ENHANCEMENT("FasterTransitions"), 0) != 0;
-    _putenv_s("BLUEWAKE_FAST_FORWARD", fast ? "1" : "0");
-    _putenv_s("BLUEWAKE_FADE_FRAMES", fast ? "6" : "0");
+    bodplat::SetEnv("BLUEWAKE_FAST_FORWARD", fast ? "1" : "0");
+    bodplat::SetEnv("BLUEWAKE_FADE_FRAMES", fast ? "6" : "0");
     bluewake_fast_load_reload();
     std::fprintf(stderr, "[settings] faster transitions %s\n", fast ? "on" : "off");
 }
 
 void apply_quick_doors() {
     const bool on = CVarGetInteger(CVAR_ENHANCEMENT("QuickDoors"), 0) != 0;
-    _putenv_s("BLUEWAKE_QUICK_DOORS", on ? "1" : "0");
+    bodplat::SetEnv("BLUEWAKE_QUICK_DOORS", on ? "1" : "0");
     bluewake_quick_doors_reload();
     std::fprintf(stderr, "[settings] quick doors %s\n", on ? "on" : "off");
 }
@@ -620,10 +590,9 @@ void set_menu_open(bool open) {
 }
 
 void open_folder(const std::string& path) {
-    CreateDirectoryA(path.c_str(), nullptr);
-    wchar_t wide[MAX_PATH * 2];
-    if (MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide, MAX_PATH * 2) > 0)
-        ShellExecuteW(nullptr, L"open", wide, nullptr, nullptr, SW_SHOWNORMAL);
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::u8path(path), ec);
+    bodplat::OpenPath(std::filesystem::u8path(path));
 }
 
 void quit() {
@@ -663,24 +632,7 @@ void restart() {
 
 // Start the game again, with the command line and environment it began with,
 // so the settings file decides what the new session is.
-bool relaunch() {
-    wchar_t exe[MAX_PATH * 2];
-    if (GetModuleFileNameW(nullptr, exe, MAX_PATH * 2) == 0)
-        return false;
-    std::vector<wchar_t> command(GetCommandLineW(), GetCommandLineW() + wcslen(GetCommandLineW()) + 1);
-    STARTUPINFOW startup{};
-    startup.cb = sizeof startup;
-    PROCESS_INFORMATION process{};
-    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT,
-                        g_environment.empty() ? nullptr : g_environment.data(), nullptr, &startup, &process)) {
-        std::fprintf(stderr, "[windows] restart failed (error %lu)\n", GetLastError());
-        return false;
-    }
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
-    std::fprintf(stderr, "[windows] restarting with the new settings\n");
-    return true;
-}
+bool relaunch() { return bodplat::Relaunch(); }
 
 // --- presets ------------------------------------------------------------------------
 // Settings > Presets: a named set of the Enhancements. Applying one sets every
@@ -745,35 +697,9 @@ void apply_preset(int preset) {
 // Settings > Controls > GameCube Adapter: the official Wii U adapter (USB
 // 057E:0337) as Windows sees it. SDL reads it directly only once WinUSB drives
 // it, so "Driver Needed" is a plugged-in adapter under another driver.
-enum class AdapterState { NotFound, DriverNeeded, Ready };
+using AdapterState = bodplat::GcAdapterState;
 
-AdapterState adapter_state() {
-    AdapterState state = AdapterState::NotFound;
-    HDEVINFO devices = SetupDiGetClassDevsW(nullptr, L"USB", nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
-    if (devices == INVALID_HANDLE_VALUE)
-        return state;
-    SP_DEVINFO_DATA info{};
-    info.cbSize = sizeof info;
-    for (DWORD i = 0; SetupDiEnumDeviceInfo(devices, i, &info); ++i) {
-        wchar_t ids[1024] = {};
-        if (!SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_HARDWAREID, nullptr,
-                                               reinterpret_cast<PBYTE>(ids), sizeof ids - sizeof(wchar_t), nullptr))
-            continue;
-        bool adapter = false;
-        for (const wchar_t* id = ids; *id != L'\0'; id += wcslen(id) + 1)
-            adapter = adapter || wcsstr(id, L"VID_057E&PID_0337") != nullptr;
-        if (!adapter)
-            continue;
-        wchar_t service[128] = {};
-        SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_SERVICE, nullptr, reinterpret_cast<PBYTE>(service),
-                                          sizeof service - sizeof(wchar_t), nullptr);
-        state = _wcsicmp(service, L"WinUSB") == 0 ? AdapterState::Ready : AdapterState::DriverNeeded;
-        if (state == AdapterState::Ready)
-            break;
-    }
-    SetupDiDestroyDeviceInfoList(devices);
-    return state;
-}
+AdapterState adapter_state() { return bodplat::GcAdapterDriverState(); }
 
 const char* adapter_status() {
     static Uint64 checked;
@@ -1478,13 +1404,9 @@ void load_font(SDL_Window* w) {
     auto* atlas = new ImFontAtlas();  // for the life of the process
     atlas->Flags |= ImFontAtlasFlags_NoMouseCursors;
     ImFont* font = nullptr;
-    char fonts[MAX_PATH];
-    const UINT length = GetWindowsDirectoryA(fonts, MAX_PATH);
-    if (length > 0 && length < MAX_PATH - 32) {
-        const std::string path = std::string(fonts) + "\\Fonts\\segoeui.ttf";
-        if (GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES)
-            font = atlas->AddFontFromFileTTF(path.c_str(), std::round(16.0f * scale), nullptr, ranges);
-    }
+    const std::string face = bodplat::SystemUiFontPath();
+    if (!face.empty())
+        font = atlas->AddFontFromFileTTF(face.c_str(), std::round(16.0f * scale), nullptr, ranges);
     if (font == nullptr) {
         scale = std::max(1.0f, std::round(scale));
         ImFontConfig pixel;
@@ -1573,11 +1495,12 @@ bool game_option_on(const char* name) {
 }
 
 std::string swift_sail_folder() {
-    std::string sail = exe_folder() + "assets\\swift_sail";
+    std::string sail = exe_folder() + "assets" BOD_SEP "swift_sail";
     // The release makes them from the player's disc on first launch, into the prepared game folder.
     if (const char* made = std::getenv("BLUEWAKE_EXTRAS_DIR")) {
-        const std::string prepared = std::string(made) + "\\assets\\swift_sail";
-        if (GetFileAttributesA(prepared.c_str()) != INVALID_FILE_ATTRIBUTES)
+        const std::string prepared = std::string(made) + BOD_SEP "assets" BOD_SEP "swift_sail";
+        std::error_code exists_ec;
+        if (std::filesystem::exists(std::filesystem::u8path(prepared), exists_ec))
             sail = prepared;
     }
     return sail;
@@ -1591,7 +1514,8 @@ void sync_live_textures() {
     // What runs is the option's own switch (set from the setting, or by the command line).
     if (game_option_on("swift_sail") || game_option_on("brisk_sail")) {
         const std::string folder = swift_sail_folder();
-        if (GetFileAttributesA(folder.c_str()) != INVALID_FILE_ATTRIBUTES)
+        std::error_code folder_ec;
+        if (std::filesystem::exists(std::filesystem::u8path(folder), folder_ec))
             sail_folder = folder;
         else if (!sail_missing_reported) {
             sail_missing_reported = true;
@@ -1948,16 +1872,7 @@ void save_at_exit() {
 
 }  // namespace
 
-extern "C" void bw_settings_capture_environment(void) {
-    wchar_t* block = GetEnvironmentStringsW();
-    if (block == nullptr)
-        return;
-    wchar_t* end = block;
-    while (*end != L'\0')
-        end += wcslen(end) + 1;
-    g_environment.assign(block, end + 1);
-    FreeEnvironmentStringsW(block);
-}
+extern "C" void bw_settings_capture_environment(void) { bodplat::CaptureEnvironment(); }
 
 extern "C" void bw_settings_load(const char* data_dir) {
     g_data_dir = data_dir;
@@ -1974,12 +1889,12 @@ extern "C" void bw_settings_load(const char* data_dir) {
     g_safe_mode = env_set("BLUEWAKE_SAFE_MODE") || bw_launch_pending((g_data_dir + "launch.pending").c_str());
     if (g_safe_mode) {
         // This session only: the settings file is left as it is.
-        _putenv_s("BLUEWAKE_DSP_MODE", "hle");
-        _putenv_s("BLUEWAKE_MODS", "none");
-        _putenv_s("BLUEWAKE_OPTIONS", "none");
-        _putenv_s("BLUEWAKE_FAST_FORWARD", "0");
-        _putenv_s("BLUEWAKE_FADE_FRAMES", "0");
-        _putenv_s("BLUEWAKE_QUICK_DOORS", "0");
+        bodplat::SetEnv("BLUEWAKE_DSP_MODE", "hle");
+        bodplat::SetEnv("BLUEWAKE_MODS", "none");
+        bodplat::SetEnv("BLUEWAKE_OPTIONS", "none");
+        bodplat::SetEnv("BLUEWAKE_FAST_FORWARD", "0");
+        bodplat::SetEnv("BLUEWAKE_FADE_FRAMES", "0");
+        bodplat::SetEnv("BLUEWAKE_QUICK_DOORS", "0");
         std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio and texture packs off\n");
     }
 }
@@ -2051,8 +1966,9 @@ extern "C" void bw_settings_apply_launch(void) {
     env_default("BLUEWAKE_FOREST_WATER_30_MINUTES",
                 CVarGetInteger(CVAR_ENHANCEMENT("LongerForestWaterTimer"), 0) ? "1" : "0");
     // Texture packs, audio.
-    CreateDirectoryA((g_data_dir + "mods").c_str(), nullptr);
-    CreateDirectoryA(texture_folder().c_str(), nullptr);
+    std::error_code mods_ec;
+    std::filesystem::create_directory(std::filesystem::u8path(g_data_dir + "mods"), mods_ec);
+    std::filesystem::create_directory(std::filesystem::u8path(texture_folder()), mods_ec);
     // BLUEWAKE_MODS_DIR (testing): another folder in place of mods (read only).
     if (const char* dir = std::getenv("BLUEWAKE_MODS_DIR"); dir != nullptr && dir[0] != '\0')
         mods::Launch(dir, true);
@@ -2089,6 +2005,28 @@ extern "C" void bw_settings_install(void) {
     }
     std::atexit(save_at_exit);
 }
+
+// The Windows virtual-key numbers bw_settings_key takes (windows.h has them; on Linux the keys come from SDL's events, below).
+#ifndef VK_ESCAPE
+enum { VK_ESCAPE = 0x1B, VK_RETURN = 0x0D, VK_F1 = 0x70, VK_F4 = 0x73, VK_F6 = 0x75, VK_F7 = 0x76, VK_F8 = 0x77, VK_F9 = 0x78, VK_F11 = 0x7A };
+#endif
+
+#ifndef _WIN32
+static unsigned virtual_key_of(SDL_Keycode key) {
+    switch (key) {
+    case SDLK_ESCAPE: return VK_ESCAPE;
+    case SDLK_RETURN: return VK_RETURN;
+    case SDLK_F1: return VK_F1;
+    case SDLK_F4: return VK_F4;
+    case SDLK_F6: return VK_F6;
+    case SDLK_F7: return VK_F7;
+    case SDLK_F8: return VK_F8;
+    case SDLK_F9: return VK_F9;
+    case SDLK_F11: return VK_F11;
+    default: return 0;
+    }
+}
+#endif
 
 extern "C" int bw_settings_key(unsigned virtual_key, int alt) {
     switch (virtual_key) {
@@ -2161,5 +2099,13 @@ extern "C" bool bluewake_settings_menu_event(const void* sdl_event) {
         set_menu_open(!g_menu_open);
         return true;
     }
+#ifndef _WIN32
+    // The hotkeys (Windows sees them in a keyboard hook before SDL, win_entry.c).
+    if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat) {
+        const unsigned key = virtual_key_of(event->key.key);
+        if (key != 0 && bw_settings_key(key, (event->key.mod & SDL_KMOD_ALT) != 0))
+            return true;
+    }
+#endif
     return g_menu_open || g_text_capture;
 }

@@ -51,6 +51,9 @@ void bluewake_rando_ui_sfx(unsigned sound);
 // its own, larger table and array, empty until this runs, and with them empty no REL is loaded again. Returns false when the hook has
 // never run (a module without it): the caller then finishes the switch without. The hook calls bluewake_rando_inplace_done() after.
 bool bluewake_rando_ui_rebuild_dyl(void);
+// A switch from one seed to another with the randomizer on: mounts the new seed's resident archives (bmgres.arc, itemicon.arc) again. False
+// when the hook has not run.
+bool bluewake_rando_ui_reload_resident(void);
 // Whether the hook has run in this process (the file select's frame: a module without hook 50 never does, and has no way to rebuild the
 // dynamic module controls, so it cannot be switched in place).
 bool bluewake_rando_ui_hook_ran(void);

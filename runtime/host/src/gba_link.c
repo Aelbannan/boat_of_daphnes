@@ -7,7 +7,49 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
 #include <windows.h>
+
+/* The worker's lock, wake-ups and thread: the Win32 calls on Windows, pthreads elsewhere. */
+typedef CRITICAL_SECTION GlMutex;
+typedef CONDITION_VARIABLE GlCond;
+typedef HANDLE GlThread;
+typedef DWORD GlWorkerResult;
+#define GL_WORKER_CALL WINAPI
+static void gl_lock_init(GlMutex* m) { InitializeCriticalSection(m); }
+static void gl_cond_init(GlCond* c) { InitializeConditionVariable(c); }
+static void gl_lock(GlMutex* m) { EnterCriticalSection(m); }
+static void gl_unlock(GlMutex* m) { LeaveCriticalSection(m); }
+static void gl_wait(GlCond* c, GlMutex* m) { SleepConditionVariableCS(c, m, INFINITE); }
+static void gl_wake_all(GlCond* c) { WakeAllConditionVariable(c); }
+static bool gl_thread_start(GlThread* t, GlWorkerResult(GL_WORKER_CALL* fn)(void*), void* arg) {
+    *t = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fn, arg, 0, NULL);
+    return *t != NULL;
+}
+static void gl_thread_join(GlThread* t) {
+    WaitForSingleObject(*t, INFINITE);
+    CloseHandle(*t);
+    *t = NULL;
+}
+#else
+#include <pthread.h>
+
+typedef pthread_mutex_t GlMutex;
+typedef pthread_cond_t GlCond;
+typedef pthread_t GlThread;
+typedef void* GlWorkerResult;
+#define GL_WORKER_CALL
+static void gl_lock_init(GlMutex* m) { pthread_mutex_init(m, NULL); }
+static void gl_cond_init(GlCond* c) { pthread_cond_init(c, NULL); }
+static void gl_lock(GlMutex* m) { pthread_mutex_lock(m); }
+static void gl_unlock(GlMutex* m) { pthread_mutex_unlock(m); }
+static void gl_wait(GlCond* c, GlMutex* m) { pthread_cond_wait(c, m); }
+static void gl_wake_all(GlCond* c) { pthread_cond_broadcast(c); }
+static bool gl_thread_start(GlThread* t, GlWorkerResult(GL_WORKER_CALL* fn)(void*), void* arg) {
+    return pthread_create(t, NULL, fn, arg) == 0;
+}
+static void gl_thread_join(GlThread* t) { pthread_join(*t, NULL); }
+#endif
 
 #include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
@@ -35,10 +77,10 @@ typedef struct GbaLink {
     uint32_t frequency; /* GBA cycles per second */
     uint32_t* video; /* the core's frame buffer, worker only */
 
-    CRITICAL_SECTION lock;
-    CONDITION_VARIABLE wake; /* worker waits for work */
-    CONDITION_VARIABLE done; /* guest waits for a command's answer */
-    HANDLE thread;
+    GlMutex lock;
+    GlCond wake; /* worker waits for work */
+    GlCond done; /* guest waits for a command's answer */
+    GlThread thread;
     bool quit;
     bool started;
     /* work, under the lock */
@@ -128,7 +170,7 @@ static void gl_keys_read(void* ctx) {
 
 static void gl_frame_ended(void* ctx) {
     GbaLink* g = ctx;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     const int back = g->frame_front ^ 1;
     uint8_t* dst = g->frame[back];
     const uint8_t* src = (const uint8_t*)g->video;
@@ -141,7 +183,7 @@ static void gl_frame_ended(void* ctx) {
     g->frame_front = back;
     g->frame_seq++;
     g->stats.frames++;
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
 }
 
 static void gl_audio_drain(GbaLink* g, struct mAudioBuffer* buf) {
@@ -151,7 +193,7 @@ static void gl_audio_drain(GbaLink* g, struct mAudioBuffer* buf) {
         const size_t n = mAudioBufferRead(buf, tmp, want);
         if (n == 0)
             break;
-        EnterCriticalSection(&g->lock);
+        gl_lock(&g->lock);
         for (size_t i = 0; i < n; i++) {
             if (g->audio_head - g->audio_tail >= AUDIO_RING_FRAMES)
                 g->audio_tail++; /* overrun: drop the oldest */
@@ -160,7 +202,7 @@ static void gl_audio_drain(GbaLink* g, struct mAudioBuffer* buf) {
             g->audio[slot * 2 + 1] = tmp[i * 2 + 1];
             g->audio_head++;
         }
-        LeaveCriticalSection(&g->lock);
+        gl_unlock(&g->lock);
     }
 }
 
@@ -291,29 +333,29 @@ static void gl_debug_tick(GbaLink* g) {
         FILE* f = fopen(dump, "wb");
         if (f) {
             fprintf(f, "P6\n240 160\n255\n");
-            EnterCriticalSection(&g->lock);
+            gl_lock(&g->lock);
             const uint8_t* px = g->frame[g->frame_front];
             for (unsigned i = 0; i < 240 * 160; i++)
                 fwrite(px + i * 4, 1, 3, f);
-            LeaveCriticalSection(&g->lock);
+            gl_unlock(&g->lock);
             fclose(f);
         }
     }
 }
 
-static DWORD WINAPI gl_worker(LPVOID arg) {
+static GlWorkerResult GL_WORKER_CALL gl_worker(void* arg) {
     GbaLink* g = arg;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     for (;;) {
         while (!g->quit && !g->cmd_pending && g->sync_target == 0 && !g->reset_pending)
-            SleepConditionVariableCS(&g->wake, &g->lock, INFINITE);
+            gl_wait(&g->wake, &g->lock);
         if (g->quit)
             break;
         if (g->reset_pending) {
             g->reset_pending = false;
-            LeaveCriticalSection(&g->lock);
+            gl_unlock(&g->lock);
             g->core->reset(g->core);
-            EnterCriticalSection(&g->lock);
+            gl_lock(&g->lock);
             continue;
         }
         if (g->cmd_pending) {
@@ -321,7 +363,7 @@ static DWORD WINAPI gl_worker(LPVOID arg) {
             const unsigned transfer = g->cmd_transfer;
             uint8_t buf[8];
             memcpy(buf, g->cmd_buf, sizeof buf);
-            LeaveCriticalSection(&g->lock);
+            gl_unlock(&g->lock);
             gl_run_until(g, at);
             unsigned n = 0;
             /* The multiboot receiver in emibios cancels the pending boot when the GameCube sends a JoyBus RESET
@@ -333,24 +375,24 @@ static DWORD WINAPI gl_worker(LPVOID arg) {
                 buf[0] = 0x00;
             if (g->link_enabled)
                 n = (unsigned)GBASIOJOYSendCommand(&g->sio, (enum GBASIOJOYCommand)buf[0], &buf[1]);
-            EnterCriticalSection(&g->lock);
+            gl_lock(&g->lock);
             g->resp_len = n;
             memcpy(g->resp, &buf[1], sizeof g->resp - 1);
             g->cmd_pending = false;
-            WakeAllConditionVariable(&g->done);
-            LeaveCriticalSection(&g->lock);
+            gl_wake_all(&g->done);
+            gl_unlock(&g->lock);
             gl_run_until(g, g->last_gc + transfer);
-            EnterCriticalSection(&g->lock);
+            gl_lock(&g->lock);
             continue;
         }
         const uint64_t target = g->sync_target;
         g->sync_target = 0;
-        LeaveCriticalSection(&g->lock);
+        gl_unlock(&g->lock);
         gl_run_until(g, target);
         gl_debug_tick(g);
-        EnterCriticalSection(&g->lock);
+        gl_lock(&g->lock);
     }
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
     return 0;
 }
 
@@ -361,9 +403,9 @@ bool gba_link_start(const char* bios_path) {
     if (g->started)
         return true;
     if (!g_gl_inited) {
-        InitializeCriticalSection(&g->lock);
-        InitializeConditionVariable(&g->wake);
-        InitializeConditionVariable(&g->done);
+        gl_lock_init(&g->lock);
+        gl_cond_init(&g->wake);
+        gl_cond_init(&g->done);
         g_gl_inited = true;
     }
     mLogSetDefaultLogger(&g_gl_logger);
@@ -381,8 +423,7 @@ bool gba_link_start(const char* bios_path) {
     g->link_enabled = false;
     if (!gl_core_create(g, bios_path))
         return false;
-    g->thread = CreateThread(NULL, 0, gl_worker, g, 0, NULL);
-    if (!g->thread) {
+    if (!gl_thread_start(&g->thread, gl_worker, g)) {
         gl_core_destroy(g);
         return false;
     }
@@ -396,19 +437,17 @@ void gba_link_stop(void) {
     GbaLink* g = &g_gl;
     if (!g->started)
         return;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     g->quit = true;
-    WakeAllConditionVariable(&g->wake);
-    LeaveCriticalSection(&g->lock);
-    WaitForSingleObject(g->thread, INFINITE);
-    CloseHandle(g->thread);
-    g->thread = NULL;
-    EnterCriticalSection(&g->lock);
+    gl_wake_all(&g->wake);
+    gl_unlock(&g->lock);
+    gl_thread_join(&g->thread);
+    gl_lock(&g->lock);
     g->started = false; /* a guest transfer waiting for the worker gets "no response" */
     g->cmd_pending = false;
     g->resp_len = 0;
-    WakeAllConditionVariable(&g->done);
-    LeaveCriticalSection(&g->lock);
+    gl_wake_all(&g->done);
+    gl_unlock(&g->lock);
     gl_core_destroy(g);
     g->started = false;
     g->stats.running = false;
@@ -421,10 +460,10 @@ void gba_link_reset(void) {
     GbaLink* g = &g_gl;
     if (!g->started)
         return;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     g->reset_pending = true;
-    WakeAllConditionVariable(&g->wake);
-    LeaveCriticalSection(&g->lock);
+    gl_wake_all(&g->wake);
+    gl_unlock(&g->lock);
 }
 
 unsigned gba_link_wire_cycles(uint8_t command) {
@@ -466,7 +505,7 @@ bool gba_link_transfer_begin(uint64_t guest_cycles, const uint8_t* out, unsigned
     memcpy(g_gl_out, out, out_len < sizeof g_gl_out ? out_len : sizeof g_gl_out);
     g_gl_out_len = out_len;
     g_gl_out_at = guest_cycles;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     if (g->epoch_pending) {
         g->epoch_pending = false;
         g->last_gc = guest_cycles;
@@ -476,8 +515,8 @@ bool gba_link_transfer_begin(uint64_t guest_cycles, const uint8_t* out, unsigned
     g->cmd_at = guest_cycles;
     g->cmd_transfer = transfer;
     g->cmd_pending = true;
-    WakeAllConditionVariable(&g->wake);
-    LeaveCriticalSection(&g->lock);
+    gl_wake_all(&g->wake);
+    gl_unlock(&g->lock);
     g_gl_posted = true;
     return true;
 }
@@ -489,9 +528,9 @@ int gba_link_transfer_end(uint8_t* in) {
     g_gl_posted = false;
     const uint8_t* out = g_gl_out;
     const unsigned out_len = g_gl_out_len;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     while (g->cmd_pending)
-        SleepConditionVariableCS(&g->done, &g->lock, INFINITE);
+        gl_wait(&g->done, &g->lock);
     const unsigned n = g->resp_len;
     memcpy(in, g->resp, 7);
     g->stats.transfers++;
@@ -499,7 +538,7 @@ int gba_link_transfer_end(uint8_t* in) {
         g->stats.no_response++;
     else if (n >= 3 && (out[0] == 0x00 || out[0] == 0xFF))
         g->stats.last_joystat = g->resp[2];
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
     if (gl_log_enabled()) {
         /* Repeats of the same command and answer are folded into a count (BLUEWAKE_GBA_LOG=2: every transfer). */
         static uint8_t last[12];
@@ -530,7 +569,7 @@ void gba_link_sync(uint64_t guest_cycles) {
     GbaLink* g = &g_gl;
     if (!g->started)
         return;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     if (g->epoch_pending) {
         /* A GBA started live begins its clock now: running it from guest cycle 0 would be minutes of catch-up
            (and the 32-bit timing schedule overflows past about 70 guest seconds). */
@@ -538,8 +577,8 @@ void gba_link_sync(uint64_t guest_cycles) {
         g->last_gc = guest_cycles;
     }
     g->sync_target = guest_cycles ? guest_cycles : 1;
-    WakeAllConditionVariable(&g->wake);
-    LeaveCriticalSection(&g->lock);
+    gl_wake_all(&g->wake);
+    gl_unlock(&g->lock);
 }
 
 void gba_link_set_keys(uint16_t keys) {
@@ -556,11 +595,11 @@ uint32_t gba_link_copy_frame(uint8_t* rgba, uint32_t seen) {
     GbaLink* g = &g_gl;
     if (!g->started)
         return 0;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     const uint32_t seq = g->frame_seq;
     if (seq != 0 && seq != seen)
         memcpy(rgba, g->frame[g->frame_front], sizeof g->frame[0]);
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
     return seq;
 }
 
@@ -569,7 +608,7 @@ size_t gba_link_read_audio(int16_t* out, size_t max_frames) {
     if (!g->started)
         return 0;
     size_t n = 0;
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     while (n < max_frames && g->audio_tail < g->audio_head) {
         const size_t slot = g->audio_tail % AUDIO_RING_FRAMES;
         out[n * 2] = g->audio[slot * 2];
@@ -577,7 +616,7 @@ size_t gba_link_read_audio(int16_t* out, size_t max_frames) {
         g->audio_tail++;
         n++;
     }
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
     return n;
 }
 
@@ -589,8 +628,8 @@ void gba_link_stats(GbaLinkStats* out) {
         memset(out, 0, sizeof *out);
         return;
     }
-    EnterCriticalSection(&g->lock);
+    gl_lock(&g->lock);
     *out = g->stats;
     out->running = g->started;
-    LeaveCriticalSection(&g->lock);
+    gl_unlock(&g->lock);
 }

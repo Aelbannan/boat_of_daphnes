@@ -16,13 +16,7 @@
 #include <dolphin/gx/GXEnum.h>
 #include <SDL3/SDL.h>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+#include "platform/bod_platform.h"
 
 #include <algorithm>
 #include <cmath>
@@ -146,10 +140,8 @@ std::filesystem::path assets_folder() {
         if (std::filesystem::exists(folder / "index.json", ec))
             return folder;
     }
-    wchar_t path[MAX_PATH * 2];
-    const DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH * 2);
-    std::filesystem::path exe(std::wstring(path, n));
-    return exe.parent_path() / "assets" / "link_colors";
+    const std::filesystem::path exe = bodplat::ExeFolder();
+    return exe / "assets" / "link_colors";
 }
 
 bool read_image(const std::filesystem::path& path, uint32_t bytes_per_pixel, Image& out) {

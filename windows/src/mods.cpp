@@ -4,6 +4,7 @@
 #undef rename // bw_posix_compat.h's, which <filesystem> must not see
 
 #include "mods.h"
+#include "platform/bod_platform.h"
 #include "rando_flow.h"
 
 #include "rarc.h"
@@ -276,7 +277,7 @@ void classify(Entry& e) {
         e.kind = "Disc Files";
     else if (textures) {
         e.kind = "Textures";
-        e.note = "Texture packs go in mods\\textures.";
+        e.note = "Texture packs go in mods" BOD_SEP "textures.";
     } else {
         e.kind = "Empty";
         e.note = "No disc files or player model found.";

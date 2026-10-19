@@ -1061,6 +1061,10 @@ static void host_rando_inplace_retrace(CPUState* cpu) {
             bluewake_rando_disable();
             bluewake_rando_enable(g_lib_handle, cpu, g_module_desc);
             fprintf(stderr, "[mods] the randomizer's seed changed while the game runs\n");
+            // The seed's message and item icon archives are resident (mounted once, at boot): the new seed's are mounted again, or the
+            // old seed's item names stay in every NPC's text. The reload finishes the switch.
+            if (bluewake_rando_ui_reload_resident())
+                return;
         }
         atomic_store(&g_inplace_result, 1);
         return;

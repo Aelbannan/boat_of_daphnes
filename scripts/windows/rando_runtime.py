@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Fetch and verify the offline Python runtime that runs the Wind Waker Randomizer's seed generator.
 
-Output (all git-ignored, under build/windows/rando_runtime/):
+Output (all git-ignored, under build/windows/rando_runtime/, or build/linux/rando_runtime/ on Linux):
 
-    python/         Python 3.12 embeddable package (python.org), with a ._pth that wires in the folders below
-    site-packages/  pinned pure and binary wheels (ruamel.yaml, Pillow, numpy, ...) plus our imagequant stub
+    python/         Windows: Python 3.12 embeddable package (python.org), with a ._pth that wires in the folders below.
+                    Linux: a venv of the system's python3.12 (python/bin/python3), with the wheels below installed by pip
+                    and a .pth file naming wwrando/ and gclib/ relative to it
+    site-packages/  Windows: pinned pure and binary wheels (ruamel.yaml, Pillow, numpy, ...) plus our imagequant stub
+                    (on Linux they are in the venv's own site-packages)
     wwrando/        the generator's sources, copied from a wwrando checkout (never committed here)
     gclib/          LagoLunatic/gclib at the commit wwrando's submodule pointed to (never committed here)
     downloads/      verified download cache
@@ -52,8 +55,24 @@ except ImportError:  # a release's copy of this script, without the repository's
         return _BodPath(local_path("BOD_SCRATCH", "scratch"))
 
 REPO = Path(__file__).resolve().parents[2]
-RUNTIME = REPO / "build" / "windows" / "rando_runtime"
+LINUX = sys.platform.startswith("linux")
+RUNTIME = REPO / "build" / ("linux" if LINUX else "windows") / "rando_runtime"
 SHIMS = REPO / "scripts" / "rando" / "shims"
+# Linux: wwrando needs Python 3.12 (3.13 and newer break it), so the system must have python3.12 and its venv module
+# (Ubuntu 24.04: python3 is 3.12; sudo apt install python3-venv). The wheels are the Windows ones' versions, from PyPI.
+LINUX_PACKAGES = ["ruamel.yaml==0.18.16", "ruamel.yaml.clib==0.2.12", "appdirs==1.4.4", "pillow==11.1.0", "numpy==2.2.3"]
+
+
+def python_exe() -> Path:
+    return RUNTIME / "python" / ("bin/python3" if LINUX else "python.exe")
+
+
+def site_dir() -> Path:
+    """Where the wheels and shims go."""
+    if not LINUX:
+        return RUNTIME / "site-packages"
+    found = sorted((RUNTIME / "python" / "lib").glob("python3.*/site-packages"))
+    return found[0] if found else RUNTIME / "python" / "lib" / "python3.12" / "site-packages"
 
 # ---------------------------------------------------------------------------------------------------
 # Pins
@@ -228,7 +247,38 @@ def write_files(dest: Path, files: dict[str, bytes]) -> None:
 PTH = "python312.zip\n.\n..\\site-packages\n..\\wwrando\n..\\gclib\nimport site\n"
 
 
+def system_python312() -> str:
+    for name in ("python3.12", "python3"):
+        exe = shutil.which(name)
+        if exe is None:
+            continue
+        r = subprocess.run([exe, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip() == "3.12":
+            return exe
+    raise SystemExit("the randomizer's generator needs Python 3.12 (wwrando breaks on newer versions): install python3.12 "
+                     "and python3.12-venv (Ubuntu 24.04: sudo apt install python3 python3-venv), then rerun")
+
+
+def step_python_linux(force: bool) -> None:
+    dest = RUNTIME / "python"
+    stamp = RUNTIME / ".stamp-python"
+    exe = system_python312()
+    version = subprocess.run([exe, "-c", "import sys; print(sys.version.split()[0])"], capture_output=True, text=True).stdout.strip()
+    key = sha256_bytes(f"venv {version}".encode())
+    if not force and stamp_ok(stamp, key, python_exe()):
+        return
+    if dest.exists():
+        shutil.rmtree(dest)
+    r = subprocess.run([exe, "-m", "venv", str(dest)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit("python3.12 -m venv failed (Ubuntu: sudo apt install python3-venv):\n" + r.stdout + r.stderr)
+    write_stamp(stamp, key)
+    log(f"python {version} venv ready")
+
+
 def step_python(force: bool) -> None:
+    if LINUX:
+        return step_python_linux(force)
     dest = RUNTIME / "python"
     stamp = RUNTIME / ".stamp-python"
     key = PYTHON_SHA256 + PTH
@@ -244,7 +294,24 @@ def step_python(force: bool) -> None:
     log(f"python {PYTHON_VERSION} ready")
 
 
+def step_wheels_linux(force: bool) -> None:
+    stamp = RUNTIME / ".stamp-wheels"
+    key = sha256_bytes("".join(LINUX_PACKAGES).encode())
+    dest = site_dir()
+    if not force and stamp_ok(stamp, key, dest / "ruamel", dest / "numpy", dest / "PIL"):
+        return
+    r = subprocess.run([str(python_exe()), "-m", "pip", "install", "--disable-pip-version-check", "--no-input",
+                        "--only-binary=:all:", *LINUX_PACKAGES], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit("pip install failed:\n" + r.stdout[-2000:] + r.stderr[-2000:])
+    for name in LINUX_PACKAGES:
+        log(f"installed {name}")
+    write_stamp(stamp, key)
+
+
 def step_wheels(force: bool) -> None:
+    if LINUX:
+        return step_wheels_linux(force)
     dest = RUNTIME / "site-packages"
     stamp = RUNTIME / ".stamp-wheels"
     key = sha256_bytes("".join(w[4] for w in WHEELS).encode())
@@ -262,7 +329,7 @@ def step_wheels(force: bool) -> None:
 
 
 def step_shims(force: bool) -> None:
-    dest = RUNTIME / "site-packages"
+    dest = site_dir()
     stamp = RUNTIME / ".stamp-shims"
     srcs = sorted(SHIMS.glob("*.py"))
     key = sha256_bytes(b"".join(p.name.encode() + p.read_bytes() for p in srcs))
@@ -271,6 +338,10 @@ def step_shims(force: bool) -> None:
     for p in srcs:
         shutil.copyfile(p, dest / p.name)
         log(f"installed shim {p.name}")
+    if LINUX:
+        # The generator's sources, found from the venv's site-packages by relative paths, so the folder can be moved.
+        lines = [os.path.relpath(RUNTIME / part, dest).replace(os.sep, "/") for part in ("wwrando", "gclib")]
+        (dest / "bod_rando.pth").write_text("\n".join(lines) + "\n")
     write_stamp(stamp, key)
 
 
@@ -352,7 +423,7 @@ def step_wwrando(force: bool, src_arg: str | None) -> tuple[str, str]:
 
 
 def smoke_test() -> str:
-    py = RUNTIME / "python" / "python.exe"
+    py = python_exe()
     code = ("import sys; import randomizer; from version import VERSION; "
             "print(sys.version.split()[0], VERSION)")
     r = subprocess.run([str(py), "-c", code], cwd=RUNTIME / "wwrando", capture_output=True, text=True)
@@ -363,8 +434,10 @@ def smoke_test() -> str:
 
 def write_manifest(wwrando_digest: str, gclib_digest: str, origin: str, smoke: str) -> None:
     manifest = {
-        "python": {"version": PYTHON_VERSION, "url": PYTHON_URL, "sha256": PYTHON_SHA256},
-        "wheels": [{"name": n, "version": v, "file": f, "sha256": s, "license": lic} for n, v, f, _u, s, lic in WHEELS],
+        "python": ({"venv_of": "the system's python3.12"} if LINUX else
+                   {"version": PYTHON_VERSION, "url": PYTHON_URL, "sha256": PYTHON_SHA256}),
+        "wheels": ([{"requirement": r} for r in LINUX_PACKAGES] if LINUX else
+                   [{"name": n, "version": v, "file": f, "sha256": s, "license": lic} for n, v, f, _u, s, lic in WHEELS]),
         "shims": sorted(p.name for p in SHIMS.glob("*.py")),
         "wwrando": {"repo": WWRANDO_REPO, "commit": WWRANDO_COMMIT, "tree_sha256": wwrando_digest, "copied_from": origin if origin.startswith("http") else "a local checkout of that commit",
                     "license": "MIT"},
@@ -377,8 +450,10 @@ def write_manifest(wwrando_digest: str, gclib_digest: str, origin: str, smoke: s
 def check() -> bool:
     """True when every step is current and the smoke test passes (no network)."""
     ok = True
-    for name, outs in [("python", ["python/python.exe"]), ("wheels", ["site-packages/ruamel", "site-packages/numpy"]),
-                       ("shims", ["site-packages/imagequant.py"]), ("gclib", ["gclib/gclib/rarc.py"]),
+    site = site_dir().relative_to(RUNTIME).as_posix()
+    for name, outs in [("python", [python_exe().relative_to(RUNTIME).as_posix()]),
+                       ("wheels", [f"{site}/ruamel", f"{site}/numpy"]),
+                       ("shims", [f"{site}/imagequant.py"]), ("gclib", ["gclib/gclib/rarc.py"]),
                        ("wwrando", ["wwrando/randomizer.py"]), ("assets", ["wwrando/assets/Vscroll.arc"])]:
         if not (RUNTIME / f".stamp-{name}").is_file() or not all((RUNTIME / o).exists() for o in outs):
             log(f"missing: {name}")
@@ -397,13 +472,18 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="verify only (no network); exit 1 if the runtime is missing or stale")
     ap.add_argument("--force", action="store_true", help="redo every step")
     ap.add_argument("--wwrando-src", help="a wwrando checkout to copy from (must be the pinned revision)")
+    ap.add_argument("--runtime", type=Path, help="where to make the runtime (default build/windows/rando_runtime, "
+                                                 "build/linux/rando_runtime on Linux)")
     args = ap.parse_args()
+    global RUNTIME
+    if args.runtime:
+        RUNTIME = args.runtime.resolve()
 
     if args.check:
         return 0 if check() else 1
 
-    if sys.platform != "win32":
-        raise SystemExit("rando_runtime.py fetches the Windows x64 embeddable Python; run it on Windows")
+    if sys.platform != "win32" and not LINUX:
+        raise SystemExit("rando_runtime.py makes the runtime on Windows (the x64 embeddable Python) and Linux (a venv)")
     RUNTIME.mkdir(parents=True, exist_ok=True)
     step_python(args.force)
     step_wheels(args.force)

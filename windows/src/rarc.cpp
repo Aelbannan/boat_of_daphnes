@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <map>
 
 namespace rarc {

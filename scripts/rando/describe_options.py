@@ -21,10 +21,10 @@ from enum import Enum
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / "windows" / "rando_runtime")
+RUNTIME = Path(os.environ.get("RANDO_RUNTIME") or REPO / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime")
 
 if sys.version_info[:2] != (3, 12):
-    py = RUNTIME / "python" / "python.exe"
+    py = RUNTIME / "python" / ("python.exe" if os.name == "nt" else "bin/python3")
     if not py.is_file():
         sys.exit(f"rando runtime not found at {RUNTIME}; run: python scripts/windows/rando_runtime.py")
     sys.exit(subprocess.run([str(py), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)

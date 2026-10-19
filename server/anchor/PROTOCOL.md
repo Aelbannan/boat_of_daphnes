@@ -1,6 +1,6 @@
 # Online play protocol, version 1
 
-This is the protocol of Ship of Harkinian's Anchor (see `docs/fork/research/anchor.md`), carried over
+This is the protocol of Ship of Harkinian's Anchor (see `docs/anchor.md`), carried over
 WebSockets for The Wind Waker.
 
 **Connection.** Connect to `wss://wwserver.viosarcade.xyz/ws?room=<name>`. The name (1 to 64
@@ -50,12 +50,13 @@ These carry Wind Waker's data. The client defines them.
 | Type | Routing | Fields |
 | --- | --- | --- |
 | `SYNC_SAVE` | team, queued | `changes`: [[save offset, value], ...]: bytes of the synced save parts that this player gained (bits newly set, a larger maximum, a filled or upgraded item slot) |
-| `SET_CHECK_STATUS` | team, queued | `check`, `status` (randomizer) |
+| `SET_SWITCH` | team (`targetTeamId`) | `stage`, `room`, `no` (the switch), `on`, `seed` (the sender's randomizer seed, empty for the normal game; other seeds ignore it): a switch the sender's game set or cleared, applied live by teammates in the same place |
+| `CHAT` | room | `text` (at most a line; control characters removed) |
 | `REQUEST_TELEPORT` | one player | none |
 | `TELEPORT_TO` | one player | `stage`, `room`, `point`, `pos`, `angle` |
-| `DAMAGE_PLAYER` | one player | `damage`, `effect` |
+| `DAMAGE_PLAYER` | one player | `damage`, `effect` (reserved: the game does not send it yet) |
 | `PVP_HIT` | one player (`targetClientId` required; dropped while the room's `pvp` is `off`) | `damage` (the attacker's attack power), `hitType` (the game's attack type bits), `pos` (the attacker's place), `direction` ([x, z], from the attacker to the target) |
-| `GAME_COMPLETE` | room | none |
+| `GAME_COMPLETE` | room | none (reserved: the game does not send it yet) |
 
 **Team state.** `state` is the save's synced parts as [[offset, value], ...] (`runtime/host/src/team_sync.c`:
 max life, wallet, max magic, equipped sword/shield/bracelet, item slots except bottles, item-get bits,

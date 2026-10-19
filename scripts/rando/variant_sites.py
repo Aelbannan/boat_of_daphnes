@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import struct
 import sys
 from pathlib import Path
@@ -438,7 +439,7 @@ def main() -> int:
     ap.add_argument("--seed-sites", default=str(HERE / "seed_sites.json"))
     ap.add_argument("--vanilla", required=True, help="the extracted game folder (main.dol, rels/)")
     ap.add_argument("--reference", required=True, help="patch_game.py output of the reference run")
-    ap.add_argument("--wwrando", default=str(REPO / "build" / "windows" / "rando_runtime" / "wwrando"))
+    ap.add_argument("--wwrando", default=str(REPO / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime" / "wwrando"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--verify-matrix", metavar="WORK")
     args = ap.parse_args()

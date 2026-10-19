@@ -18,13 +18,7 @@
 
 #include <imgui.h>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+#include "platform/bod_platform.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1133,7 +1127,7 @@ void Launch(const char* data_dir) {
         std::string list = mods != nullptr && mods[0] != '\0' ? mods : "betterww";
         if (list.find("rando") == std::string::npos)
             list += ",rando";
-        _putenv_s("BLUEWAKE_MODS", list.c_str());
+        bodplat::SetEnv("BLUEWAKE_MODS", list);
     }
     randosaves::Load(sidecar_path(), &g_sidecar);
     load_ready_from_cvar();

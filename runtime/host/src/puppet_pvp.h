@@ -63,6 +63,8 @@ void bluewake_pvp_scene_end(CPUState* cpu);
 void bluewake_pvp_fiber_delete(GuestCoro* co, CPUState* cpu);
 // Hook 51.
 u32 bluewake_pvp_execute_hook(CPUState* cpu);
+// The play scene's process id from the execute hook (dScnPly_Execute's r3), 0 before its first call.
+uint32_t bluewake_pvp_scene_id(void);
 // Testing: the same from any site the game runs once a frame before the checks (BLUEWAKE_PVP_TEST_SITE in game_options.c).
 void bluewake_pvp_test_execute(CPUState* cpu);
 

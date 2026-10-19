@@ -528,7 +528,7 @@ int main(void) {
         Nothing here is seed dependent: a seed is a seed pack read at run time."""
         r = self.out / "rando"
         runtime = self.out / "rando_runtime"
-        if not (runtime / "python" / "python.exe").is_file():
+        if not self.rando_python(runtime).is_file():
             die(f"the randomizer variant needs wwrando's runtime: python {ROOT / 'scripts/windows/rando_runtime.py'}")
         sys.path.insert(0, str(ROOT / "scripts/rando"))
         import variant_sites
@@ -572,6 +572,19 @@ int main(void) {
         stamp.write_text(json.dumps({"key": key}))
         self.rando_key = key
         print(f"reference game: main.dol and {len(patched)} patched RELs (2 new) in {r}")
+
+    def helper_python(self):
+        """The Python that runs the disc-derived asset scripts (they need Pillow)."""
+        return sys.executable
+
+    @staticmethod
+    def rando_python(runtime):
+        """The randomizer runtime's Python (scripts/windows/rando_runtime.py); the Linux builder's is in a venv."""
+        return runtime / "python" / "python.exe"
+
+    def rando_runtime_parts(self):
+        """The runtime folders a package carries in rando/."""
+        return ("python", "site-packages", "wwrando", "gclib")
 
     def rando_translation_rels(self, rels):
         """The REL folder DolRecomp reads for a randomizer seed's game. DolRecomp links the modules in file-name
@@ -1307,7 +1320,7 @@ int main(void) {
         assets/swift_sail. The app loads them while Swift Sail is on."""
         target = app / "assets" / "swift_sail"
         shutil.rmtree(target, ignore_errors=True)
-        result = subprocess.run([sys.executable, str(ROOT / "scripts/windows/swift_sail.py"), str(self.iso), str(target)],
+        result = subprocess.run([self.helper_python(), str(ROOT / "scripts/windows/swift_sail.py"), str(self.iso), str(target)],
                                 capture_output=True, text=True)
         made = sorted(target.glob("*.png")) if target.is_dir() else []
         if result.returncode != 0 or len(made) != 3:
@@ -1324,7 +1337,7 @@ int main(void) {
         Editor's live Link colors (scripts/windows/link_colors.py)."""
         target = app / "assets" / "link_colors"
         shutil.rmtree(target, ignore_errors=True)
-        command = [sys.executable, str(ROOT / "scripts/windows/link_colors.py"), str(self.iso), str(target)]
+        command = [self.helper_python(), str(ROOT / "scripts/windows/link_colors.py"), str(self.iso), str(target)]
         masks = os.environ.get("BLUEWAKE_WWRANDO_MASKS")
         if masks:
             command += ["--masks", masks]
@@ -1342,7 +1355,7 @@ int main(void) {
         runtime's Python because it needs gclib) into assets/bunnyhood."""
         target = app / "assets" / "bunnyhood"
         shutil.rmtree(target, ignore_errors=True)
-        python = self.out / "rando_runtime" / "python" / "python.exe"
+        python = self.rando_python(self.out / "rando_runtime")
         if not python.is_file():
             print("note: no randomizer runtime, so the Bunny Hood's model was not made")
             return
@@ -1360,13 +1373,13 @@ int main(void) {
         (build/windows/rando_runtime, made by scripts/windows/rando_runtime.py) in rando/, and wwrando's
         options for the Randomizer menu in assets/randomizer/options.json."""
         runtime = self.out / "rando_runtime"
-        if not (runtime / "python" / "python.exe").is_file():
+        if not self.rando_python(runtime).is_file():
             print("note: no randomizer runtime (python scripts/windows/rando_runtime.py makes it); "
                   "the Randomizer menu cannot generate seeds")
             return
         target = app / "rando"
-        for part in ("python", "site-packages", "wwrando", "gclib"):
-            shutil.copytree(runtime / part, target / part, dirs_exist_ok=True)
+        for part in self.rando_runtime_parts():
+            shutil.copytree(runtime / part, target / part, dirs_exist_ok=True, symlinks=True)
         shutil.copy2(runtime / "manifest.json", target / "manifest.json")
         # The generator's scripts, and what first launch runs to make this package's disc-derived files again for another
         # disc (prepare_extras.py, swift_sail.py, link_colors.py, the reference options): scripts/windows/make_dist.py.
@@ -1375,7 +1388,7 @@ int main(void) {
         make_dist.install_extras(target)
         options = app / "assets" / "randomizer" / "options.json"
         env = dict(os.environ, RANDO_RUNTIME=str(runtime))
-        result = subprocess.run([str(runtime / "python" / "python.exe"), str(ROOT / "scripts/rando/describe_options.py"),
+        result = subprocess.run([str(self.rando_python(runtime)), str(ROOT / "scripts/rando/describe_options.py"),
                                  str(options)], capture_output=True, text=True, env=env)
         if result.returncode != 0:
             print("note: the randomizer's options were not written: "
@@ -1470,6 +1483,9 @@ int main(void) {
         print(f"app: {exe}")
         step("10/10 package")
         app = self.package(module)
+        self.finished(app)
+
+    def finished(self, app):
         print(f"\nboat-of-daphnes: {app}")
         print(f"  run {app / 'boat-of-daphnes.exe'}")
         print("  It contains game code translated from your disc and a copy of the disc: keep it for yourself.")
@@ -1510,11 +1526,14 @@ WINDOWS_DEFAULT_OPTIMIZATIONS = ("fixed_cpu", "fixed_mem1", "inline_fp", "gather
                                  "behaviour_timing")
 
 
-def main():
+def main(builder_class=None, default_out=None, adjust_parser=None):
+    """The command line. The Linux builder (scripts/linux/build.py) runs it with its own Builder, build folder and options."""
+    default_out = default_out or ROOT / "build/windows"
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("disc", type=Path, help="your GZLE01 revision 0 disc image (.iso, .gcm, .rvz, ...)")
-    parser.add_argument("--out", type=Path, default=ROOT / "build/windows",
-                        help="build directory (default build/windows; must be git-ignored inside the checkout)")
+    parser.add_argument("--out", type=Path, default=default_out,
+                        help=f"build directory (default {default_out.relative_to(ROOT).as_posix()}; must be git-ignored "
+                             "inside the checkout)")
     parser.add_argument("--jobs", type=int, default=None,
                         help="parallel compile jobs (default: the cores, limited by free memory)")
     parser.add_argument("--march", default="x86-64-v3",
@@ -1600,6 +1619,8 @@ def main():
     parser.add_argument("--source-only", action="store_true",
                         help="stop after generating the source: checks tools, disc and translation in minutes")
     parser.add_argument("--check-only", action="store_true", help="check tools, dependencies and the disc only")
+    if adjust_parser is not None:
+        adjust_parser(parser)
     args = parser.parse_args()
     # Wind Waker Recomp's Windows builds prepare all of these every time; BlueWake
     # matches that by default. --conservative builds the plain translation.
@@ -1645,13 +1666,13 @@ def main():
         rel = None
     if rel is not None:
         if str(rel) == ".":
-            parser.error("--out must not be the checkout itself; use build/windows")
+            parser.error(f"--out must not be the checkout itself; use {default_out.relative_to(ROOT).as_posix()}")
         ignored = subprocess.run(["git", "check-ignore", "-q", str(args.out) + os.sep], cwd=ROOT).returncode == 0
         if not ignored:
-            parser.error("--out inside this checkout must be git-ignored; use build/windows")
+            parser.error(f"--out inside this checkout must be git-ignored; use {default_out.relative_to(ROOT).as_posix()}")
     args.out.mkdir(parents=True, exist_ok=True)
     try:
-        Builder(args).build()
+        (builder_class or Builder)(args).build()
     except BuildError as error:
         print(f"\nbuilder: {error}", file=sys.stderr)
         sys.exit(1)

@@ -1,0 +1,195 @@
+# Builds the Linux app (boat-of-daphnes) from this repository alone, and runs the source-only host tests. No disc, no game
+# code: the game module is translated from each player's own disc and is never built here (the job fails if one appears).
+# It also builds the translator (DolRecomp) and the randomizer's runtime, and packages an AppImage around an EMPTY stand-in
+# module (named gGZLE01_recomp.so, a few kilobytes, in build/ci-fixture only) to run the packaging and its audit; that image
+# is not uploaded.
+#
+# Runs on pushes to main and on pull requests, and by hand. The dependency builds are cached: ccache for every compiled file,
+# and the fetched sources (Aurora's SDL3, fmt, abseil, imgui, the prebuilt Dawn) in .deps.
+name: Linux app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      dawn_provider:
+        description: "Dawn: package (the prebuilt one) or vendor (built from source)"
+        default: package
+      stdlib:
+        description: "C++ library: libstdc++ or libc++"
+        default: libstdc++
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: App and host tests (Ubuntu 24.04, clang 18)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: "1"
+      CCACHE_MAXSIZE: 3G
+      DAWN_PROVIDER: ${{ github.event.inputs.dawn_provider || 'package' }}
+      STDLIB: ${{ github.event.inputs.stdlib || 'libstdc++' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the build packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential g++-13 libstdc++-13-dev ninja-build ccache pkg-config python3 git \
+            clang-18 lld-18 libc++-18-dev libc++abi-18-dev \
+            python3-venv desktop-file-utils binutils file \
+            libssl-dev libudev-dev \
+            libwayland-dev libxkbcommon-dev libx11-xcb-dev libx11-dev \
+            libxrandr-dev libxext-dev libxi-dev libxcursor-dev libgl1-mesa-dev \
+            libvulkan-dev libasound2-dev libpulse-dev libxss-dev libxtst-dev \
+            libdbus-1-dev \
+            zlib1g-dev libpng-dev libfreetype6-dev libsqlite3-dev libzstd-dev \
+            libfmt-dev libbz2-dev libbrotli-dev libicu-dev
+          cmake --version
+          clang-18 --version
+
+      - name: Restore the caches
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ github.ref_name }}-${{ env.DAWN_PROVIDER }}-${{ env.STDLIB }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-${{ env.DAWN_PROVIDER }}-${{ env.STDLIB }}-
+            ccache-${{ github.ref_name }}-
+      - name: Restore the fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-${{ env.DAWN_PROVIDER }}-${{ env.STDLIB }}-${{ hashFiles('runtime/recompcore/GXRuntime/graphics/aurora/CMakeLists.txt', 'runtime/recompcore/GXRuntime/graphics/aurora/cmake/**', 'runtime/recompcore/GXRuntime/graphics/aurora/extern/**') }}
+          restore-keys: |
+            deps-${{ env.DAWN_PROVIDER }}-${{ env.STDLIB }}-
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          ccache --zero-stats
+          # clang 18 cannot read the runner's default libstdc++ 14 headers (std::function), so it is pointed at 13.
+          stdlib_flag="--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13"
+          link_flag="$stdlib_flag -static-libstdc++ -static-libgcc"  # the program asks nothing of the player's libstdc++
+          if [ "$STDLIB" = "libc++" ]; then stdlib_flag="-stdlib=libc++"; link_flag="$stdlib_flag"; fi
+          cmake -S windows -B build/linux -G Ninja \
+            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            "-DCMAKE_C_FLAGS=-march=x86-64-v3 --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13" \
+            "-DCMAKE_CXX_FLAGS=-march=x86-64-v3 $stdlib_flag" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld $link_flag" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld $link_flag" \
+            -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE -DCMAKE_DISABLE_FIND_PACKAGE_absl=TRUE \
+            -DDAWN_USE_GLFW=OFF \
+            -DFETCHCONTENT_BASE_DIR="$GITHUB_WORKSPACE/.deps" \
+            -DAURORA_DAWN_PROVIDER="$DAWN_PROVIDER" -DAURORA_DAWN_LINKAGE=static \
+            -DAURORA_SDL3_PROVIDER=vendor -DAURORA_SDL3_LINKAGE=static \
+            -DBLUEWAKE_WINDOWS_REGRESSION_TESTS=ON
+
+      - name: Build the translator (DolRecomp, at its pinned commit)
+        run: |
+          set -euo pipefail
+          url=$(sed -n 's/^DOLRECOMP_URL=//p' scripts/windows/pins.txt)
+          sha=$(sed -n 's/^DOLRECOMP_SHA=//p' scripts/windows/pins.txt)
+          git init -q ref/dolrecomp
+          git -C ref/dolrecomp config core.autocrlf false
+          git -C ref/dolrecomp fetch -q --depth 1 "$url" "$sha"
+          git -C ref/dolrecomp checkout -q --detach FETCH_HEAD
+          test "$(git -C ref/dolrecomp rev-parse HEAD)" = "$sha"
+          gcc13="--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13"
+          cmake -S ref/dolrecomp -B build/dolrecomp -G Ninja \
+            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            "-DCMAKE_C_FLAGS=$gcc13" "-DCMAKE_CXX_FLAGS=$gcc13" "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld $gcc13" \
+            -DCMAKE_BUILD_TYPE=Release -DDOLRECOMP_WARNINGS_AS_ERRORS=OFF
+          cmake --build build/dolrecomp --target dolrecomp
+          build/dolrecomp/dolrecomp --help | head -5 || true
+          test -x build/dolrecomp/dolrecomp
+
+      - name: Build the app and the tests
+        run: |
+          set -o pipefail
+          # -k 0: keep going after a failure, so one run reports every broken file.
+          cmake --build build/linux -- -k 0 2>&1 | tee build.log
+
+      - name: Errors
+        if: always()
+        run: |
+          ccache --show-stats || true
+          grep -E "error:|FAILED:|undefined reference|ld.lld: error" build.log | head -300 || true
+
+      - name: No game data in the build
+        run: |
+          set -euo pipefail
+          test -f build/linux/boat-of-daphnes
+          if find build -name 'gGZLE01_recomp*' | grep -q .; then
+            echo "Unexpected personal game module in the build"
+            exit 1
+          fi
+          file build/linux/boat-of-daphnes
+          ls -l build/linux/boat-of-daphnes
+
+      - name: Host tests
+        run: ctest --test-dir build/linux --output-on-failure -R "^bluewake_" --timeout 120
+
+      - name: The randomizer runtime (python3.12 venv, wwrando, gclib)
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 scripts/windows/rando_runtime.py --runtime build/linux/rando_runtime
+          python3 scripts/windows/rando_runtime.py --runtime build/linux/rando_runtime --check
+
+      - name: Package a disc-free AppImage fixture and audit it
+        env:
+          APPIMAGETOOL_VERSION: "1.9.1"
+          APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+          TYPE2_RUNTIME_RELEASE: "20251108"
+          TYPE2_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        run: |
+          set -euo pipefail
+          mkdir -p build/tools
+          curl -fsSL -o build/tools/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+          echo "${APPIMAGETOOL_SHA256}  build/tools/appimagetool" | sha256sum --check --strict -
+          curl -fsSL -o build/tools/runtime-x86_64 \
+            "https://github.com/AppImage/type2-runtime/releases/download/${TYPE2_RUNTIME_RELEASE}/runtime-x86_64"
+          echo "${TYPE2_RUNTIME_SHA256}  build/tools/runtime-x86_64" | sha256sum --check --strict -
+          chmod +x build/tools/appimagetool build/tools/runtime-x86_64
+          export APPIMAGETOOL="$PWD/build/tools/appimagetool" APPIMAGE_RUNTIME_FILE="$PWD/build/tools/runtime-x86_64"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          python3 scripts/linux/ci_fixture.py build/linux build/linux/rando_runtime build/ci-fixture
+          image=build/ci-fixture/boat-of-daphnes-fixture-x86_64.AppImage
+          scripts/linux/make_appimage.sh build/ci-fixture "$image" --with-module
+          python3 scripts/linux/check_appimage_abi.py "$image" 2.39 --fixture
+          "$image" --help 2>&1 | tee build/ci-fixture/help.txt
+          grep -q "usage: Boat-Of-Daphnes" build/ci-fixture/help.txt
+          # The stand-in is the only file named for the game's module anywhere in the build.
+          found=$(find build -name 'gGZLE01_recomp*' -not -path 'build/ci-fixture/*' | wc -l)
+          test "$found" = 0
+          stub=$(find build/ci-fixture -name 'gGZLE01_recomp*' -not -path '*/boat-of-daphnes.AppDir/*')
+          echo "stand-in: $stub"
+          test "$(echo "$stub" | wc -l)" = 1
+          test "$(stat -c %s $stub)" -lt 65536
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: boat-of-daphnes-app-linux-x64
+          path: |
+            build/linux/boat-of-daphnes
+            build/linux/initial_pipeline_cache.db
+          if-no-files-found: error
+          retention-days: 14

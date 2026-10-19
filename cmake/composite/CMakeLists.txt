@@ -247,6 +247,44 @@ if(WIN32)
 else()
   target_link_libraries(${MODULE_NAME} PRIVATE m)
 endif()
+# ELF (Linux, Steam Deck): the module is a shared object built -fPIC,
+# and the chunks declared each other's symbols with default visibility, so every
+# reference was an address loaded from the GOT that then stayed live in a
+# register across the chunk's one large function. That doubled the register
+# allocator's work: a chunk took 11.7 s here against 5.9 s for the same source
+# compiled for Windows, whose DLLs have no GOT. hidden_externs.h declares the
+# module's own symbols hidden, so each reference is a direct PC-relative operand.
+# Android leaves it out: on ARM64 the game thread then ran about 5% more
+# instructions at Outset's pier (172 M a retrace against 163 M, #93), and players
+# feel that every frame while they wait for the compile once.
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
+  set(CHUNK_C_SOURCES ${CHUNK_INPUTS})
+  list(FILTER CHUNK_C_SOURCES INCLUDE REGEX "\\.c$")
+  set_property(SOURCE ${CHUNK_C_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+      -include "${CMAKE_CURRENT_SOURCE_DIR}/hidden_externs.h")
+endif()
+
+# ELF: the module's pointer tables need about 2.2 million relative relocations,
+# 24 bytes each as RELA (about 51 MB, and as many fix-ups at every launch).
+# RELR stores runs of them as bitmaps. The loader needs glibc 2.36 for it, and
+# -z pack-relative-relocs records that requirement in the module, so an older
+# glibc refuses to load it rather than running it unrelocated. Only when the
+# glibc it is built against has it: the module is built on the machine that
+# runs it, and a release built on an older baseline (#214) leaves it off.
+if(NOT WIN32 AND NOT APPLE)
+  include(CheckCSourceCompiles)
+  include(CheckLinkerFlag)
+  check_c_source_compiles("
+#include <features.h>
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 36)
+#error no DT_RELR
+#endif
+int main(void) { return 0; }" BLUEWAKE_GLIBC_HAS_DT_RELR)
+  check_linker_flag(C "LINKER:-z,pack-relative-relocs" BLUEWAKE_LINKER_PACKS_RELR)
+  if(BLUEWAKE_GLIBC_HAS_DT_RELR AND BLUEWAKE_LINKER_PACKS_RELR)
+    target_link_options(${MODULE_NAME} PRIVATE "LINKER:-z,pack-relative-relocs")
+  endif()
+endif()
 target_compile_options(${MODULE_NAME} PRIVATE -O${COMPOSITE_OPTIMIZATION_LEVEL} -ffp-contract=off)
 
 # The builder's --tiered: chunks the optimization training never ran, one

@@ -2,7 +2,11 @@ add_executable(bluewake_haptics_test
     "${BLUEWAKE_REPO_ROOT}/tests/haptics_test.c" "${BLUEWAKE_HOST_SRC}/haptics.c"
     "${BLUEWAKE_HOST_SRC}/gc_adapter.c" "${BLUEWAKE_HOST_SRC}/gc_adapter_proto.c" "${BLUEWAKE_HOST_SRC}/pad_wire.c")
 target_include_directories(bluewake_haptics_test PRIVATE "${BLUEWAKE_HOST_SRC}")
-target_link_libraries(bluewake_haptics_test PRIVATE gxruntime SDL3::SDL3)
+if(AURORA_SDL3_TARGET)
+    target_link_libraries(bluewake_haptics_test PRIVATE gxruntime ${AURORA_SDL3_TARGET})
+else()
+    target_link_libraries(bluewake_haptics_test PRIVATE gxruntime SDL3::SDL3)
+endif()
 add_test(NAME bluewake_haptics_classic_test COMMAND bluewake_haptics_test classic)
 add_test(NAME bluewake_haptics_enhanced_test COMMAND bluewake_haptics_test enhanced)
 add_test(NAME bluewake_haptics_ps5_test COMMAND bluewake_haptics_test ps5)

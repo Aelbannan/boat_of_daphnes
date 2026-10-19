@@ -13,6 +13,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__linux__)
+#include <limits.h>
+#include <unistd.h>
 #endif
 
 enum {
@@ -506,6 +509,28 @@ static bool extras_file(const char* name, char* out, size_t cap) {
     *slash = '\0';
     snprintf(out, cap, "%s\\assets\\bunnyhood\\%s", path, name);
     return GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES;
+}
+#elif defined(__linux__)
+static bool extras_file(const char* name, char* out, size_t cap) {
+    char path[PATH_MAX];
+    const char* made = getenv("BLUEWAKE_EXTRAS_DIR");
+    if (made != NULL && *made != '\0') {
+        snprintf(path, sizeof path, "%s/assets/bunnyhood/%s", made, name);
+        if (access(path, R_OK) == 0) {
+            snprintf(out, cap, "%s", path);
+            return true;
+        }
+    }
+    const ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1);
+    if (n <= 0)
+        return false;
+    path[n] = '\0';
+    char* slash = strrchr(path, '/');
+    if (slash == NULL)
+        return false;
+    *slash = '\0';
+    snprintf(out, cap, "%s/assets/bunnyhood/%s", path, name);
+    return access(out, R_OK) == 0;
 }
 #else
 static bool extras_file(const char* name, char* out, size_t cap) {

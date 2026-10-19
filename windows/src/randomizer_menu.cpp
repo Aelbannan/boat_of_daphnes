@@ -16,15 +16,7 @@
 #include <imgui.h>
 #include <SDL3/SDL_dialog.h>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#include <shlobj.h>
+#include "platform/bod_platform.h"
 
 #include <algorithm>
 #include <atomic>
@@ -98,11 +90,7 @@ void open_seed_dialog() {
         nullptr, nullptr, filters, 2, nullptr, false);
 }
 
-fs::path exe_folder() {
-    wchar_t path[MAX_PATH * 2];
-    const DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH * 2);
-    return fs::path(std::wstring(path, n)).parent_path();
-}
+fs::path exe_folder() { return bodplat::ExeFolder(); }
 
 std::string utf8(const fs::path& p) {
     const auto u = p.u8string();
@@ -245,33 +233,14 @@ fs::path seed_folder(const fs::path& exe_root) {
 // Where a seed's one-file form lives: Randomizer\<seed>.json (the pack, no disc data).
 fs::path seed_file_path(const std::string& seed) { return seed_folder(exe_folder()) / fs::u8path(seed + ".json"); }
 
-// The file on the clipboard the way Explorer's Copy puts it (CF_HDROP), so it pastes into a chat or a folder.
-void copy_file_to_clipboard(const fs::path& file) {
-    const std::wstring w = fs::absolute(file).wstring();
-    const SIZE_T bytes = sizeof(DROPFILES) + (w.size() + 2) * sizeof(wchar_t);
-    HGLOBAL mem = GlobalAlloc(GHND, bytes);
-    if (mem == nullptr)
-        return;
-    auto* df = static_cast<DROPFILES*>(GlobalLock(mem));
-    df->pFiles = sizeof(DROPFILES);
-    df->fWide = TRUE;
-    std::memcpy(reinterpret_cast<char*>(df) + sizeof(DROPFILES), w.c_str(), w.size() * sizeof(wchar_t));
-    GlobalUnlock(mem);
-    if (OpenClipboard(nullptr)) {
-        EmptyClipboard();
-        if (SetClipboardData(CF_HDROP, mem) == nullptr)
-            GlobalFree(mem);
-        CloseClipboard();
-    } else {
-        GlobalFree(mem);
-    }
-}
+// The file on the clipboard the way the file manager's Copy puts it, so it pastes into a chat or a folder.
+void copy_file_to_clipboard(const fs::path& file) { bodplat::CopyFileToClipboard(file); }
 
 // The seed's game files (stage, event and text files, the banner) as wwrando patches them, for the DVD overlay: the same
 // permalink through patch_game.py from the player's own disc, about 15 s. "" when made, else why not. Blocking.
 std::string rebuild_overlay(const fs::path& out, const std::string& permalink) {
     const fs::path runtime = exe_folder() / "rando";
-    const fs::path python = runtime / "python" / "python.exe";
+    const fs::path python = bodplat::PythonExe(runtime);
     const fs::path patcher = runtime / "patch_game.py";
     // The disc the game runs from (the release has none beside the exe: the player's own).
     const char* disc = std::getenv("BLUEWAKE_DISC");
@@ -280,33 +249,21 @@ std::string rebuild_overlay(const fs::path& out, const std::string& permalink) {
         return "no game files: the randomizer generator is missing";
     if (!fs::exists(iso))
         return "no game files: the disc is missing";
-    std::wstring pcmd = L"\"" + python.wstring() + L"\" \"" + patcher.wstring() + L"\" --iso \"" + iso.wstring() +
-                        L"\" --out \"" + (out / "overlay").wstring() + L"\" --permalink \"" +
-                        fs::u8path(permalink).wstring() + L"\" --files all";
-    STARTUPINFOW psi{};
-    psi.cb = sizeof psi;
-    psi.dwFlags = STARTF_USESTDHANDLES;
-    psi.hStdOutput = GetStdHandle(STD_ERROR_HANDLE);
-    psi.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    PROCESS_INFORMATION ppi{};
-    std::vector<wchar_t> pline(pcmd.begin(), pcmd.end());
-    pline.push_back(0);
-    SetEnvironmentVariableW(L"RANDO_RUNTIME", runtime.c_str());
-    if (!CreateProcessW(nullptr, pline.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &psi, &ppi))
+    bodplat::Process patch;
+    bodplat::Process::Options options;
+    options.program = python;
+    options.args = {utf8(patcher), "--iso", utf8(iso), "--out", utf8(out / "overlay"), "--permalink", permalink, "--files", "all"};
+    options.env = {{"RANDO_RUNTIME", utf8(runtime)}};
+    if (!patch.Start(options))
         return "its game files could not be made: the patch tool did not start";
-    WaitForSingleObject(ppi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(ppi.hProcess, &code);
-    CloseHandle(ppi.hThread);
-    CloseHandle(ppi.hProcess);
-    return code != 0 ? "its game files could not be made: see the log" : "";
+    return patch.Wait() != 0 ? "its game files could not be made: see the log" : "";
 }
 
 // wwrando's generator in its own process (the embedded Python under rando\), one line of JSON back.
 void generate(std::string seed, std::string options_json) {
     const fs::path root = exe_folder();
     const fs::path runtime = root / "rando";
-    const fs::path python = runtime / "python" / "python.exe";
+    const fs::path python = bodplat::PythonExe(runtime);
     std::string message;
     if (!fs::exists(python)) {
         message = "The randomizer generator is not installed (rando\\ beside the game is missing).";
@@ -318,30 +275,16 @@ void generate(std::string seed, std::string options_json) {
         const fs::path opts = work / "options.json", result = work / "result.json";
         std::ofstream(opts, std::ios::binary) << options_json;
         const fs::path out = seeds / fs::u8path(seed);
-        std::wstring cmd = L"\"" + python.wstring() + L"\" \"" + (runtime / "generate_seed.py").wstring() + L"\" --out \"" +
-                           out.wstring() + L"\" --options \"" + opts.wstring() + L"\"";
-        cmd += L" --seed \"" + fs::u8path(seed).wstring() + L"\"";
-        SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
-        HANDLE file = CreateFileW(result.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, 0, nullptr);
-        STARTUPINFOW si{};
-        si.cb = sizeof si;
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdOutput = file;
-        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-        PROCESS_INFORMATION pi{};
-        SetEnvironmentVariableW(L"RANDO_RUNTIME", runtime.c_str());
-        std::vector<wchar_t> line(cmd.begin(), cmd.end());
-        line.push_back(0);
-        if (file != INVALID_HANDLE_VALUE &&
-            CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-            WaitForSingleObject(pi.hProcess, INFINITE);
-            CloseHandle(pi.hThread);
-            CloseHandle(pi.hProcess);
-        } else {
+        bodplat::Process generator;
+        bodplat::Process::Options options;
+        options.program = python;
+        options.args = {utf8(runtime / "generate_seed.py"), "--out", utf8(out), "--options", utf8(opts), "--seed", seed};
+        options.env = {{"RANDO_RUNTIME", utf8(runtime)}};
+        options.stdoutFile = result;
+        if (generator.Start(options))
+            generator.Wait();
+        else
             message = "The randomizer generator could not be started.";
-        }
-        if (file != INVALID_HANDLE_VALUE)
-            CloseHandle(file);
         if (message.empty()) {
             std::ifstream in(result, std::ios::binary);
             std::string last, l;
@@ -353,7 +296,7 @@ void generate(std::string seed, std::string options_json) {
                 message = "The generator gave no result (see the log).";
             } else if (v.get("ok").is<bool>() && v.get("ok").get<bool>()) {
                 const std::string name = v.get("seed").to_str();
-                message = "Seed " + name + " (" + v.get("seed_hash").to_str() + ") in Randomizer\\" + name;
+                message = "Seed " + name + " (" + v.get("seed_hash").to_str() + ") in Randomizer" BOD_SEP + name;
                 CVarSetString("gRandomizer.LastSeed", name.c_str());
                 CVarSetString("gRandomizer.PlaySeed", name.c_str());
                 // The seed's files (stage, event and text files, the banner) as wwrando patches them, for the DVD
@@ -544,7 +487,7 @@ void draw_general() {
     const std::string spoiler = CVarGetString("gRandomizer.SpoilerLog", "");
     ImGui::TextWrapped("Spoiler File: %s", spoiler.empty() ? "(none)" : spoiler.c_str());
     if (!spoiler.empty() && ImGui::Button("Open Spoiler Log"))
-        ShellExecuteW(nullptr, L"open", fs::u8path(spoiler).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        bodplat::OpenPath(fs::u8path(spoiler));
     const std::string permalink = CVarGetString("gRandomizer.Permalink", "");
     if (!permalink.empty()) {
         ImGui::TextWrapped("Permalink: %s", permalink.c_str());
@@ -558,8 +501,7 @@ void draw_general() {
     if (!file.empty() && fs::exists(file, fec)) {
         ImGui::TextWrapped("This one .json is the whole seed. Send it to a friend; they drop it on their game window at the file select.");
         if (ImGui::Button("Open Seed File Location")) {
-            const std::wstring args = L"/select,\"" + file.wstring() + L"\"";
-            ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            bodplat::RevealFile(file);
         }
         ImGui::SameLine();
         if (ImGui::Button("Copy Seed File"))
@@ -573,8 +515,8 @@ void draw_general() {
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Choose a seed's .json (or a spoiler log) from a folder: the same as dropping it on the "
                           "window at the file select, for where drag and drop does not work (Proton, the Steam Deck).");
-    ImGui::TextWrapped("Generated seeds are saved with their spoiler logs in the Randomizer folder. Playing one needs "
-                       "the randomizer build of the game, which is not finished yet.");
+    ImGui::TextWrapped("Generated seeds are saved with their spoiler logs in the Randomizer folder. To play one, pick it "
+                       "at the file select (or load its file above): the game switches to it in place.");
 }
 
 bool g_loaded, g_load_tried;

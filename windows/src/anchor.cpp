@@ -37,13 +37,7 @@
 #include <string>
 #include <vector>
 #include <random>
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
+#include "platform/bod_platform.h"
 
 extern "C" {
 #include "switch_sync.h"
@@ -240,7 +234,7 @@ picojson::object client_state() {
 void send(picojson::object message) { anchor::Send(picojson::value(message).serialize()); }
 
 // This install's token for the server (room.js handshake): a game that crashes or restarts gets its seat back instead of
-// a new id beside a stale offline entry. A random value kept in the settings, mixed with the PC's MachineGuid so a
+// a new id beside a stale offline entry. A random value kept in the settings, mixed with the PC's machine id (MachineGuid) so a
 // settings file copied to another PC is not the same player. Only the server sees it.
 std::string install_token() {
     std::string saved = cvar_string("gNetwork.Anchor.Token", "");
@@ -253,10 +247,7 @@ std::string install_token() {
         CVarSetString("gNetwork.Anchor.Token", saved.c_str());
         CVarSaveNextFrame();
     }
-    char guid[64] = {0};
-    DWORD size = sizeof guid;
-    RegGetValueA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", "MachineGuid", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
-                 nullptr, guid, &size);
+    const std::string guid = bodplat::MachineId(); // the Windows MachineGuid; /etc/machine-id on Linux
     uint64_t h = 1469598103934665603ull; // FNV-1a over the saved value and the machine's
     for (const char c : saved + "|" + guid)
         h = (h ^ static_cast<uint8_t>(c)) * 1099511628211ull;

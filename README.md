@@ -18,6 +18,19 @@ To update, unzip a new release over the old folder; your saves (`Save\`) and set
 
 Requirements: Windows 10 or 11, 64-bit, a CPU with AVX2, and a GPU with Direct3D 12 or Vulkan.
 
+### Linux (preview, untested)
+
+A native Linux x86-64 build is new and has not been played on real hardware yet. You build it from your own disc
+with one command; see [docs/linux.md](docs/linux.md):
+
+```
+git clone https://github.com/AgitationSkeleton/boat_of_daphnes.git
+cd boat_of_daphnes
+python3 scripts/linux/build.py /path/to/TheWindWaker.iso --rando-variant
+```
+
+Reports of how it goes (good or bad) are very welcome on the Issues page.
+
 ## Features
 
 - **Widescreen and high frame rates:** any aspect ratio including ultrawide, HUD anchored to the screen edges,
@@ -52,7 +65,7 @@ The online play server is in [server/anchor](server/anchor) (a Cloudflare Worker
 - [How it works](docs/how-it-works.md): the recompilation, the runtime and how the port hooks the game.
 - [Game code map](docs/game-code-map.md): the game functions the port intercepts, with their places in the
   [zeldaret/tww](https://github.com/zeldaret/tww) decompilation.
-- [Building](docs/building.md), [Testing](docs/testing.md), [Randomizer](docs/randomizer.md), [Anchor](docs/anchor.md).
+- [Building](docs/building.md), [Linux](docs/linux.md), [Testing](docs/testing.md), [Randomizer](docs/randomizer.md), [Anchor](docs/anchor.md).
 
 ## Credits
 

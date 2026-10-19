@@ -27,11 +27,11 @@ HERE = Path(__file__).resolve().parent
 # In a package this file sits in rando\ with the runtime (python, wwrando, gclib, site-packages) beside it; in the repo the
 # runtime is build\windows\rando_runtime. generate_seed.py has the same rule (RANDO_RUNTIME).
 if "RANDO_RUNTIME" not in os.environ:
-    os.environ["RANDO_RUNTIME"] = str(HERE if (HERE / "wwrando").is_dir() else HERE.parents[1] / "build" / "windows" / "rando_runtime")
+    os.environ["RANDO_RUNTIME"] = str(HERE if (HERE / "wwrando").is_dir() else HERE.parents[1] / "build" / ("windows" if os.name == "nt" else "linux") / "rando_runtime")
 sys.path.insert(0, str(HERE))
 if sys.version_info[:2] != (3, 12):  # wwrando needs 3.12: hand over to the embedded one, stdin and stdout passed through
     import subprocess
-    py = Path(os.environ["RANDO_RUNTIME"]) / "python" / "python.exe"
+    py = Path(os.environ["RANDO_RUNTIME"]) / "python" / ("python.exe" if os.name == "nt" else "bin/python3")
     sys.exit(subprocess.run([str(py), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)
 
 import generate_seed as gs  # noqa: E402  (relaunches under the embedded Python 3.12 when needed, then sets sys.path)

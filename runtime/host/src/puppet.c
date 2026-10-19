@@ -117,7 +117,7 @@ enum {
     PLAYER_KEEP_THROW = 0x3184u,             // in the air) and Grab (what he carries) follow
     PLAYER_KEEP_GRAB = 0x318Cu,
     ACTOR_MODEL = 0x24Cu,                    // fopAc_ac_c::model
-    SAVE_COLLECT4 = 0x803C4C08u + 0xB2u + 4u, // dSv_player_collect_c::mCollect[4], bit 1: the Hero's Charm
+    SAVE_COLLECT4 = 0x803C4C08u + 0xB4u + 4u, // dSv_player_c::mCollect (+0xB4 in memory; +0xB2 is the card's packed layout) mCollect[4], bit 1: the Hero's Charm worn
     RES_OBJECT_INFO_NUM = 64,
     RES_INFO_SIZE = 0x24u,                   // dRes_info_c: name +0, count +0xE, archive +0x14, resources +0x20
     ARCHIVE_ENTRY_NUM = 0x40u,               // JKRArchive::mEntryNum
@@ -3048,8 +3048,9 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         return 0u;
     // A new play scene: the old one's objects went with the delete hook (or
     // are lost with the scene's own memory).
-    const u32 scene = cpu->gpr[30];
-    const u32 scene_id = guest_ptr(scene) ? mem_read32(cpu, scene + 4u) : 0u; // base_process_class::mBsPcId
+    // The play scene's process id (base_process_class::mBsPcId), from the execute hook: at this site r30 is
+    // g_dComIfG_gameInfo.play and r27 was reused, so no register holds the scene. 1 until that hook has run.
+    const u32 scene_id = bluewake_pvp_scene_id() != 0u ? bluewake_pvp_scene_id() : 1u;
     if (scene_id != g_scene_id) {
         g_map_cursors = 0u;
         g_chart_mem = 0u;

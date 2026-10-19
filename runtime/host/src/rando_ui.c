@@ -36,7 +36,7 @@ static atomic_uint g_head, g_tail;  // the app writes the tail, the game thread 
 static GuestCoro* g_coro;
 static atomic_int g_wave_pending;  // a setSceneName was made: mDoAud_load1stDynamicWave has to finish it (the game's play scene does, for the scene it makes)
 static unsigned g_orig_scene = 0xFFFFFFFFu;  // JAIZelBasic's set scene (field 0x220) when the file select was entered: what 'none' goes back to
-static atomic_int g_rebuild;  // 0 none, 1 asked for, 2 running
+static atomic_int g_rebuild;  // 0 none, 1 asked for, 2 running, 3 asked for (resident archives only), 4 running (same)
 static atomic_bool g_hook_ran;
 
 bool bluewake_rando_ui_hook_ran(void) { return atomic_load(&g_hook_ran); }
@@ -45,6 +45,14 @@ bool bluewake_rando_ui_rebuild_dyl(void) {
     if (!atomic_load(&g_hook_ran))
         return false;
     atomic_store(&g_rebuild, 1);
+    return true;
+}
+
+// A seed to seed switch (the randomizer stays on, the code in force is the same): only the seed's resident archives are mounted again.
+bool bluewake_rando_ui_reload_resident(void) {
+    if (!atomic_load(&g_hook_ran))
+        return false;
+    atomic_store(&g_rebuild, 3);
     return true;
 }
 
@@ -116,6 +124,13 @@ static void body(GuestCoro* co, void* arg) {
         // and itemicon.arc (the item icons). JKRArchive::mount returns the one already mounted for the same file, so it goes first.
         reload_resident(co);
         fprintf(stderr, "[mods] the dynamic module controls were built again for the code in force (cCc_Init)\n");
+        atomic_store(&g_rebuild, 0);
+        bluewake_rando_inplace_done();
+    }
+    int reload_only = 3;
+    if (atomic_compare_exchange_strong(&g_rebuild, &reload_only, 4)) {
+        reload_resident(co);
+        fprintf(stderr, "[mods] the new seed's message and item icon archives were mounted again\n");
         atomic_store(&g_rebuild, 0);
         bluewake_rando_inplace_done();
     }
@@ -211,7 +226,7 @@ u32 bluewake_rando_ui_hook(CPUState* cpu, u32 id) {
                 s_last = now;
             }
         }
-        if (atomic_load(&g_head) == atomic_load(&g_tail) && atomic_load(&g_rebuild) != 1 && atomic_load(&g_wave_pending) == 0)
+        if (atomic_load(&g_head) == atomic_load(&g_tail) && atomic_load(&g_rebuild) != 1 && atomic_load(&g_rebuild) != 3 && atomic_load(&g_wave_pending) == 0)
             return 0u;
     }
     return bluewake_coro_step(g_coro, cpu, SITE, NULL);
