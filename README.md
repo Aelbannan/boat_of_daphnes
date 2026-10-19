@@ -347,6 +347,17 @@ unless you pick specific ones, since they compete with the main textures. You do
 </details>
 
 <details>
+<summary><strong>Windows says the download is a virus</strong></summary>
+
+BlueWake isn't code-signed yet, so antivirus programs sometimes block a brand-new release they haven't seen
+before. Download it only from the [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest),
+check the zip against the release's `SHA256SUMS`, and see
+[If Windows says it's a virus](docs/WINDOWS.md#if-windows-says-its-a-virus) for what to do next. Please tell us
+the detection name it showed.
+
+</details>
+
+<details>
 <summary><strong>BlueWake.exe does nothing when I open it</strong></summary>
 
 First check your processor. The Windows build needs a CPU with AVX2 (Intel Haswell from 2013, AMD

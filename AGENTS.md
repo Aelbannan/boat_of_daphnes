@@ -86,6 +86,26 @@ Every release artifact must pass `scripts/release/check_public_assets.sh <artifa
 
 Build the Windows and Linux release builds on a maintainer's or contributor's own machine from their own disc. Never put a disc image, files from a disc, or keys in CI secrets, caches or artifacts.
 
+### When antivirus flags the Windows download
+
+BlueWake.exe isn't code-signed, so each new Windows build is a file Windows has never seen, and Microsoft
+Defender sometimes blocks one (0.8.0 was flagged as `Tecabans.STV!cl` the day after release). Handle a report
+once per release, like this:
+
+1. Download the zip from the release and compare its SHA-256 with the release's `SHA256SUMS`. If they differ,
+   stop and tell Chris: that is a real problem, not a false alarm.
+2. Ask the player for the detection name (Windows Security › Protection history) and where they downloaded
+   the zip.
+3. Report that release's zip to Microsoft once, as incorrectly detected, with the detection name:
+   https://www.microsoft.com/en-us/wdsi/filesubmission. Note the date and the result in the release record.
+   Don't report a release nobody has had trouble with.
+4. Point players to [If Windows says it's a virus](docs/WINDOWS.md#if-windows-says-its-a-virus). Never tell
+   them to turn their antivirus off.
+
+Don't rebuild or republish to get around a detection. Every Windows release note gives the zip's SHA-256 and
+links that section. Signing is the lasting fix; the options are in
+[the 0.8.0 antivirus record](docs/status/WINDOWS_ANTIVIRUS_0.8.0_2026-10-19.md).
+
 The goal is releases without game code on every platform, with the game built on the player's machine the first
 time it starts ([docs/DIRECTION.md](docs/DIRECTION.md)). The Windows and Linux exceptions above stand until that works
 on each platform.
