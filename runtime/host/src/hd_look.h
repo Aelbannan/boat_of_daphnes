@@ -26,4 +26,11 @@ void bluewake_hd_look_retrace(CPUState* cpu);
 
 extern bool bluewake_hd_distant_islands;
 
+// The room model's culling, widened while sun shadows from the map are shown
+// on the high shadow quality (BLUEWAKE_HD_ROOM_CULL=0 or 1 overrides): set when
+// the edge service should call bluewake_hd_look_room_clip at clipByBox's entry
+// (0x80256CB8), which then culls the room's joints itself and returns.
+extern bool bluewake_hd_room_clip;
+void bluewake_hd_look_room_clip(CPUState* cpu, u32 address);
+
 #endif

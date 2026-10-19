@@ -79,7 +79,7 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 |---|---|---|
 | `BLUEWAKE_HD_SUN_SHADOWS` | off | Sun shadows on, using the map |
 | `DOL_AURORA_SUN_SHADOW_MAP` | follows the above | `0` keeps the screen-only version, for A/B |
-| `DOL_AURORA_SUN_SHADOW_QUALITY` | `high` | `high` (map 4096), `medium` (2048) or `low` (2048, three cascades, six filter lookups, no gap fill); each switch below still wins |
+| `DOL_AURORA_SUN_SHADOW_QUALITY` | `high` | `high` (map 4096, plus the room and palm culling below), `medium` (2048) or `low` (2048, three cascades, six filter lookups, no gap fill); each switch below still wins |
 | `DOL_AURORA_SUN_SHADOW_MAP_SIZE` | 4096 | Texels a side, every cascade (4096 is 256 MB of video memory for four cascades, 2048 is 64 MB, 8192 is 1 GB) |
 | `DOL_AURORA_SUN_SHADOW_MAP_CASCADES` | 4 | How many cascades (1 to 4) |
 | `DOL_AURORA_SUN_SHADOW_MAP_RANGE` | 1250 | The first cascade's world units from its centre to its edge |
@@ -102,7 +102,8 @@ Turned on by `BLUEWAKE_HD_SUN_SHADOWS=1` (BlueWake's `runtime/host/src/hd_look.c
 | `DOL_AURORA_GAME_SHADOWS` | off with the map | `1` keeps the game's own shadows |
 | `DOL_AURORA_SUN_SHADOW_MAP_DEBUG` | off | `1` shows the shadow term alone (gray outside the maps), `2` to `5` each cascade's map as contour bands, `6` tints the cascades red, green, blue and yellow |
 | `DOL_AURORA_SUN_SHADOW_MAP_TRACE` | off | Logs how many draws the map took, and the sun's direction and elevation with the camera |
-| `BLUEWAKE_HD_PALM_CULL` | off | Palm trees keep drawing (and casting) while their shadow could still reach the view: their cull boxes widened by 2,500 units |
+| `BLUEWAKE_HD_ROOM_CULL` | on with sun shadows on `high` | The room model's culling done by the host: each joint is kept while its box, swept away from the sun by its shadow's length (its height over tan of the sun's elevation, half again plus 500, at most 20,000), reaches the view, so islands and buildings behind the camera keep casting. `0` leaves the game's culling, `1` forces it |
+| `BLUEWAKE_HD_PALM_CULL` | on with sun shadows on `high` | Palm trees keep drawing (and casting) while their shadow could still reach the view: the common palm's cull box set each frame as wide as its shadow is long (same rule as the room), Gale Isle's palms widened by 5,000. `0` or `1` overrides |
 
 Debug tools for testers (separate commits in #42): `DOL_AURORA_SUN_SHADOW_MAP_ALL=1` lets
 alpha-tested draws cast solid (to see which shadows a rule is costing), `DOL_AURORA_SUN_CASTER_LOG=1` says why each
