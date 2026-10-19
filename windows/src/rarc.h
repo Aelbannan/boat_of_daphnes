@@ -3,6 +3,7 @@
 // reverted to the game's).
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -28,8 +29,10 @@ bool ReplaceMembers(std::vector<uint8_t>& arc, const std::vector<uint8_t>& donor
                     const std::function<bool(const std::string&)>& pick, int* replaced);
 
 // Yaz0 (the disc's compression): data expanded in place; true when it was
-// Yaz0 and expanded, false when it is not Yaz0 (unchanged) or is damaged.
-bool Yaz0Expand(std::vector<uint8_t>& data);
+// Yaz0 and expanded, false when it is not Yaz0 (unchanged), is damaged, or declares more than max_size bytes
+// (or more than 140 times its own size: a decompression bomb) -- nothing is allocated for those.
+constexpr size_t kMaxYaz0Output = 48u * 1024u * 1024u;
+bool Yaz0Expand(std::vector<uint8_t>& data, size_t max_size = kMaxYaz0Output);
 
 // The bytes of one member (case ignored); false when the archive cannot be read or has no such file.
 bool Extract(const std::vector<uint8_t>& arc, const std::string& name, std::vector<uint8_t>& out);

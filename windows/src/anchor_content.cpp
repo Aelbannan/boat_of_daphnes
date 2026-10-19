@@ -5,8 +5,10 @@
 
 #include "anchor_content.h"
 
+#include "content_validate.h"
 #include "mods.h"
 #include "rarc.h"
+#include "voice_bank.h"
 
 #define PICOJSON_USE_INT64
 #include "picojson.h"
@@ -14,7 +16,10 @@
 #include "platform/bod_platform.h"
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
+#include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -31,10 +36,11 @@ namespace content {
 namespace {
 
 namespace fs = std::filesystem;
+namespace cv = content_validate;
 
-constexpr size_t kMaxFile = 20u * 1024 * 1024;
-constexpr size_t kMaxPack = 20u * 1024 * 1024;
-constexpr size_t kMaxManifest = 64u * 1024;
+constexpr size_t kMaxFile = cv::kMaxFile;
+constexpr size_t kMaxPack = cv::kMaxPack;
+constexpr size_t kMaxManifest = cv::kMaxManifest;
 constexpr uintmax_t kCacheLimit = 500ull * 1024 * 1024;
 
 std::mutex g_mutex;
@@ -50,7 +56,11 @@ std::string g_published_model = "\x01"; // never a model's name: forces the firs
 std::string g_published_base;
 bool g_publishing = false;
 bool g_was_sharing = false;
+bool g_off_handled = false; // the cache was purged since sharing was last on (once per OFF, also at start)
 unsigned long long g_last_check = 0;
+// Counts the times sharing was turned off. A job that began in an earlier epoch is stale: whatever it downloaded is
+// thrown away, and it writes nothing to the cache.
+unsigned long long g_epoch = 1;
 
 struct Peer {
     std::string hash;
@@ -59,6 +69,40 @@ struct Peer {
 std::map<int, Peer> g_peers;
 std::vector<Ready> g_ready;
 std::vector<int> g_cleared;
+
+std::mutex g_cache_mutex; // the cache folder: stores and the purge do not interleave
+
+// Decoded voice banks by voice id, shared between the players that have the same one. A bank lives as long as a peer
+// holds it; a new one is not decoded when the live ones already hold kMaxBankMemory (the puppet keeps the local bank).
+constexpr size_t kMaxBankMemory = 32u * 1024 * 1024;
+std::mutex g_bank_mutex;
+std::map<std::string, std::weak_ptr<const voice_bank::Bank>> g_banks;
+
+std::shared_ptr<const voice_bank::Bank> bank_for(const std::string& voice_id, const std::vector<uint8_t>& aaf, const std::vector<uint8_t>& aw, size_t* live_bytes) {
+    std::lock_guard<std::mutex> lock(g_bank_mutex);
+    size_t live = 0;
+    for (auto it = g_banks.begin(); it != g_banks.end();) {
+        if (const auto b = it->second.lock()) {
+            if (it->first == voice_id)
+                return b;
+            live += b->Bytes();
+            ++it;
+        } else
+            it = g_banks.erase(it);
+    }
+    if (live_bytes != nullptr)
+        *live_bytes = live;
+    if (live >= kMaxBankMemory)
+        return nullptr;
+    auto bank = std::make_shared<voice_bank::Bank>();
+    std::string why;
+    if (!voice_bank::Build(aaf, aw, *bank, &why)) {
+        std::fprintf(stderr, "[content] the voice bank %.12s could not be decoded: %s\n", voice_id.c_str(), why.c_str());
+        return nullptr;
+    }
+    g_banks[voice_id] = bank;
+    return bank;
+}
 
 fs::path cache_dir() {
     static const fs::path dir = [] {
@@ -109,16 +153,39 @@ void enqueue(std::function<void()> job) {
     g_wake.notify_one();
 }
 
+bool still_on(unsigned long long epoch) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return epoch == g_epoch && g_was_sharing;
+}
+
 // ----------------------------------------------------------------- HTTP ----
 
 using Http = bodplat::HttpResult;
 
+// BLUEWAKE_TEST_CONTENT_DELAY=<ms> (testing): every download takes that much longer, so a scenario can turn sharing
+// off while one is in flight.
+unsigned test_delay_ms() {
+    static const unsigned ms = [] {
+        const char* v = std::getenv("BLUEWAKE_TEST_CONTENT_DELAY");
+        return v != nullptr ? static_cast<unsigned>(std::strtoul(v, nullptr, 10)) : 0u;
+    }();
+    return ms;
+}
+
 Http request(const std::string& base, const char* method, const std::string& path, const std::vector<uint8_t>* body,
              size_t max_response) {
-    return bodplat::HttpRequest(base, method, path, body, max_response);
+    std::fprintf(stderr, "[content] %s %.60s\n", method, path.c_str());
+    Http h = bodplat::HttpRequest(base, method, path, body, max_response);
+    if (test_delay_ms() != 0 && std::strcmp(method, "GET") == 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(test_delay_ms()));
+    return h;
 }
 
 // ---------------------------------------------------------------- cache ----
+// Files here are named by the SHA-256 of their bytes (64 hex digits, checked) and nothing else: nothing a peer says
+// is ever used as a file name.
+
+bool is_hex64(const std::string& s) { return cv::IsHex64(s); }
 
 bool read_file(const fs::path& p, std::vector<uint8_t>& out) {
     std::ifstream in(p, std::ios::binary);
@@ -135,6 +202,7 @@ void touch(const fs::path& p) {
 
 // Oldest files go first until the cache fits.
 void trim_cache() {
+    std::lock_guard<std::mutex> lock(g_cache_mutex);
     std::error_code ec;
     std::vector<std::pair<fs::file_time_type, fs::path>> files;
     uintmax_t total = 0;
@@ -156,7 +224,13 @@ void trim_cache() {
     }
 }
 
-void store(const std::string& hash, const std::vector<uint8_t>& bytes) {
+// Writes a downloaded blob, unless sharing was turned off since its download began (the cache was purged then).
+void store(const std::string& hash, const std::vector<uint8_t>& bytes, unsigned long long epoch) {
+    if (!is_hex64(hash))
+        return;
+    std::lock_guard<std::mutex> lock(g_cache_mutex);
+    if (!still_on(epoch)) // the epoch was raised before the purge, which waits for this lock: a stale store never lands
+        return;
     std::error_code ec;
     fs::create_directories(cache_dir(), ec);
     const fs::path tmp = cache_dir() / (hash + ".part");
@@ -170,13 +244,9 @@ void store(const std::string& hash, const std::vector<uint8_t>& bytes) {
         fs::remove(tmp, ec);
 }
 
-bool is_hex64(const std::string& s) {
-    return s.size() == 64 && std::all_of(s.begin(), s.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
-}
-
 // A file by hash: the cache's, or downloaded and checked against the hash and size.
-bool fetch_blob(const std::string& base, const std::string& hash, size_t size, std::vector<uint8_t>& out) {
-    if (!is_hex64(hash) || size > kMaxFile)
+bool fetch_blob(const std::string& base, const std::string& hash, size_t size, std::vector<uint8_t>& out, unsigned long long epoch) {
+    if (!is_hex64(hash) || size > kMaxFile || !still_on(epoch))
         return false;
     const fs::path cached = cache_dir() / hash;
     if (read_file(cached, out) && out.size() == size && Sha256Hex(out.data(), out.size()) == hash) {
@@ -184,32 +254,60 @@ bool fetch_blob(const std::string& base, const std::string& hash, size_t size, s
         return true;
     }
     const Http h = request(base, "GET", "/content/" + hash, nullptr, kMaxFile + 1024);
+    if (!still_on(epoch)) // turned off while it downloaded: thrown away
+        return false;
     if (!h.ok || h.status != 200 || h.body.size() != size || Sha256Hex(h.body.data(), h.body.size()) != hash)
         return false;
     out = h.body;
-    store(hash, out);
+    store(hash, out, epoch);
     trim_cache();
     return true;
 }
 
 // ------------------------------------------------------------ publishing ----
 
+// What the player's choice is made of, as a manifest.
 void publish(std::string base, std::string model) {
     std::string name;
     std::vector<mods::PackFile> files;
+    mods::SharedParts parts;
     std::string hash;
-    if (!model.empty() && mods::ActivePlayerPack(name, files)) {
-        // The server stores only Wind Waker archives (RARC, plain or Yaz0), so a pack is shared as its Link.arc
-        // and any equipment archives: metadata, colour masks and voice files stay on this PC (voice banks have
-        // no header to check, and a puppet cannot play them yet).
-        files.erase(std::remove_if(files.begin(), files.end(),
-                                   [](const mods::PackFile& f) {
-                                       const auto& b = f.bytes;
-                                       const bool archive = b.size() >= 16 && (std::equal(b.begin(), b.begin() + 4, "RARC") || std::equal(b.begin(), b.begin() + 4, "Yaz0"));
-                                       return !archive || (f.role != "model" && f.role != "equipment");
-                                   }),
-                    files.end());
-        // Over the pack limit: the voice goes first, then the equipment.
+    if (!model.empty() && mods::ActivePlayerPack(name, files, parts)) {
+        // Our own files are checked as a peer would check them: a damaged mod is not sent (the server would refuse it).
+        std::vector<mods::PackFile> kept;
+        for (auto& f : files) {
+            std::string why;
+            bool ok = false;
+            if (f.role == "model" || f.role == "equipment") {
+                std::vector<uint8_t> copy = f.bytes;
+                ok = cv::ExpandArchive(copy, &why);
+            } else if (f.path == "sound/JaiInit.aaf") {
+                ok = cv::ValidateAaf(f.bytes, &why);
+            } else {
+                ok = cv::ValidateWave(f.bytes, &why);
+            }
+            if (ok)
+                kept.push_back(std::move(f));
+            else
+                std::fprintf(stderr, "[content] %s %s is not shared: %s\n", name.c_str(), f.path.c_str(), why.c_str());
+        }
+        files = std::move(kept);
+        const auto has = [&](const char* role) {
+            return std::any_of(files.begin(), files.end(), [&](const mods::PackFile& f) { return f.role == role; });
+        };
+        if (!has("model")) {
+            parts.link = false;
+            if (parts.equipment == "model")
+                parts.equipment.clear();
+        }
+        if (parts.equipment == "equipment" && !has("equipment"))
+            parts.equipment.clear();
+        const size_t voice_files = static_cast<size_t>(std::count_if(files.begin(), files.end(), [](const mods::PackFile& f) { return f.role == "voice"; }));
+        if (voice_files < 2) {
+            files.erase(std::remove_if(files.begin(), files.end(), [](const mods::PackFile& f) { return f.role == "voice"; }), files.end());
+            parts.voice = false;
+        }
+        // Over the pack limit: the voice goes first, then the separate equipment.
         auto total = [&] {
             size_t t = 0;
             for (const auto& f : files)
@@ -217,32 +315,18 @@ void publish(std::string base, std::string model) {
             return t;
         };
         for (const char* drop : {"voice", "equipment"})
-            if (total() > kMaxPack)
+            if (total() > kMaxPack) {
                 files.erase(std::remove_if(files.begin(), files.end(), [&](const mods::PackFile& f) { return f.role == drop; }), files.end());
+                if (std::string(drop) == "voice")
+                    parts.voice = false;
+                else if (parts.equipment == "equipment")
+                    parts.equipment.clear();
+            }
         if (total() <= kMaxPack && !files.empty()) {
             std::sort(files.begin(), files.end(), [](const mods::PackFile& a, const mods::PackFile& b) { return a.path < b.path; });
-            picojson::array list;
-            std::vector<std::pair<std::string, const mods::PackFile*>> sums;
-            for (const auto& f : files) {
-                picojson::object o;
-                const std::string h = Sha256Hex(f.bytes.data(), f.bytes.size());
-                o["path"] = picojson::value(f.path);
-                o["role"] = picojson::value(f.role);
-                o["sha256"] = picojson::value(h);
-                o["size"] = picojson::value(static_cast<int64_t>(f.bytes.size()));
-                list.push_back(picojson::value(o));
-                sums.emplace_back(h, &f);
-            }
-            picojson::object m;
-            m["v"] = picojson::value(int64_t{1});
-            m["name"] = picojson::value(name.substr(0, 60));
-            m["files"] = picojson::value(list);
-            const std::string text = picojson::value(m).serialize();
-            const std::vector<uint8_t> manifest(text.begin(), text.end());
-            const std::string manifest_hash = Sha256Hex(manifest.data(), manifest.size());
-            bool ok = manifest.size() <= kMaxManifest;
-            // Only what the server lacks goes up.
-            auto upload = [&](const std::string& h, const std::vector<uint8_t>& bytes, const char* kind) {
+            // Only what the server lacks goes up. The voice is optional: a server that does not take it (an older one)
+            // still gets the body and the equipment.
+            const auto upload = [&](const std::string& h, const std::vector<uint8_t>& bytes, const char* kind) {
                 const Http head = request(base, "HEAD", "/content/" + h, nullptr, 0);
                 if (head.ok && head.status == 200)
                     return true;
@@ -253,13 +337,49 @@ void publish(std::string base, std::string model) {
                 }
                 return true;
             };
-            for (const auto& [h, f] : sums)
-                if (ok && !upload(h, f->bytes, nullptr))
+            bool ok = true;
+            picojson::array list;
+            for (auto it = files.begin(); it != files.end();) {
+                const std::string h = Sha256Hex(it->bytes.data(), it->bytes.size());
+                const char* kind = it->role == "voice" ? (it->path == "sound/JaiInit.aaf" ? "aaf" : "wave") : nullptr;
+                if (!upload(h, it->bytes, kind)) {
+                    if (it->role == "voice") { // the voice is dropped altogether
+                        parts.voice = false;
+                        for (auto v = list.begin(); v != list.end();)
+                            v = v->get("role").to_str() == "voice" ? list.erase(v) : v + 1;
+                        it = files.erase(std::remove_if(files.begin(), files.end(), [](const mods::PackFile& f) { return f.role == "voice"; }), files.end());
+                        continue;
+                    }
                     ok = false;
-            if (ok && upload(manifest_hash, manifest, "manifest")) {
-                hash = manifest_hash;
-                std::fprintf(stderr, "[content] sharing %s: %zu files, %zu bytes, manifest %.12s\n", name.c_str(), files.size(), total(),
-                             hash.c_str());
+                    break;
+                }
+                picojson::object o;
+                o["path"] = picojson::value(it->path);
+                o["role"] = picojson::value(it->role);
+                o["sha256"] = picojson::value(h);
+                o["size"] = picojson::value(static_cast<int64_t>(it->bytes.size()));
+                list.push_back(picojson::value(o));
+                ++it;
+            }
+            if (ok && !list.empty()) {
+                picojson::object p;
+                p["link"] = picojson::value(parts.link);
+                p["equipment"] = picojson::value(parts.equipment);
+                p["voice"] = picojson::value(parts.voice);
+                picojson::object m;
+                m["v"] = picojson::value(int64_t{1});
+                m["name"] = picojson::value(name.substr(0, 60));
+                m["files"] = picojson::value(list);
+                m["parts"] = picojson::value(p);
+                const std::string text = picojson::value(m).serialize();
+                const std::vector<uint8_t> manifest(text.begin(), text.end());
+                const std::string manifest_hash = Sha256Hex(manifest.data(), manifest.size());
+                if (manifest.size() <= kMaxManifest && upload(manifest_hash, manifest, "manifest")) {
+                    hash = manifest_hash;
+                    std::fprintf(stderr, "[content] sharing %s: link=%d equipment=%s voice=%d, %zu files, %zu bytes, manifest %.12s\n", name.c_str(),
+                                 parts.link ? 1 : 0, parts.equipment.empty() ? "game" : parts.equipment.c_str(), parts.voice ? 1 : 0, files.size(),
+                                 total(), hash.c_str());
+                }
             }
         } else
             std::fprintf(stderr, "[content] %s is over %zu MB: not shared\n", name.c_str(), kMaxPack >> 20);
@@ -274,70 +394,113 @@ void publish(std::string base, std::string model) {
 
 // -------------------------------------------------------------- fetching ----
 
-void fetch_peer(std::string base, int id, std::string hash) {
-    std::vector<uint8_t> body;
-    bool ok = false;
+void fetch_peer(std::string base, int id, std::string hash, unsigned long long epoch) {
+    Ready ready;
+    ready.id = id;
+    ready.hash = hash;
+    bool any = false;
     std::vector<uint8_t> manifest;
     std::fprintf(stderr, "[content] fetching manifest %.12s for player %d\n", hash.c_str(), id);
-    if ([&] {
-            // The manifest's size is not known: it is checked by its hash alone.
-            const fs::path cached = cache_dir() / hash;
-            if (read_file(cached, manifest) && manifest.size() <= kMaxManifest && Sha256Hex(manifest.data(), manifest.size()) == hash) {
-                touch(cached);
-                return true;
-            }
-            const Http h = request(base, "GET", "/content/" + hash, nullptr, kMaxManifest + 1);
-            if (!h.ok || h.status != 200 || h.body.empty() || Sha256Hex(h.body.data(), h.body.size()) != hash)
-                return false;
-            manifest = h.body;
-            store(hash, manifest);
+    const bool have_manifest = [&] {
+        if (!still_on(epoch))
+            return false;
+        // The manifest's size is not known: it is checked by its hash alone.
+        const fs::path cached = cache_dir() / hash;
+        if (read_file(cached, manifest) && manifest.size() <= kMaxManifest && Sha256Hex(manifest.data(), manifest.size()) == hash) {
+            touch(cached);
             return true;
-        }()) {
-        picojson::value v;
-        const std::string text(manifest.begin(), manifest.end());
-        if (picojson::parse(v, text).empty() && v.is<picojson::object>() && v.contains("files") && v.get("files").is<picojson::array>()) {
-            size_t total = 0;
-            std::string link_hash;
-            size_t link_size = 0;
-            for (const auto& e : v.get("files").get<picojson::array>()) {
-                if (!e.is<picojson::object>() || !e.contains("path") || !e.contains("sha256") || !e.contains("size") || !e.get("size").is<int64_t>())
-                    continue;
-                const std::string path = e.get("path").to_str();
-                const int64_t size = e.get("size").get<int64_t>();
-                if (size < 0 || static_cast<size_t>(size) > kMaxFile || path.find("..") != std::string::npos)
-                    continue;
-                total += static_cast<size_t>(size);
-                if (path == "Link.arc") {
-                    link_hash = e.get("sha256").to_str();
-                    link_size = static_cast<size_t>(size);
+        }
+        const Http h = request(base, "GET", "/content/" + hash, nullptr, kMaxManifest + 1);
+        if (!still_on(epoch) || !h.ok || h.status != 200 || h.body.empty() || Sha256Hex(h.body.data(), h.body.size()) != hash)
+            return false;
+        manifest = h.body;
+        store(hash, manifest, epoch);
+        return true;
+    }();
+    if (have_manifest) {
+        cv::Manifest m;
+        std::string why;
+        if (!cv::ParseManifest(std::string(manifest.begin(), manifest.end()), m, &why)) {
+            std::fprintf(stderr, "[content] manifest %.12s is refused: %s\n", hash.c_str(), why.c_str());
+        } else {
+            ready.name = m.name;
+            const auto find = [&](const char* path) -> const cv::File* {
+                for (const auto& f : m.files)
+                    if (f.path == path)
+                        return &f;
+                return nullptr;
+            };
+            // An older client's manifest has no parts: its Link.arc is the body, and only the body (as before).
+            const bool want_body = !m.has_parts || m.link;
+            const std::string equip_from = m.has_parts ? m.equipment : "";
+            // Archives are fetched once and used for both parts when they are the same file.
+            std::map<std::string, std::vector<uint8_t>> archives; // path -> validated, expanded
+            const auto archive = [&](const char* path) -> const std::vector<uint8_t>* {
+                const auto have = archives.find(path);
+                if (have != archives.end())
+                    return &have->second;
+                const cv::File* f = find(path);
+                std::vector<uint8_t> bytes;
+                std::string why2;
+                if (f == nullptr || !fetch_blob(base, f->sha256, f->size, bytes, epoch))
+                    return nullptr;
+                if (!cv::ExpandArchive(bytes, &why2)) {
+                    std::fprintf(stderr, "[content] %s %.12s from player %d is refused: %s\n", path, f->sha256.c_str(), id, why2.c_str());
+                    return nullptr;
+                }
+                return &(archives[path] = std::move(bytes));
+            };
+            if (want_body) {
+                if (const auto* arc = archive("Link.arc")) {
+                    if (cv::ExtractBody(*arc, ready.body, &why)) {
+                        cv::ExtractBodyParts(*arc, ready.hands, ready.hair);
+                        ready.has_body = true;
+                        any = true;
+                    }
                 }
             }
-            std::fprintf(stderr, "[content] manifest %.12s: %zu bytes of files, Link.arc %.12s (%zu bytes)\n", hash.c_str(), total, link_hash.c_str(), link_size);
-            // Only the body model is used for a puppet (the voice, equipment and colors are not yet): only it is fetched.
-            std::vector<uint8_t> arc;
-            if (total <= kMaxPack && !link_hash.empty() && fetch_blob(base, link_hash, link_size, arc)) {
-                rarc::Yaz0Expand(arc);
-                ok = rarc::ValidateLinkArc(arc, &body);
-                if (!ok)
-                    std::fprintf(stderr, "[content] Link.arc %.12s is not a usable Link.arc (%zu bytes)\n", link_hash.c_str(), arc.size());
+            if (!equip_from.empty()) {
+                const auto* arc = archive(equip_from == "model" ? "Link.arc" : "equipment/Link.arc");
+                if (arc != nullptr && cv::ExtractEquipment(*arc, ready.equipment, &why)) {
+                    ready.has_equipment = true;
+                    any = true;
+                }
             }
+            if (m.has_parts && m.voice) {
+                const cv::File *aaf = find("sound/JaiInit.aaf"), *wave = find("sound/voice_0.aw"), *ganon = find("sound/GanonT_0.aw");
+                std::vector<uint8_t> a, w, g;
+                std::string r1, r2;
+                if (aaf && wave && fetch_blob(base, aaf->sha256, aaf->size, a, epoch) && fetch_blob(base, wave->sha256, wave->size, w, epoch) &&
+                    cv::ValidateAaf(a, &r1) && cv::ValidateWave(w, &r2) &&
+                    (ganon == nullptr || (fetch_blob(base, ganon->sha256, ganon->size, g, epoch) && cv::ValidateWave(g, &r2)))) {
+                    ready.voice = aaf->sha256.substr(0, 16) + wave->sha256.substr(0, 16);
+                    size_t live = 0;
+                    ready.bank = bank_for(ready.voice, a, w, &live);
+                    std::fprintf(stderr, "[content] player %d's voice %s: %s (%zu bytes of PCM in use by banks)\n", id, ready.voice.c_str(),
+                                 ready.bank ? "decoded" : "not decoded, the local bank is used", live);
+                    any = true;
+                } else
+                    std::fprintf(stderr, "[content] the voice of player %d could not be used (%s %s)\n", id, r1.c_str(), r2.c_str());
+            }
+            std::fprintf(stderr, "[content] manifest %.12s (%s): body %d, equipment %d (%zu models), voice %s\n", hash.c_str(), m.name.c_str(),
+                         ready.has_body ? 1 : 0, ready.has_equipment ? 1 : 0, ready.equipment.size(), ready.voice.empty() ? "game's" : ready.voice.c_str());
         }
     }
     std::lock_guard<std::mutex> lock(g_mutex);
+    if (epoch != g_epoch || !g_was_sharing) { // sharing was turned off (or off and on) while this ran: nothing is applied
+        std::fprintf(stderr, "[content] content %.12s for player %d is thrown away: sharing was turned off while it downloaded\n", hash.c_str(), id);
+        return;
+    }
     auto it = g_peers.find(id);
     if (it != g_peers.end() && it->second.hash == hash) {
         it->second.fetching = false;
-        it->second.done = ok;
-        it->second.failed = !ok;
-        if (ok) {
-            Ready r;
-            r.id = id;
-            r.hash = hash;
-            r.body = std::move(body);
-            g_ready.push_back(std::move(r));
-            std::fprintf(stderr, "[content] player %d's model %.12s is ready\n", id, hash.c_str());
+        it->second.done = any;
+        it->second.failed = !any;
+        if (any) {
+            g_ready.push_back(std::move(ready));
+            std::fprintf(stderr, "[content] player %d's content %.12s is ready\n", id, hash.c_str());
         } else
-            std::fprintf(stderr, "[content] player %d's content %.12s could not be used: their puppet is Link's own\n", id, hash.c_str());
+            std::fprintf(stderr, "[content] player %d's content %.12s could not be used: their puppet is stock\n", id, hash.c_str());
     }
 }
 
@@ -356,9 +519,23 @@ std::string Sha256Hex(const uint8_t* data, size_t size) {
     return out;
 }
 
+int PurgeCache() {
+    std::lock_guard<std::mutex> lock(g_cache_mutex);
+    std::error_code ec;
+    int removed = 0;
+    // Only regular files directly in the cache folder (named by hash, or .part): never a path from anywhere else.
+    for (fs::directory_iterator it(cache_dir(), ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code e2;
+        if (it->is_regular_file(e2) && fs::remove(it->path(), e2))
+            ++removed;
+    }
+    return removed;
+}
+
 void Tick(const std::string& http_base, bool share, bool connected) {
     const unsigned long long now = bodplat::TickMs();
     std::string model;
+    bool purge = false;
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_base = http_base;
@@ -375,21 +552,34 @@ void Tick(const std::string& http_base, bool share, bool connected) {
                     p = Peer{};
                 }
                 g_ready.clear();
+                ++g_epoch; // downloads and uploads under way are stale
             }
             g_was_sharing = false;
-            return;
+            if (!share && !g_off_handled) {
+                g_off_handled = true;
+                purge = true;
+            }
+        } else {
+            g_off_handled = false;
+            g_was_sharing = true;
+            if (g_publishing || now - g_last_check < 1500)
+                return;
+            g_last_check = now;
+            model = mods::ActiveModel();
+            if (model == g_published_model && http_base == g_published_base)
+                return;
+            g_published_model = model;
+            g_published_base = http_base;
+            g_publishing = true;
         }
-        g_was_sharing = true;
-        if (g_publishing || now - g_last_check < 1500)
-            return;
-        g_last_check = now;
-        model = mods::ActiveModel();
-        if (model == g_published_model && http_base == g_published_base)
-            return;
-        g_published_model = model;
-        g_published_base = http_base;
-        g_publishing = true;
     }
+    if (purge) {
+        const int n = PurgeCache();
+        std::fprintf(stderr, "[content] sharing is off: %d cached files of other players removed\n", n);
+        return;
+    }
+    if (!share || !connected)
+        return;
     enqueue([http_base, model] { publish(http_base, model); });
 }
 
@@ -397,6 +587,8 @@ std::string LocalHash() {
     std::lock_guard<std::mutex> lock(g_mutex);
     return g_local_hash;
 }
+
+std::string LocalVoiceId() { return mods::LoadedVoiceId(); }
 
 bool LocalChanged() {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -407,6 +599,7 @@ bool LocalChanged() {
 
 void Want(int id, const std::string& hash) {
     std::string base;
+    unsigned long long epoch = 0;
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         if (!g_was_sharing)
@@ -422,8 +615,9 @@ void Want(int id, const std::string& hash) {
             return;
         p.fetching = true;
         base = g_base;
+        epoch = g_epoch;
     }
-    enqueue([base, id, hash] { fetch_peer(base, id, hash); });
+    enqueue([base, id, hash, epoch] { fetch_peer(base, id, hash, epoch); });
 }
 
 void Forget(int id) {

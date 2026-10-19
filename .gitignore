@@ -68,3 +68,6 @@ server/anchor/.wrangler/
 
 # Where the developer tools find your disc and source checkouts (scripts/bod_paths.py)
 /local_paths.json
+
+# Working files of this checkout: test fixtures, saved modules, release checks, tools (never committed)
+/local/

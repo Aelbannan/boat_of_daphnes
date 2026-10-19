@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <vector>
+#include <mutex>
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_init.h>
@@ -272,8 +273,71 @@ bool retry_audio_open(bool force) {
 }
 } // namespace gx_aurora
 
+// Sounds the host adds to the game's output (dol_aurora_audio_mix_voice): each is mixed into the pushes as they come, so it
+// keeps the game's own clock, and it is in what the sink capture records.
+struct MixVoice {
+    std::vector<int16_t> pcm;
+    double pos = 0.0, step = 1.0;
+    float left = 0.0f, right = 0.0f;
+};
+std::mutex g_mix_mutex;
+std::vector<MixVoice> g_mix_voices;
+std::vector<s16> g_mix_out;
+u64 g_mix_frames; // frames pushed so far (what the sink capture counts, when nothing is stretched or dropped)
+
+// samples with the playing sounds added (the same pointer when none play).
+const s16* mix_voices(const s16* samples, u32 frames) {
+    std::lock_guard<std::mutex> lock(g_mix_mutex);
+    g_mix_frames += frames;
+    if (g_mix_voices.empty())
+        return samples;
+    g_mix_out.assign(samples, samples + static_cast<size_t>(frames) * 2);
+    // The output rate may not be 32 kHz: a sound at 32 kHz then advances by the ratio of the rates.
+    const double rate_step = 32000.0 / static_cast<double>(gx_aurora::g_audio_sample_rate ? gx_aurora::g_audio_sample_rate : 32000);
+    for (MixVoice& v : g_mix_voices) {
+        const double step = v.step * rate_step;
+        for (u32 i = 0; i < frames; ++i) {
+            const size_t k = static_cast<size_t>(v.pos);
+            if (k + 1 >= v.pcm.size())
+                break;
+            const double f = v.pos - static_cast<double>(k);
+            const double x = v.pcm[k] + (v.pcm[k + 1] - v.pcm[k]) * f;
+            const s32 l = g_mix_out[2 * i] + static_cast<s32>(x * v.left);
+            const s32 r = g_mix_out[2 * i + 1] + static_cast<s32>(x * v.right);
+            g_mix_out[2 * i] = static_cast<s16>(std::max(-32768, std::min(32767, l)));
+            g_mix_out[2 * i + 1] = static_cast<s16>(std::max(-32768, std::min(32767, r)));
+            v.pos += step;
+        }
+    }
+    static int logged_done;
+    for (const MixVoice& v : g_mix_voices)
+        if (static_cast<size_t>(v.pos) + 1 >= v.pcm.size() && logged_done++ < 60)
+            std::fprintf(stderr, "[audio] mixed voice done: %zu samples, gains %.3f %.3f, step %.2f, push of %u frames, rate %u\n", v.pcm.size(),
+                         static_cast<double>(v.left), static_cast<double>(v.right), v.step, frames, static_cast<unsigned>(gx_aurora::g_audio_sample_rate));
+    g_mix_voices.erase(std::remove_if(g_mix_voices.begin(), g_mix_voices.end(),
+                                      [](const MixVoice& v) { return static_cast<size_t>(v.pos) + 1 >= v.pcm.size(); }),
+                       g_mix_voices.end());
+    return g_mix_out.data();
+}
+
 extern "C" {
-// Settings > Audio > Master Volume: 0 (silent) to 1 (the game's own level).
+
+void dol_aurora_audio_mix_voice(const int16_t* mono, uint32_t frames, float gain_left, float gain_right, float step) {
+    if (mono == nullptr || frames < 2 || frames > (1u << 20) || !(step > 0.05f && step < 20.0f))
+        return;
+    MixVoice v;
+    v.pcm.assign(mono, mono + frames);
+    v.step = step;
+    v.left = gain_left;
+    v.right = gain_right;
+    std::lock_guard<std::mutex> lock(g_mix_mutex);
+    static int logged_start;
+    if (logged_start++ < 60)
+        std::fprintf(stderr, "[audio] voice starts at stream frame %llu\n", static_cast<unsigned long long>(g_mix_frames));
+    if (g_mix_voices.size() < 16)
+        g_mix_voices.push_back(std::move(v));
+}
+
 void dol_aurora_audio_set_master_volume(float volume) {
     g_master_volume.store(volume < 0.0f ? 0.0f : volume > 1.0f ? 1.0f : volume, std::memory_order_relaxed);
 }
@@ -319,8 +383,9 @@ void dol_aurora_audio_interval(DolAuroraAudioStats* out) {
     st = IntervalStats{};
 }
 
-void aurora_backend_audio_push(const s16* samples, u32 frames) {
-    if (samples == nullptr || frames == 0) return;
+void aurora_backend_audio_push(const s16* game_samples, u32 frames) {
+    if (game_samples == nullptr || frames == 0) return;
+    const s16* samples = game_samples;
     gx_aurora::recover_audio_output();
     gx_aurora::g_audio_push_count++;
     if (!gx_aurora::retry_audio_open(false)) {
@@ -437,6 +502,8 @@ void aurora_backend_audio_push(const s16* samples, u32 frames) {
                      gx_aurora::g_audio_playing ? 1u : 0u, nonzero_samples, peak_sample,
                      sample_hash, gx_aurora::g_audio_throttle_count);
     }
+    // The host's own sounds are mixed in only now: a push the paths above drop must not use up a sound's samples.
+    samples = mix_voices(samples, frames);
     const s16* out_samples = samples;
     int out_bytes = bytes;
     if (stretch_enabled() && queued >= 0) {

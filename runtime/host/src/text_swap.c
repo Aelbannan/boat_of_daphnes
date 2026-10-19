@@ -1,4 +1,4 @@
-// Crenando: see text_swap.h.
+// Crenando and Player Gender (text_swap.h): the message file's entries are pointed at rewritten copies of their texts.
 #include "text_swap.h"
 
 #include <stdio.h>
@@ -6,9 +6,9 @@
 #include <string.h>
 
 enum {
-    BUF_BYTES = 0xA000,      // the English file's 58 messages that name Ganon: about 10 KB, 14 KB substituted
+    BUF_BYTES = 0x10000,     // the English file's 58 messages that name Ganon (about 16 KB substituted) and its 238 that speak of the player (37 KB)
     TEXT_LIMIT = 4096,       // the longest message read
-    MAX_RECORDS = 512,
+    MAX_RECORDS = 1024,
     SCAN_EVERY = 60,         // retraces between looks for message files
     FN_ARCHIVE_HEAP = 0x80011AB4u, // mDoExt_getArchiveHeap()
     FN_HEAP_ALLOC = 0x802B0434u,   // JKRHeap::alloc(size, alignment, heap)
@@ -21,11 +21,18 @@ typedef struct Record {
     u32 data;   // DAT1 + 8
     u32 orig;   // the entry's own text offset
     u32 mine;   // the offset to the substituted text in g_buf
+    u32 slot;   // where its copy lives in g_buf (guest address) and the room there: a message file loaded over is
+    u32 cap;    // rewritten into the same room, so a seed switched back and forth does not use the buffer up
+    u32 hash;   // of the entry's own text (a message file loaded over at the same address is not mistaken for this one)
     u16 id;
     bool seen;
 } Record;
 
-static volatile bool g_on;
+static volatile bool g_crenando; // Ganondorf -> Crenando
+static volatile bool g_female;   // Player Gender = Female: the texts that speak of the player (player_gender_rules.inc)
+static bool g_on;                // either of the two, as of this retrace
+static unsigned g_mode;          // the switches as of this retrace (bit 0 Crenando, bit 1 Female); one scan sees one value
+static unsigned g_rec_mode;      // what the records were made for (the same bits)
 static bool g_applied;           // the entries hold the substituted offsets
 static u32 g_buf;                // guest address of the buffer, 0 = none
 static u32 g_buf_used;
@@ -35,12 +42,70 @@ static u32 g_rec_count;
 static u32 g_frame;
 static u32 g_fail_alloc;
 static bool g_log_texts;
-enum { TESTS = 8 };
-static struct { u32 id, at; bool done; } g_tests[TESTS];
+enum { TESTS = 48 };
+static struct { u32 id, at; bool done, show; } g_tests[TESTS];
 static u32 g_test_count;
 
-void bluewake_text_swap_enable(bool on) { g_on = on; }
-bool bluewake_text_swap_enabled(void) { return g_on; }
+// The explicit list of messages that speak of the player and the words to use for a female player: {message id, phrase,
+// replacement}, ids ascending, per id the longest phrase first (scripts/windows/gen_player_gender_rules.py).
+typedef struct GenderRule {
+    u16 id;
+    const char* find;
+    const char* repl;
+} GenderRule;
+static const GenderRule k_gender[] = {
+#include "player_gender_rules.inc"
+};
+enum { GENDER_COUNT = sizeof k_gender / sizeof k_gender[0] };
+
+void bluewake_text_swap_enable(bool on) { g_crenando = on; }
+void bluewake_text_swap_set_female(bool on) { g_female = on; }
+bool bluewake_text_swap_enabled(void) { return g_crenando || g_female; }
+
+// The first rule of a message (NULL when it speaks of no one but others) and how many follow it.
+static const GenderRule* gender_rules(u16 id, u32* count) {
+    u32 lo = 0, hi = GENDER_COUNT;
+    while (lo < hi) {
+        const u32 mid = (lo + hi) / 2u;
+        if (k_gender[mid].id < id)
+            lo = mid + 1u;
+        else
+            hi = mid;
+    }
+    u32 n = 0;
+    while (lo + n < GENDER_COUNT && k_gender[lo + n].id == id)
+        ++n;
+    *count = n;
+    return n != 0u ? &k_gender[lo] : NULL;
+}
+
+static bool word_char(u8 c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '\''; }
+static bool alnum_char(u8 c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+
+// The first rule that fits at in[i] (whole word, as the generator checked it); `prev` is the text byte before it, 0 after a
+// control code or at the start.
+static const GenderRule* gender_match(const GenderRule* rules, u32 count, const u8* in, u32 n, u32 i, u8 prev, u32* len) {
+    for (u32 k = 0; k < count; ++k) {
+        const char* f = rules[k].find;
+        const u32 fl = (u32)strlen(f);
+        if (fl == 0u || n - i < fl || memcmp(in + i, f, fl) != 0)
+            continue;
+        if (alnum_char((u8)f[0]) && word_char(prev))
+            continue;
+        if (alnum_char((u8)f[fl - 1u]) && i + fl < n && in[i + fl] != 0x1Au && alnum_char(in[i + fl]))
+            continue;
+        *len = fl;
+        return &rules[k];
+    }
+    return NULL;
+}
+
+static u32 hash_bytes(const u8* p, u32 n) {
+    u32 h = 2166136261u;
+    for (u32 i = 0; i < n; ++i)
+        h = (h ^ p[i]) * 16777619u;
+    return h;
+}
 
 static bool guest_ptr(u32 p) { return p >= 0x80000000u && p < 0x81800000u; }
 
@@ -49,9 +114,11 @@ static u32 be16(const u8* p) { return (u32)p[0] << 8 | p[1]; }
 
 // The substitution of one message (control codes copied byte for byte). Returns the new length (without the NUL), or
 // (u32)-1 when nothing changes or it does not fit.
-static u32 substitute(const u8* in, u32 n, u8* out, u32 cap) {
-    u32 o = 0;
+static u32 substitute(u16 id, const u8* in, u32 n, u8* out, u32 cap, bool crenando, bool female) {
+    u32 o = 0, rule_count = 0;
     bool changed = false;
+    u8 prev = 0;
+    const GenderRule* rules = female ? gender_rules(id, &rule_count) : NULL;
     for (u32 i = 0; i < n;) {
         if (in[i] == 0x1Au) { // a control code: its own length, copied whole
             const u32 len = i + 1u < n ? in[i + 1u] : 0u;
@@ -60,11 +127,29 @@ static u32 substitute(const u8* in, u32 n, u8* out, u32 cap) {
             memcpy(out + o, in + i, len);
             o += len;
             i += len;
+            prev = 0;
             continue;
+        }
+        if (rules != NULL) {
+            u32 flen = 0;
+            const GenderRule* r = gender_match(rules, rule_count, in, n, i, prev, &flen);
+            if (r != NULL) {
+                const u32 rl = (u32)strlen(r->repl);
+                if (o + rl + 1u >= cap)
+                    return (u32)-1;
+                memcpy(out + o, r->repl, rl);
+                o += rl;
+                prev = (u8)r->repl[rl - 1u];
+                i += flen;
+                changed = true;
+                continue;
+            }
         }
         u32 skip = 0;
         const char* put = "Crenando";
-        if (n - i >= 9u && memcmp(in + i, "Ganondorf", 9) == 0) {
+        if (!crenando) {
+            skip = 0;
+        } else if (n - i >= 9u && memcmp(in + i, "Ganondorf", 9) == 0) {
             skip = 9;
         } else if (n - i >= 9u && memcmp(in + i, "GANONDORF", 9) == 0) {
             skip = 9;
@@ -81,11 +166,13 @@ static u32 substitute(const u8* in, u32 n, u8* out, u32 cap) {
             memcpy(out + o, put, 8);
             o += 8u;
             i += skip;
+            prev = (u8)put[7];
             changed = true;
             continue;
         }
         if (o + 1u >= cap)
             return (u32)-1;
+        prev = in[i];
         out[o++] = in[i++];
     }
     if (!changed)
@@ -172,7 +259,7 @@ static void scan_file(CPUState* cpu, u32 bmg) {
         return;
     const u32 data = dat + 8u;
     u32 patched = 0;
-    static u8 out[TEXT_LIMIT + 64u];
+    static u8 out[TEXT_LIMIT + 1024u];
     for (u32 i = 0; i < entries; ++i) {
         const u32 entry = inf + 16u + i * esize;
         const u32 off = be32(ram + entry - 0x80000000u);
@@ -184,16 +271,27 @@ static void scan_file(CPUState* cpu, u32 bmg) {
                 continue;
             }
             if (off == r->orig && g_buf != 0u) { // put back (while it was off, or by a reload): ours again
-                mem_write32(cpu, entry, r->mine);
-                r->seen = true;
-                ++patched;
-                continue;
+                // ...unless a different file now sits at this address (a randomizer seed's message file, mounted again)
+                const u32 again = data + off;
+                const u32 again_len = guest_ptr(again) ? text_length(ram, size, again - 0x80000000u) : (u32)-1;
+                if (again_len != (u32)-1 && hash_bytes(ram + (again - 0x80000000u), again_len) == r->hash) {
+                    mem_write32(cpu, entry, r->mine);
+                    r->seen = true;
+                    ++patched;
+                    continue;
+                }
             }
         }
+        u32 reuse_at = 0, reuse_cap = 0;
         if (r != NULL) { // another file's, or another offset now: a new look
+            reuse_at = r->slot;
+            reuse_cap = r->cap;
             *r = g_rec[--g_rec_count];
             r = NULL;
         }
+        u32 rule_count = 0;
+        if ((g_mode & 1u) == 0u && gender_rules(id, &rule_count) == NULL)
+            continue; // Crenando is off and nothing here speaks of the player
         const u32 text = data + off; // wraps for texts the Bunny Hood keeps in its own buffer
         if (!guest_ptr(text))
             continue;
@@ -201,22 +299,25 @@ static void scan_file(CPUState* cpu, u32 bmg) {
         const u32 len = text_length(ram, size, toff);
         if (len == (u32)-1 || len < 5u)
             continue;
-        const u32 nlen = substitute(ram + toff, len, out, sizeof out);
+        const u32 nlen = substitute(id, ram + toff, len, out, sizeof out, g_mode & 1u, (g_mode & 2u) != 0u);
         if (nlen == (u32)-1)
             continue;
-        if (g_buf == 0u || g_rec_count >= MAX_RECORDS || g_buf_used + nlen + 1u > BUF_BYTES) {
+        const bool reuse = reuse_at != 0u && nlen + 1u <= reuse_cap;
+        if (g_buf == 0u || g_rec_count >= MAX_RECORDS || (!reuse && g_buf_used + nlen + 1u > BUF_BYTES)) {
             static int reported;
             if (reported++ < 3)
                 fprintf(stderr, "[text_swap] no room for message 0x%04X (%u records, %u bytes used)\n", id, g_rec_count,
                         g_buf_used);
             continue;
         }
-        const u32 at_buf = g_buf + g_buf_used;
-        memcpy(g_shadow + g_buf_used, out, nlen + 1u);
+        const u32 at_buf = reuse ? reuse_at : g_buf + g_buf_used;
+        const u32 room = reuse ? reuse_cap : (nlen + 4u) & ~3u;
+        memcpy(g_shadow + (at_buf - g_buf), out, nlen + 1u);
         for (u32 k = 0; k <= nlen; ++k)
             mem_write8(cpu, at_buf + k, out[k]);
-        g_buf_used += (nlen + 4u) & ~3u;
-        Record rec = {.entry = entry, .bmg = bmg, .data = data, .orig = off, .mine = at_buf - data, .id = id, .seen = true};
+        if (!reuse)
+            g_buf_used += room;
+        Record rec = {.entry = entry, .bmg = bmg, .data = data, .orig = off, .mine = at_buf - data, .slot = at_buf, .cap = room, .hash = hash_bytes(ram + toff, len), .id = id, .seen = true};
         g_rec[g_rec_count++] = rec;
         mem_write32(cpu, entry, rec.mine);
         ++patched;
@@ -224,8 +325,9 @@ static void scan_file(CPUState* cpu, u32 bmg) {
             log_text("patched", id, out, nlen);
     }
     if (patched != 0u)
-        fprintf(stderr, "[text_swap] message file at 0x%08X: %u messages say Crenando (%u records, %u bytes)\n", bmg,
-                patched, g_rec_count, g_buf_used);
+        fprintf(stderr, "[text_swap] message file at 0x%08X: %u messages rewritten (%s%s%s; %u records, %u bytes)\n", bmg,
+                patched, (g_mode & 1u) ? "Crenando" : "", g_mode == 3u ? " + " : "", (g_mode & 2u) ? "female player" : "",
+                g_rec_count, g_buf_used);
 }
 
 static bool file_ok(CPUState* cpu, u32 bmg) {
@@ -291,6 +393,7 @@ static void scan_all(CPUState* cpu) {
             g_rec[i] = g_rec[--g_rec_count];
     if (g_rec_count == 0u)
         g_buf_used = 0u;
+    g_rec_mode = g_mode;
     g_applied = true;
 }
 
@@ -302,22 +405,43 @@ void bluewake_text_swap_retrace(CPUState* cpu) {
     if (!env_read) {
         env_read = true;
         g_log_texts = getenv("BLUEWAKE_TEXT_SWAP_LOG") != NULL;
-        // BLUEWAKE_TEST_MESSAGE=id@retrace: the game shows message `id` (a box, as an NPC's) at that retrace.
-        // (a comma separated list shows several)
-        for (const char* v = getenv("BLUEWAKE_TEST_MESSAGE"); v != NULL && *v != 0 && g_test_count < TESTS;) {
-            char* end = NULL;
-            g_tests[g_test_count].id = (u32)strtoul(v, &end, 0);
-            g_tests[g_test_count].at = end != NULL && *end == '@' ? (u32)strtoul(end + 1, &end, 0) : 0u;
-            ++g_test_count;
-            v = end != NULL && *end == ',' ? end + 1 : "";
+        // BLUEWAKE_TEST_MESSAGE=id@retrace: the game shows message `id` (a box, as an NPC's) at that retrace, and the text
+        // it will read is logged. BLUEWAKE_TEST_MESSAGE_TEXT: the same list, the log only (no box). Comma separated lists.
+        for (int pass = 0; pass < 2; ++pass)
+            for (const char* v = getenv(pass == 0 ? "BLUEWAKE_TEST_MESSAGE" : "BLUEWAKE_TEST_MESSAGE_TEXT");
+                 v != NULL && *v != 0 && g_test_count < TESTS;) {
+                char* end = NULL;
+                g_tests[g_test_count].id = (u32)strtoul(v, &end, 0);
+                g_tests[g_test_count].at = end != NULL && *end == '@' ? (u32)strtoul(end + 1, &end, 0) : 0u;
+                g_tests[g_test_count].show = pass == 0;
+                ++g_test_count;
+                v = end != NULL && *end == ',' ? end + 1 : "";
+            }
+    }
+    {
+        const unsigned now = (g_crenando ? 1u : 0u) | (g_female ? 2u : 0u);
+        static unsigned logged_mode;
+        if (now != logged_mode || g_frame == 1u) {
+            logged_mode = now;
+            fprintf(stderr, "[text_swap] retrace %u: Crenando %s, player %s\n", g_frame, (now & 1u) ? "on" : "off",
+                    (now & 2u) ? "female" : "male");
         }
     }
+    g_mode = (g_crenando ? 1u : 0u) | (g_female ? 2u : 0u);
+    g_on = g_mode != 0u;
     if (!g_on) {
         if (g_applied) {
             restore_all(cpu);
             dump_live(cpu, "off");
         }
         return;
+    }
+    if (g_rec_count != 0u && g_rec_mode != g_mode) { // a switch changed: the texts are made again (live)
+        fprintf(stderr, "[text_swap] switches %u -> %u: texts made again\n", g_rec_mode, g_mode);
+        if (g_applied)
+            restore_all(cpu);
+        g_rec_count = 0u;
+        g_buf_used = 0u;
     }
     if (g_buf != 0u && !buffer_intact(cpu)) {
         fprintf(stderr, "[text_swap] the buffer at 0x%08X was taken back by the heap: starting over\n", g_buf);
@@ -343,7 +467,7 @@ void bluewake_text_swap_retrace(CPUState* cpu) {
 }
 
 bool bluewake_text_swap_wants_fiber(void) {
-    if (g_on && g_buf == 0u && g_fail_alloc < 4u)
+    if ((g_crenando || g_female) && g_buf == 0u && g_fail_alloc < 4u)
         return true;
     for (u32 i = 0; i < g_test_count; ++i)
         if (!g_tests[i].done && g_frame >= g_tests[i].at)
@@ -405,7 +529,7 @@ static void log_message_texts(CPUState* cpu, u32 id) {
 }
 
 void bluewake_text_swap_fiber(GuestCoro* co, CPUState* cpu) {
-    if (g_on && g_buf == 0u && g_fail_alloc < 4u) {
+    if ((g_crenando || g_female) && g_buf == 0u && g_fail_alloc < 4u) {
         const u32 heap = bluewake_guest_call(co, FN_ARCHIVE_HEAP, 0, 0, 0, 0, 0, 0);
         const u32 buf = bluewake_guest_call(co, FN_HEAP_ALLOC, BUF_BYTES, 32u, heap, 0, 0, 0);
         fprintf(stderr, "[text_swap] buffer: archive heap %08X, %u bytes at %08X\n", heap, BUF_BYTES, buf);
@@ -419,14 +543,23 @@ void bluewake_text_swap_fiber(GuestCoro* co, CPUState* cpu) {
             ++g_fail_alloc;
         }
     }
+    bool shown = false; // one box a retrace
     for (u32 i = 0; i < g_test_count; ++i) {
-        if (g_tests[i].done || g_frame < g_tests[i].at || mem_read32(cpu, 0x803CA754u) == 0u) // wants a scene with Link
+        if (g_tests[i].done || g_frame < g_tests[i].at)
+            continue;
+        if (g_tests[i].show && mem_read32(cpu, 0x803CA754u) == 0u) // a box wants a scene with Link
+            continue;
+        if (g_tests[i].show && shown)
             continue;
         g_tests[i].done = true;
+        fprintf(stderr, "[test] retrace %u (Crenando %s, player %s):\n", g_frame, g_crenando ? "on" : "off",
+                g_female ? "female" : "male");
         log_message_texts(cpu, g_tests[i].id);
+        if (!g_tests[i].show)
+            continue;
+        shown = true;
         const u32 pid = bluewake_guest_call(co, FN_MESSAGE_SET, g_tests[i].id, 0, 0, 0, 0, 0);
-        fprintf(stderr, "[test] message 0x%X shown at retrace %u: process id %08X (Crenando %s)\n", g_tests[i].id, g_frame,
-                pid, g_on ? "on" : "off");
-        break;
+        fprintf(stderr, "[test] message 0x%X shown at retrace %u: process id %08X (Crenando %s, player %s)\n", g_tests[i].id,
+                g_frame, pid, g_crenando ? "on" : "off", g_female ? "female" : "male");
     }
 }

@@ -137,6 +137,10 @@ void dol_aurora_gx_drain(void);
 void dol_aurora_audio_resume(void);
 /* Master volume, 0..1, applied as the output stream's gain. */
 void dol_aurora_audio_set_master_volume(float volume);
+/* A short mono sound made by the host (a puppet's voice from its own player's voice bank), mixed into the game's output at
+   32 kHz as the output is pushed: frames of 16-bit PCM, gains for the left and right channel, step (input samples per output
+   sample: the pitch). The PCM is copied. At most 16 sounds play at once; a new one past that is dropped. */
+void dol_aurora_audio_mix_voice(const int16_t* mono, uint32_t frames, float gain_left, float gain_right, float step);
 
 #ifdef __cplusplus
 }

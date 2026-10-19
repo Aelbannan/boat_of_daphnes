@@ -54,6 +54,7 @@ enum {
     BDL_LOAD_FLAGS = 0x00002020u,            // as dRes_info_c loads a 'BDL ' resource
     MODEL_DATA_JOINT_NUM = 0x28u,            // J3DModelData::mJointTree (0x10) + mJointNum (0x18)
     MAX_CUSTOM_BDL = 6 * 1024 * 1024,
+    EQUIP_SLOTS = BLUEWAKE_PUPPET_EQUIP_SLOTS, // swgripa, swgripms, sha, shms, swa, swms, hands
     FN_CREATE_HEAP_TO_CURRENT_FROM = 0x80011BE4u, // mDoExt_createSolidHeapToCurrent(size, parent, align)
     FN_GET_ZELDA_HEAP = 0x800118C0u,         // mDoExt_getZeldaHeap()
     PLAYER_HANDS_MODEL = 0x954u,             // daPy_lk_c: mpHandsModel
@@ -767,6 +768,13 @@ typedef struct Remote {
     int clips; // how many of them are set (0 to 2)
     uint8_t* bdl; // the player's own body model (cl.bdl), if one was sent
     size_t bdl_len;
+    uint8_t* eq[EQUIP_SLOTS]; // the player's own equipment models (or the game's, for a PC whose own are a mod's)
+    size_t eq_len[EQUIP_SLOTS];
+    char voice[40];     // the owner's voice id ("": the game's), and whether the local bank has it
+    bool voice_local;
+    double active_ms;       // when the player last moved or changed what they were doing (who gets room for custom models first)
+    double stock_until_ms;  // an eviction: stock until then (room was given to a more active player)
+    double retry_custom_ms; // then the custom models are asked for again
     int last_proc;      // the proc last drawn (-1: none yet), to hear when it changes
     bool model_changed; // a new body model arrived: a puppet already made is made again
     float voice_pitch;  // the owner's Link Voice Pitch as a ratio (0: normal)
@@ -784,6 +792,9 @@ typedef struct Guest {
     u32 sword[2], shield[2], hands; // Link's sword, Master Sword, shield, Mirror Shield and hands models, made with the puppet
     u32 katsura;    // casual clothes' back hair: a second model on the head joint (Link's own data only)
     u32 model_data; // the model data the puppet's model is made from: the game's Link or the player's own
+    int ds[EQUIP_SLOTS + 1]; // shared data slots held (index + 1; 0 none): [0..7] equipment, hands and hair, [8] the body
+    bool denied;             // custom models were asked for and there was no room: made stock; asked again after a while
+    double denied_at;
     bool custom;
     // A player's own model keeps its own bone lengths: the matrices sent are Link's, so each joint
     // whose translation (from its parent) is just Link's bind translation takes the model's own.
@@ -888,6 +899,8 @@ static Remote* find_remote(int id, bool create) {
             }
         }
         free(free_slot->bdl);
+        for (int k = 0; k < EQUIP_SLOTS; ++k)
+            free(free_slot->eq[k]);
     }
     if (create && free_slot != NULL) {
         memset(free_slot, 0, sizeof *free_slot);
@@ -908,6 +921,13 @@ static void remote_push(int id, const Pose* pose) {
             memmove(&r->snap[0], &r->snap[1], sizeof(Snap) * (SNAPS - 1));
             r->count = SNAPS - 1;
         }
+        if (r->count > 0) {
+            const Pose* last = &r->snap[r->count - 1].pose;
+            const float dx = pose->base_pos[0] - last->base_pos[0], dz = pose->base_pos[2] - last->base_pos[2];
+            if (dx * dx + dz * dz > 4.0f || pose->proc != last->proc || pose->flags != last->flags)
+                r->active_ms = now_ms();
+        } else
+            r->active_ms = now_ms();
         Snap* sn = &r->snap[r->count];
         sn->time = now_ms();
         sn->stime = -1.0;
@@ -963,6 +983,44 @@ void bluewake_puppet_remote_model(int id, const uint8_t* bdl, size_t length) {
     free(copy);
 }
 
+void bluewake_puppet_remote_equipment(int id, int slot, const uint8_t* bdl, size_t length) {
+    if (slot < 0 || slot >= EQUIP_SLOTS)
+        return;
+    uint8_t* copy = NULL;
+    if (bdl != NULL && length != 0 && length <= MAX_CUSTOM_BDL) {
+        copy = (uint8_t*)malloc(length);
+        if (copy != NULL)
+            memcpy(copy, bdl, length);
+        else
+            length = 0;
+    } else
+        length = 0;
+    lock();
+    Remote* r = find_remote(id, copy != NULL);
+    uint8_t* old = NULL;
+    if (r != NULL) {
+        old = r->eq[slot];
+        if (old != NULL || copy != NULL)
+            r->model_changed = true; // the puppet is made again with its equipment
+        r->eq[slot] = copy;
+        r->eq_len[slot] = length;
+        copy = NULL;
+    }
+    unlock();
+    free(old);
+    free(copy);
+}
+
+void bluewake_puppet_remote_voice(int id, const char* voice_id, bool local_bank) {
+    lock();
+    Remote* r = find_remote(id, true);
+    if (r != NULL) {
+        snprintf(r->voice, sizeof r->voice, "%s", voice_id != NULL ? voice_id : "");
+        r->voice_local = local_bank;
+    }
+    unlock();
+}
+
 void bluewake_puppet_remote_voice_pitch(int id, float ratio) {
     lock();
     Remote* r = find_remote(id, true);
@@ -1012,23 +1070,35 @@ void bluewake_puppet_remote_remove(int id) {
     lock();
     Remote* r = find_remote(id, false);
     uint8_t* bdl = NULL;
+    uint8_t* eq[EQUIP_SLOTS] = {NULL};
     if (r != NULL) {
         bdl = r->bdl;
+        for (int k = 0; k < EQUIP_SLOTS; ++k)
+            eq[k] = r->eq[k];
         memset(r, 0, sizeof *r);
     }
     unlock();
     free(bdl);
+    for (int k = 0; k < EQUIP_SLOTS; ++k)
+        free(eq[k]);
 }
 
 void bluewake_puppet_remote_clear(void) {
     uint8_t* bdl[MAX_REMOTES];
+    uint8_t* eq[MAX_REMOTES][EQUIP_SLOTS];
     lock();
-    for (int i = 0; i < MAX_REMOTES; ++i)
+    for (int i = 0; i < MAX_REMOTES; ++i) {
         bdl[i] = g_remote[i].bdl;
+        for (int k = 0; k < EQUIP_SLOTS; ++k)
+            eq[i][k] = g_remote[i].eq[k];
+    }
     memset(g_remote, 0, sizeof g_remote);
     unlock();
-    for (int i = 0; i < MAX_REMOTES; ++i)
+    for (int i = 0; i < MAX_REMOTES; ++i) {
         free(bdl[i]);
+        for (int k = 0; k < EQUIP_SLOTS; ++k)
+            free(eq[i][k]);
+    }
 }
 
 bool bluewake_puppet_drawn(int id, float head[3]) {
@@ -1447,10 +1517,16 @@ typedef struct Item {
     float pos[3];
     uint8_t flags, sword, shield, hands;
     int voice_proc; // the proc that just started (-1: none)
+    int voice_force; // testing: the voice id to make (-1: the proc's)
     float voice_pitch; // its owner's voice pitch (ratio, 0: normal)
     Mat34 sword_mtx, shield_mtx; // world
     uint8_t* bdl; // a copy for the game thread to load, freed after (only for a puppet not yet made)
     size_t bdl_len;
+    uint8_t* eq[EQUIP_SLOTS]; // the same for the equipment models
+    size_t eq_len[EQUIP_SLOTS];
+    char voice[40];
+    bool voice_local;
+    double active_ms;
     bool recreate;
     int id; // the player's id: the texture variant its draws take
     uint8_t face_n;
@@ -1478,6 +1554,33 @@ typedef struct Work {
 } Work;
 
 static Work g_work;
+static BluewakePuppetVoiceFn g_voice_player;
+
+void bluewake_puppet_set_voice_player(BluewakePuppetVoiceFn fn) { g_voice_player = fn; }
+
+// Where a puppet's voice is heard from, as the game's sound does it: full volume to 333 units, none from 1667 (JAIZelParam::
+// MAX_VOLUME_DISTANCE and DISTANCE_MAX), and left or right by the side of the camera it is on. False when the camera is not known.
+static bool voice_placement(CPUState* cpu, const float at[3], float* left, float* right) {
+    const u32 view = mem_read32(cpu, 0x803CAB58u); // the camera's view_class
+    if (!guest_ptr(view))
+        return false;
+    float eye[3], row[4];
+    for (int i = 0; i < 3; ++i)
+        eye[i] = read_float(cpu, view + 0x170u + 16u * (u32)i + 12u); // mInvViewMtx's translation
+    for (int i = 0; i < 4; ++i)
+        row[i] = read_float(cpu, view + 0x140u + 4u * (u32)i);        // mViewMtx's x row
+    const float dx = at[0] - eye[0], dy = at[1] - eye[1], dz = at[2] - eye[2];
+    const float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+    const float side = row[0] * at[0] + row[1] * at[1] + row[2] * at[2] + row[3];
+    float volume = dist <= 333.0f ? 1.0f : dist >= 1667.0f ? 0.0f : 1.0f - (dist - 333.0f) / (1667.0f - 333.0f);
+    float pan = dist > 1.0f ? side / dist : 0.0f;
+    pan = pan < -1.0f ? -1.0f : pan > 1.0f ? 1.0f : pan;
+    const float angle = (pan + 1.0f) * 0.78539816f; // constant power: the middle is 0.707 on both sides
+    *left = volume * cosf(angle) * 1.41421356f;
+    *right = volume * sinf(angle) * 1.41421356f;
+    return volume > 0.0f;
+}
+unsigned long long bluewake_host_retrace_count(void); // main.c
 
 static u32 call(GuestCoro* co, u32 fn, u32 a, u32 b, u32 c, u32 d) { return bluewake_guest_call(co, fn, a, b, c, d, 0, 0); }
 
@@ -1617,61 +1720,180 @@ void bluewake_puppet_mat_enter(CPUState* cpu, u32 address) {
     dol_platform_gx_write((0x79u << 24) | (variant & 0xFFFFFFu), 4u);
 }
 
-static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data, int room, const uint8_t* bdl, size_t bdl_len, int id) {
-    bool custom = bdl != NULL && bdl_len >= 0x40 && bdl_len <= MAX_CUSTOM_BDL;
-    u32 heap = 0u, model_data = vanilla_data;
-    if (custom) {
-        // The player's own body model, loaded into the puppet's heap with the game's
-        // own loader; anything wrong and the puppet is Link as the game has him.
-        // The game's heap may not have a block this large: the model's size twice, then one and a
-        // half, then once, then the same from the system heap.
-        u32 size = 0u;
-        const u32 want[3] = {(u32)bdl_len * 2u + 0x50000u, (u32)bdl_len * 3u / 2u + 0x40000u, (u32)bdl_len + 0x30000u};
-        for (int k = 0; k < 3 && heap == 0u; ++k)
-            heap = call(co, FN_CREATE_HEAP_TO_CURRENT, size = want[k], 0x20u, 0, 0);
-        if (heap == 0u) {
-            const u32 zelda = call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0);
-            for (int k = 0; k < 3 && heap == 0u && zelda != 0u; ++k)
-                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, size = want[k], zelda, 0x20u, 0);
-        }
-        u32 data = 0u;
-        fprintf(stderr, "[puppet] custom model: heap of %u bytes at %08X\n", size, heap);
-        if (heap != 0u) {
-            const u32 buf = call(co, FN_NEW_ALIGNED, (u32)bdl_len, 0x20u, 0, 0);
-            if (buf != 0u) {
-                for (size_t i = 0; i < bdl_len; ++i)
-                    mem_write8(cpu, buf + (u32)i, bdl[i]);
-                data = call(co, FN_LOAD_BDL, buf, BDL_LOAD_FLAGS, 0, 0);
-                fprintf(stderr, "[puppet] custom model: heap %08X buffer %08X (%zu bytes) loader returned %08X\n", heap, buf, bdl_len, data);
-                if (data != 0u && mem_read16(cpu, data + MODEL_DATA_JOINT_NUM) != CL_JOINTS) {
-                    fprintf(stderr, "[puppet] the player's model has %u joints, not %d: Link's own is used\n",
-                            mem_read16(cpu, data + MODEL_DATA_JOINT_NUM), CL_JOINTS);
-                    data = 0u;
-                }
-                if (data != 0u)
-                    call(co, FN_SET_TOON_TEX, data, 0, 0, 0);
-            }
-            if (data == 0u) {
-                call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
-                call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
-                heap = 0u;
-            }
-        }
-        if (data != 0u)
-            model_data = data;
-        else {
-            fprintf(stderr, "[puppet] the player's model could not be loaded: Link's own is used\n");
-            custom = false;
+// Loads a BDL into the current heap with the game's own loader (as dRes loads a 'BDL ' resource); 0 on any failure.
+static u32 load_custom_bdl(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t len) {
+    const u32 buf = call(co, FN_NEW_ALIGNED, (u32)len, 0x20u, 0, 0);
+    if (buf == 0u)
+        return 0u;
+    for (size_t i = 0; i < len; ++i)
+        mem_write8(cpu, buf + (u32)i, bdl[i]);
+    return call(co, FN_LOAD_BDL, buf, BDL_LOAD_FLAGS, 0, 0);
+}
+
+// Loaded model data shared between puppets: a body or equipment model is loaded once into a heap of its own and every puppet
+// that has the same file (the same bytes) makes its models from that data, so five puppets of one mod, or all the stock
+// players on a PC whose own Link is a mod's, cost one copy of the data (300 to 400 KB for a body) and not five. A slot is
+// freed with its last puppet (a scene's end, or the puppet made again).
+enum { DS_SLOTS = 32 };
+typedef struct DataSlot {
+    uint64_t key;
+    size_t len;
+    u32 heap, data;
+    int refs;
+} DataSlot;
+static DataSlot g_ds[DS_SLOTS];
+
+static uint64_t fnv64(const uint8_t* p, size_t n) {
+    uint64_t h = 0xCBF29CE484222325ull;
+    for (size_t i = 0; i < n; ++i)
+        h = (h ^ p[i]) * 0x100000001B3ull;
+    return h;
+}
+
+static void ds_release(GuestCoro* co, Guest* g) {
+    for (int k = 0; k <= EQUIP_SLOTS; ++k) {
+        const int at = g->ds[k] - 1;
+        g->ds[k] = 0;
+        if (at < 0 || at >= DS_SLOTS || g_ds[at].refs <= 0)
+            continue;
+        if (--g_ds[at].refs == 0) {
+            if (g_ds[at].heap != 0u)
+                call(co, FN_DESTROY_HEAP, g_ds[at].heap, 0, 0, 0);
+            memset(&g_ds[at], 0, sizeof g_ds[at]);
         }
     }
+}
+
+// A puppet's solid heap, the first size that fits: from the game heap, then the Zelda heap, then (the game heaps are small:
+// a stock puppet takes 90 KB, a custom body 400 KB and more) the archive heap, which has about 1.6 MB of free room that
+// the Link.arc swap reserve leaves, but only while 1 MB of it stays free for the next room's archives. The heap is made
+// the current one; the caller restores it. *size is the size that was made (or the last tried).
+enum { ARCHIVE_HEADROOM = 0x100000 };
+static u32 create_puppet_heap(GuestCoro* co, const u32* want, int n, u32* size) {
+    u32 heap = 0u;
+    for (int k = 0; k < n && heap == 0u; ++k)
+        heap = call(co, FN_CREATE_HEAP_TO_CURRENT, *size = want[k], 0x20u, 0, 0);
+    const u32 zelda = heap == 0u ? call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0) : 0u;
+    for (int k = 0; k < n && heap == 0u && zelda != 0u; ++k)
+        heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], zelda, 0x20u, 0);
     if (heap == 0u) {
-        heap = call(co, FN_CREATE_HEAP_TO_CURRENT, HEAP_SIZE, 0x20u, 0, 0);
-        if (heap == 0u) { // not from the current heap: the game's own, as for the player's model
-            const u32 zelda = call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0);
-            if (zelda != 0u)
-                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, HEAP_SIZE, zelda, 0x20u, 0);
+        const u32 archive = call(co, 0x80011AB4u, 0, 0, 0, 0); // mDoExt_getArchiveHeap()
+        const u32 total = archive != 0u ? call(co, 0x802B08C0u, archive, 0, 0, 0) : 0u; // JKRHeap::getTotalFreeSize
+        for (int k = 0; k < n && heap == 0u && total > ARCHIVE_HEADROOM; ++k)
+            if (want[k] + ARCHIVE_HEADROOM <= total)
+                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], archive, 0x20u, 0);
+        if (heap != 0u)
+            fprintf(stderr, "[puppet] heap of %u bytes from the archive heap (%u free)\n", *size, total);
+    }
+    return heap;
+}
+
+static u32 load_custom_bdl(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t len);
+
+// The data of a BDL file in a slot of its own, loaded once; the slot's index, or -1 (no room, not loadable, a body that is
+// not Link's 42 joints). The puppet that gets it holds a reference (ds_release).
+static int ds_acquire(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t len, bool body) {
+    const uint64_t key = fnv64(bdl, len) ^ (body ? 0x5555ull : 0ull);
+    int free_slot = -1;
+    for (int i = 0; i < DS_SLOTS; ++i) {
+        if (g_ds[i].refs > 0 && g_ds[i].key == key && g_ds[i].len == len) {
+            ++g_ds[i].refs;
+            return i;
         }
+        if (g_ds[i].refs == 0 && free_slot < 0)
+            free_slot = i;
+    }
+    if (free_slot < 0)
+        return -1;
+    // The loaded data takes about 1.1 times its file; the heap is cut to what was used.
+    u32 size = 0u;
+    const u32 n = (u32)len;
+    const u32 want[3] = {n + n / 3u + 0x4000u, n + n / 6u + 0x2000u, n + n / 10u + 0x1000u};
+    const u32 heap = create_puppet_heap(co, want, 3, &size);
+    if (heap == 0u) {
+        fprintf(stderr, "[puppet] no room for %s of %zu bytes\n", body ? "a body" : "equipment", len);
+        return -1;
+    }
+    u32 data = load_custom_bdl(co, cpu, bdl, len);
+    if (data != 0u && body && mem_read16(cpu, data + MODEL_DATA_JOINT_NUM) != CL_JOINTS) {
+        fprintf(stderr, "[puppet] the player's model has %u joints, not %d: Link's own is used\n", mem_read16(cpu, data + MODEL_DATA_JOINT_NUM), CL_JOINTS);
+        data = 0u;
+    }
+    if (data != 0u)
+        call(co, FN_SET_TOON_TEX, data, 0, 0, 0);
+    const u32 used = data != 0u ? call(co, FN_ADJUST_HEAP, heap, 0, 0, 0) : 0u;
+    call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
+    fprintf(stderr, "[puppet] %s of %zu bytes loaded to %08X (heap %08X, %u bytes used)\n", body ? "body" : "equipment", len, data, heap, used);
+    if (data == 0u) {
+        call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+        return -1;
+    }
+    g_ds[free_slot] = (DataSlot){key, len, heap, data, 1};
+    return free_slot;
+}
+
+// How much room the game's heaps have (logged when a puppet is made: the puppets' heaps come out of them).
+static void log_heaps(GuestCoro* co, CPUState* cpu) {
+    static const struct { const char* name; u32 getter; } kHeaps[] = {
+        {"game", 0x800117E4u}, {"zelda", 0x800118C0u}, {"command", 0x8001199Cu}, {"archive", 0x80011AB4u}, {"system", 0}, {"root", 0}};
+    char text[160];
+    int n = 0;
+    for (int i = 0; i < 6; ++i) {
+        const u32 heap = i == 4 ? mem_read32(cpu, 0x803F7728u) : i == 5 ? mem_read32(cpu, 0x803F7730u) : call(co, kHeaps[i].getter, 0, 0, 0, 0);
+        const u32 total = heap != 0u ? call(co, 0x802B08C0u, heap, 0, 0, 0) : 0u;
+        const u32 block = heap != 0u ? call(co, 0x802B0868u, heap, 0, 0, 0) : 0u;
+        n += snprintf(text + n, sizeof text - (size_t)n, " %s %u/%u", kHeaps[i].name, block, total);
+    }
+    fprintf(stderr, "[puppet] heaps (largest block/total free):%s\n", text);
+}
+
+static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data, int room, const uint8_t* bdl, size_t bdl_len, int id,
+                          uint8_t* const* eq, const size_t* eq_len) {
+    bool custom = bdl != NULL && bdl_len >= 0x40 && bdl_len <= MAX_CUSTOM_BDL;
+    log_heaps(co, cpu);
+    size_t eq_total = 0;
+    for (int k = 0; k < EQUIP_SLOTS; ++k)
+        if (eq[k] != NULL && eq_len[k] >= 0x20 && eq_len[k] <= MAX_CUSTOM_BDL)
+            eq_total += eq_len[k];
+    u32 heap = 0u, model_data = vanilla_data;
+    u32 eq_data[EQUIP_SLOTS] = {0};
+    // The player's own body model and equipment, loaded with the game's own loader into shared data heaps (see DataSlot);
+    // anything wrong and that part is Link as the game has him.
+    if (custom) {
+        const int at = ds_acquire(co, cpu, bdl, bdl_len, true);
+        if (at >= 0) {
+            g->ds[EQUIP_SLOTS] = at + 1;
+            model_data = g_ds[at].data;
+        } else {
+            int holders = 0;
+            for (int i = 0; i < MAX_REMOTES; ++i)
+                holders += (&g_guest[i] != g && g_guest[i].model != 0u && g_guest[i].ds[EQUIP_SLOTS] != 0) ? 1 : 0;
+            fprintf(stderr, "[puppet] player %d: no room for its custom body (%zu bytes; %d other puppets hold custom bodies): stock for now, asked for again later\n", id, bdl_len, holders);
+            custom = false;
+            g->denied = true;
+            g->denied_at = now_ms();
+        }
+    }
+    for (int k = 0; k < EQUIP_SLOTS; ++k) {
+        if (eq[k] == NULL || eq_len[k] < 0x20 || eq_len[k] > MAX_CUSTOM_BDL)
+            continue;
+        const int at = ds_acquire(co, cpu, eq[k], eq_len[k], false);
+        if (at >= 0) {
+            g->ds[k] = at + 1;
+            eq_data[k] = g_ds[at].data;
+        } else if (!g->denied) {
+            fprintf(stderr, "[puppet] player %d: no room for its custom equipment (slot %d): the game's for now, asked for again later\n", id, k);
+            g->denied = true;
+            g->denied_at = now_ms();
+        }
+    }
+    {
+        // The models made from that data take about 90 KB (the heap is cut to what was used).
+        const u32 want[3] = {0x28000u, 0x1C000u, 0x14000u};
+        u32 size = 0u;
+        heap = create_puppet_heap(co, want, 3, &size);
         if (heap == 0u) {
+            ds_release(co, g);
             g->failed = true;
             fprintf(stderr, "[puppet] no heap for a puppet model\n");
             return;
@@ -1698,7 +1920,9 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
         call(co, FN_TEVSTR_INIT, tev, (u32)room, 0xFFu, 0);
     }
     u32 katsura = 0u;
-    if (!custom) {
+    if (guest_ptr(eq_data[7]))
+        katsura = call(co, FN_MODEL_CREATE, eq_data[7], 0x80000u, 0x37221222u, 0); // the player's own (or the game's, see slot 7)
+    else if (!custom) {
         const u32 player = mem_read32(cpu, PLAYER);
         const u32 vk = guest_ptr(player) ? mem_read32(cpu, player + PLAYER_KATSURA_MODEL) : 0u;
         const u32 kdata = guest_ptr(vk) ? mem_read32(cpu, vk + MODEL_DATA) : 0u;
@@ -1709,11 +1933,15 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
     {
         const u32 player = mem_read32(cpu, PLAYER);
         static const u32 kEquipOffsets[5] = {PLAYER_SWGRIPA, PLAYER_SWGRIPA + 4u, PLAYER_SHA, PLAYER_SHA + 4u, PLAYER_HANDS_MODEL};
+        static const int kEquipSlot[5] = {0, 1, 2, 3, 6}; // the pack's slot of each (swgripa, swgripms, sha, shms, hands)
         u32* slots[5] = {&g->sword[0], &g->sword[1], &g->shield[0], &g->shield[1], &g->hands};
         for (int k = 0; k < 5; ++k) {
             *slots[k] = 0u;
-            const u32 local = guest_ptr(player) ? mem_read32(cpu, player + kEquipOffsets[k]) : 0u;
-            const u32 data = guest_ptr(local) ? mem_read32(cpu, local + MODEL_DATA) : 0u;
+            u32 data = eq_data[kEquipSlot[k]]; // the player's own (or the game's, for a PC whose own are a mod's)
+            if (!guest_ptr(data)) {
+                const u32 local = guest_ptr(player) ? mem_read32(cpu, player + kEquipOffsets[k]) : 0u;
+                data = guest_ptr(local) ? mem_read32(cpu, local + MODEL_DATA) : 0u;
+            }
             if (guest_ptr(data))
                 *slots[k] = call(co, FN_MODEL_CREATE, data, 0x80000u, 0x37221222u, 0);
         }
@@ -1723,7 +1951,7 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
         static const u32 kBlade[2] = {RES_BDL_SWA, RES_BDL_SWMS};
         for (int k = 0; k < 2; ++k) {
             g->blade[k] = 0u;
-            const u32 data = call(co, FN_GET_RES, ARC_LINK_NAME, kBlade[k], RES_OBJECT_INFO, 0x40u);
+            const u32 data = guest_ptr(eq_data[4 + k]) ? eq_data[4 + k] : call(co, FN_GET_RES, ARC_LINK_NAME, kBlade[k], RES_OBJECT_INFO, 0x40u);
             if (guest_ptr(data))
                 g->blade[k] = call(co, FN_MODEL_CREATE, data, 0x80000u, 0x37221222u, 0);
         }
@@ -1772,6 +2000,7 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
     g->katsura = katsura;
     if (model == 0u || tev == 0u || pos == 0u || pk == 0u) {
         call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+        ds_release(co, g);
         g->failed = true;
         fprintf(stderr, "[puppet] the puppet model could not be made (model %08X)\n", model);
         return;
@@ -2442,28 +2671,97 @@ static void draw_body(GuestCoro* co, void* arg) {
         publish_local(pose);
     }
     bluewake_pvp_fiber(co, cpu); // the bodies and target actors of the puppets (puppet_pvp.c)
+    // Puppets are made (or made again) before any is drawn, the most recently active player's first, so that when the game's
+    // heaps cannot hold every custom body the ones that are moving get them; and a player who is active while others sit
+    // still takes a custom body's room from the one that has been still longest (that one is stock for 20 seconds).
+    {
+        int order[MAX_REMOTES];
+        for (int n = 0; n < w->count; ++n)
+            order[n] = n;
+        for (int x = 1; x < w->count; ++x) {
+            const int v = order[x];
+            int y = x - 1;
+            while (y >= 0 && w->item[order[y]].active_ms < w->item[v].active_ms) {
+                order[y + 1] = order[y];
+                --y;
+            }
+            order[y + 1] = v;
+        }
+        for (int oi = 0; oi < w->count; ++oi) {
+            Item* it = &w->item[order[oi]];
+            Guest* g = &g_guest[it->slot];
+            if (it->recreate && g->heap != 0u) {
+                // The player's own model came after the puppet was made as Link's (or room came free): made again.
+                att_free(co, g);
+                call(co, FN_DESTROY_HEAP, g->heap, 0, 0, 0);
+                ds_release(co, g);
+                memset(g_ptex[it->slot], 0, sizeof g_ptex[it->slot]);
+                memset(g, 0, sizeof *g);
+            }
+            if (g->failed) {
+                if (++g->retry < 120) // no room just now (a scene loading): tried again in a couple of seconds
+                    continue;
+                memset(g, 0, sizeof *g);
+            }
+            if (g->model == 0u) {
+                create_puppet(co, cpu, g, w->model_data, w->room, it->bdl, it->bdl_len, it->id, it->eq, it->eq_len);
+                if (g->model != 0u && g->denied) {
+                    // No room for what this player wears: the least active other player holding custom models gives theirs up.
+                    int victim = -1;
+                    for (int on = oi + 1; on < w->count; ++on) {
+                        const Item* other = &w->item[order[on]];
+                        const Guest* og = &g_guest[other->slot];
+                        bool holds = false;
+                        for (int k = 0; k <= EQUIP_SLOTS; ++k)
+                            holds |= og->ds[k] != 0;
+                        if (holds && other->active_ms + 3000.0 < it->active_ms)
+                            victim = on; // the last in the order holding any: the least active
+                    }
+                    if (victim >= 0) {
+                        Item* vi = &w->item[order[victim]];
+                        Guest* vg = &g_guest[vi->slot];
+                        fprintf(stderr, "[puppet] player %d (active) takes the room of player %d (idle for %.0f s): that puppet is stock for 20 s\n", it->id, vi->id,
+                                (it->active_ms - vi->active_ms) / 1000.0);
+                        att_free(co, vg);
+                        if (vg->heap != 0u)
+                            call(co, FN_DESTROY_HEAP, vg->heap, 0, 0, 0);
+                        ds_release(co, vg);
+                        memset(g_ptex[vi->slot], 0, sizeof g_ptex[vi->slot]);
+                        memset(vg, 0, sizeof *vg);
+                        free(vi->bdl);
+                        vi->bdl = NULL;
+                        for (int k = 0; k < EQUIP_SLOTS; ++k) {
+                            free(vi->eq[k]);
+                            vi->eq[k] = NULL;
+                        }
+                        lock();
+                        Remote* vr = &g_remote[vi->slot];
+                        vr->stock_until_ms = now_ms() + 20000.0;
+                        vr->retry_custom_ms = vr->stock_until_ms;
+                        unlock();
+                        // This puppet again, now that there is room.
+                        att_free(co, g);
+                        call(co, FN_DESTROY_HEAP, g->heap, 0, 0, 0);
+                        ds_release(co, g);
+                        memset(g_ptex[it->slot], 0, sizeof g_ptex[it->slot]);
+                        memset(g, 0, sizeof *g);
+                        create_puppet(co, cpu, g, w->model_data, w->room, it->bdl, it->bdl_len, it->id, it->eq, it->eq_len);
+                    }
+                }
+                free(it->bdl);
+                it->bdl = NULL;
+                for (int k = 0; k < EQUIP_SLOTS; ++k) {
+                    free(it->eq[k]);
+                    it->eq[k] = NULL;
+                }
+            }
+        }
+    }
     for (int n = 0; n < w->count; ++n) {
         Item* it = &w->item[n];
         Guest* g = &g_guest[it->slot];
-        if (it->recreate && g->heap != 0u) {
-            // The player's own model came after the puppet was made as Link's: made again.
-            att_free(co, g);
-            call(co, FN_DESTROY_HEAP, g->heap, 0, 0, 0);
-            memset(g_ptex[it->slot], 0, sizeof g_ptex[it->slot]);
-            memset(g, 0, sizeof *g);
-        }
-        if (g->failed) {
-            if (++g->retry < 120) // no room just now (a scene loading): tried again in a couple of seconds
-                continue;
-            memset(g, 0, sizeof *g);
-        }
-        if (g->model == 0u) {
-            create_puppet(co, cpu, g, w->model_data, w->room, it->bdl, it->bdl_len, it->id);
-            free(it->bdl);
-            it->bdl = NULL;
-            if (g->model == 0u)
-                continue;
-        }
+        if (g->model == 0u)
+            continue;
         // The pose: the matrices the game would have calculated.
         if (g->remap) {
             // Link's joints relative to the base, to each joint's own translation from its parent.
@@ -2554,15 +2852,31 @@ static void draw_body(GuestCoro* co, void* arg) {
                 write_float(cpu, g->pos + 0x10u + 4u * (u32)i, it->pos[i] + (i == 1 ? 115.0f : 0.0f));
             const u32 jai = mem_read32(cpu, JAI_BASIC);
             const unsigned proc = (unsigned)it->voice_proc;
-            if (guest_ptr(jai) && proc < sizeof kProcVoice && kProcVoice[proc] != 0xFFu) {
-                const u32 vowel = call(co, FN_LINK_VOICE_VOWEL, jai, kProcVoice[proc], 0, 0);
+            const u32 voice_id = it->voice_force >= 0 ? (u32)it->voice_force : proc < sizeof kProcVoice ? (u32)kProcVoice[proc] : 0xFFu;
+            // A peer whose voice bank is not the one the game loaded sounds from their own, decoded by the app and mixed into the
+            // output at the puppet's place; the game's voice is then not made.
+            bool own_bank = false;
+            if (voice_id != 0xFFu && g_voice_player != NULL && it->voice[0] != '\0' && !it->voice_local) {
+                const float head[3] = {it->pos[0], it->pos[1] + 115.0f, it->pos[2]};
+                float left = 0.0f, right = 0.0f;
+                if (voice_placement(cpu, head, &left, &right))
+                    own_bank = g_voice_player(it->id, (int)voice_id, left, right, it->voice_pitch > 0.0f ? it->voice_pitch : 1.0f);
+                else
+                    own_bank = true; // too far or no camera: silent, as the game's own sound would be
+            }
+            if (guest_ptr(jai) && voice_id != 0xFFu && !own_bank) {
+                const u32 vowel = call(co, FN_LINK_VOICE_VOWEL, jai, voice_id, 0, 0);
                 bluewake_voice_pitch_set_scope(it->voice_pitch > 0.0f ? it->voice_pitch : 1.0f); // this player's pitch, not ours
-                bluewake_guest_call(co, FN_LINK_VOICE_START, jai, kProcVoice[proc], g->pos + 0x10u, vowel & 0xFFu, 0, 0);
+                bluewake_guest_call(co, FN_LINK_VOICE_START, jai, voice_id, g->pos + 0x10u, vowel & 0xFFu, 0, 0);
                 bluewake_voice_pitch_set_scope(0.0f);
             }
             const u32 effect = proc_effect(proc);
+            if (it->voice_force >= 0)
+                fprintf(stderr, "[puppet] sweep: voice id %d at retrace %llu\n", it->voice_force, bluewake_host_retrace_count());
             if (effect != 0u || (proc < sizeof kProcVoice && kProcVoice[proc] != 0xFFu))
-                fprintf(stderr, "[puppet] sounds for proc 0x%X: voice %u, effect %04X\n", proc, proc < sizeof kProcVoice ? kProcVoice[proc] : 255u, effect);
+                fprintf(stderr, "[puppet] sounds for player %d proc 0x%X: voice %u (%s, %s bank), effect %04X\n", it->id, proc,
+                        proc < sizeof kProcVoice ? kProcVoice[proc] : 255u, it->voice[0] != '\0' ? it->voice : "game's voice",
+                        own_bank ? "played from its own voice bank" : it->voice_local ? "the voice bank matches" : "the local game voice bank plays: its own bank is not available", effect);
             if (effect != 0u)
                 call(co, FN_SE_START, effect, g->pos + 0x10u, 0, 0);
         }
@@ -2584,6 +2898,7 @@ static void delete_body(GuestCoro* co, void* arg) {
         att_free(co, &g_guest[i]);
         if (g_guest[i].heap != 0u)
             call(co, FN_DESTROY_HEAP, g_guest[i].heap, 0, 0, 0);
+        ds_release(co, &g_guest[i]);
         memset(g_ptex[i], 0, sizeof g_ptex[i]);
         memset(&g_guest[i], 0, sizeof g_guest[i]);
     }
@@ -3101,6 +3416,7 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         }
     }
     lock();
+    int first_remote = -1; // the lowest slot drawn (the voice sweep test)
     for (int i = 0; i < MAX_REMOTES; ++i) {
         Remote* r = &g_remote[i];
         r->drawn = false;
@@ -3109,24 +3425,67 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         Pose p;
         if (!remote_pose(r, now, &p))
             continue;
+        if (first_remote < 0)
+            first_remote = i;
         Item* it = &w->item[w->count++];
         it->slot = i;
         it->id = r->id;
         build_item(&p, it);
         it->bdl = NULL;
         it->bdl_len = 0;
+        for (int k = 0; k < EQUIP_SLOTS; ++k) {
+            it->eq[k] = NULL;
+            it->eq_len[k] = 0;
+        }
+        snprintf(it->voice, sizeof it->voice, "%s", r->voice);
+        it->voice_local = r->voice_local;
+        it->active_ms = r->active_ms;
+        if (r->retry_custom_ms > 0.0 && now_ms() >= r->retry_custom_ms) {
+            r->retry_custom_ms = 0.0;
+            r->model_changed = true; // the eviction is over: asked for again
+        }
+        const bool stock_now = now_ms() < r->stock_until_ms;
         it->voice_proc = -1;
         it->voice_pitch = r->voice_pitch;
         if (r->last_proc >= 0 && r->last_proc != (int)p.proc && p.proc != 0xFFFFu && atomic_load(&g_sounds))
             it->voice_proc = (int)p.proc;
+        if (r->last_proc != (int)p.proc && getenv("BLUEWAKE_PUPPET_PROC_LOG") != NULL)
+            fprintf(stderr, "[puppet] player %d proc %d -> %u\n", r->id, r->last_proc, (unsigned)p.proc);
         r->last_proc = p.proc == 0xFFFFu ? -1 : (int)p.proc;
-        it->recreate = r->model_changed && g_guest[i].model != 0u;
+        {   // BLUEWAKE_PUPPET_TEST_VOICE=<proc> (testing): every 180th frame each puppet starts that action, so its voice is made
+            static const char* test_voice = NULL;
+            static int test_voice_read, test_frames[MAX_REMOTES];
+            if (!test_voice_read++)
+                test_voice = getenv("BLUEWAKE_PUPPET_TEST_VOICE");
+            if (test_voice != NULL && ++test_frames[i] % 180 == 0)
+                it->voice_proc = atoi(test_voice);
+            // BLUEWAKE_PUPPET_TEST_VOICE_SWEEP=<first>-<last>:<frames> (testing): the first puppet makes voice ids first to last, one
+            // every that many frames, whatever it is doing.
+            static int sweep_read, sweep_first = -1, sweep_last = -1, sweep_period = 120, sweep_next = -1, sweep_tick;
+            if (!sweep_read++) {
+                const char* v = getenv("BLUEWAKE_PUPPET_TEST_VOICE_SWEEP");
+                if (v != NULL && sscanf(v, "%d-%d:%d", &sweep_first, &sweep_last, &sweep_period) >= 2)
+                    sweep_next = sweep_first;
+            }
+            it->voice_force = -1;
+            if (sweep_next >= 0 && sweep_next <= sweep_last && i == first_remote && ++sweep_tick % sweep_period == 0) {
+                it->voice_force = sweep_next++;
+                it->voice_proc = 30;
+            }
+        }
+        it->recreate = (r->model_changed || (g_guest[i].denied && now_ms() - g_guest[i].denied_at > 5000.0)) && g_guest[i].model != 0u;
         if (g_guest[i].model == 0u || it->recreate)
             r->model_changed = false;
-        if ((g_guest[i].model == 0u || it->recreate) && !g_guest[i].failed && r->bdl != NULL && (it->bdl = (uint8_t*)malloc(r->bdl_len)) != NULL) {
+        if ((g_guest[i].model == 0u || it->recreate) && !g_guest[i].failed && !stock_now && r->bdl != NULL && (it->bdl = (uint8_t*)malloc(r->bdl_len)) != NULL) {
             memcpy(it->bdl, r->bdl, r->bdl_len);
             it->bdl_len = r->bdl_len;
         }
+        if ((g_guest[i].model == 0u || it->recreate) && !g_guest[i].failed && !stock_now)
+            for (int k = 0; k < EQUIP_SLOTS; ++k)
+                if (r->eq[k] != NULL && (it->eq[k] = (uint8_t*)malloc(r->eq_len[k])) != NULL) {
+                    memcpy(it->eq[k], r->eq[k], r->eq_len[k]);
+                    it->eq_len[k] = r->eq_len[k];
+                }
         r->drawn = true;
         bluewake_pvp_note(r->id, p.base_pos);
         r->head[0] = p.base_pos[0];

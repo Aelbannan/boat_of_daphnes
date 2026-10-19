@@ -1629,6 +1629,19 @@ void ZeldaAudioRenderer::DownloadAFCSamplesFromARAM(s16* dst, VPB* vpb, u16 requ
 {
   if (vpb->reset_vpb)
   {
+    // BLUEWAKE_DSP_HLE_AFC_TRACE=1 (testing): each AFC voice start, with the first bytes of its samples in ARAM, so a sound can
+    // be matched with the wave it plays (the voice sweep, docs/fork/anchor-content-security.md).
+    static const bool afc_trace = getenv("BLUEWAKE_DSP_HLE_AFC_TRACE") != nullptr;
+    if (afc_trace)
+    {
+      const u8* first = GetARAMPointerForRange(m_system, m_aram_base_addr, vpb->GetBaseAddress(), 9);
+      char hex[32] = {0};
+      if (first != nullptr)
+        for (int i = 0; i < 9; ++i)
+          snprintf(hex + 2 * i, 4, "%02x", first[i]);
+      fprintf(stderr, "[dsp-afc] start base=0x%08X type=%u ratio=0x%04X first=%s\n", vpb->GetBaseAddress(),
+              vpb->samples_source_type, vpb->resampling_ratio, hex);
+    }
     *vpb->AFCYN1() = 0;
     *vpb->AFCYN2() = 0;
     vpb->afc_remaining_decoded_samples = 0;

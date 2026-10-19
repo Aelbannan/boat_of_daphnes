@@ -29,6 +29,7 @@
 #include <vector>
 
 extern "C" void bluewake_voice_pitch_set_local(float ratio);
+extern "C" void bluewake_text_swap_set_female(bool on);
 extern "C" bool bluewake_bunny_hood_enabled(void);
 extern "C" bool bluewake_cosmetics_get(const char* id, uint8_t rgba[4]);
 extern "C" void bluewake_bunny_hood_enable(bool on);
@@ -636,6 +637,27 @@ void draw_voice(float scale) {
     }
 }
 
+// Player Gender (Male/Female): how the game's text refers to the player (runtime/host/src/text_swap.c), live.
+void set_player_gender(int gender) {
+    CVarSetInteger("gCosmetics.PlayerGender", gender != 0 ? 1 : 0);
+    bluewake_text_swap_set_female(gender != 0);
+    CVarSaveNextFrame();
+}
+
+void draw_gender(float scale) {
+    static const char* const kGenders[] = {"Male", "Female"};
+    int gender = CVarGetInteger("gCosmetics.PlayerGender", 0) != 0 ? 1 : 0;
+    ImGui::SetNextItemWidth(250 * scale);
+    if (ImGui::BeginCombo("Player Gender", kGenders[gender])) {
+        for (int i = 0; i < 2; ++i)
+            if (ImGui::Selectable(kGenders[i], i == gender))
+                set_player_gender(i);
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("For use with custom player models; Changes how NPCs refer to the player.");
+}
+
 // Testing (BLUEWAKE_TEST_SET gTest.CosmeticsPreset=hero:Red Link): a stock preset by its name, as the Preset list applies it.
 void apply_stock_preset_named(const std::string& spec) {
     const size_t colon = spec.find(':');
@@ -722,6 +744,8 @@ void embed_window(float scale) {
                 if (tab.groups[0] == HERO) {
                     draw_voice(scale);
                     ImGui::Separator();
+                    draw_gender(scale);
+                    ImGui::Separator();
                 }
                 for (size_t i = 0; i < tab.groups.size(); ++i) {
                     if (i != 0)
@@ -745,6 +769,7 @@ void draw_window(float scale, float fontScale) {
 void TestApplyPreset(const std::string& spec) { apply_stock_preset_named(spec); }
 
 void ApplyAll() {
+    bluewake_text_swap_set_female(CVarGetInteger("gCosmetics.PlayerGender", 0) != 0);
     bluewake_voice_pitch_set_local(1.0f + float(std::clamp(CVarGetInteger("gCosmetics.LinkVoicePitch", 0), -50, 100)) / 100.0f);
     for (const Option& o : options())
         apply(o);

@@ -10,6 +10,7 @@
 
 #include "model_colors.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -29,15 +30,36 @@ std::string ActiveModel();
 // The files of the player model whose Link.arc the last Apply put in effect (Link.arc, metadata.txt,
 // color_masks\*.png), for its colors; false when the game has the disc's Link.
 bool ActiveModelFiles(model_colors::Files& out);
-// What the active player model's pack holds, for sharing it with other players (Network > Anchor): each
-// file's role ("model": Link.arc; "metadata": metadata.txt; "colors": color_masks\*.png; "voice": sound\*;
-// "equipment": equipment\*), its path inside the pack ('/', as the pack spells it) and its bytes. False when
-// the game has the disc's Link. Files over 20 MB are left out.
+// What the active player content holds, for sharing it with other players (Network > Anchor). It can come from
+// several mods: Link (the body) from one, Equipment from another, the voice from a third. Each file's role
+// ("model": the Link source's Link.arc; "equipment": the Equipment source's Link.arc when it is a different mod's, path
+// "equipment/Link.arc"; "voice": sound\JaiInit.aaf, voice_0.aw, GanonT_0.aw) and its bytes. Files over 20 MB are left out.
 struct PackFile {
     std::string role, path;
     std::vector<unsigned char> bytes;
 };
-bool ActivePlayerPack(std::string& name, std::vector<PackFile>& out);
+struct SharedParts {
+    bool link = false;         // the body is a mod's
+    std::string equipment;     // "" the game's, "model" the model file's, "equipment" the equipment file's
+    bool voice = false;        // the voice files are a mod's
+};
+// False when the game has the disc's Link, equipment and voice.
+bool ActivePlayerPack(std::string& name, std::vector<PackFile>& out, SharedParts& parts);
+// The id of the voice the game loaded at start (its audio init reads the voice files once): "" for the game's own, else
+// the first 16 hex digits of the SHA-256 of JaiInit.aaf and of voice_0.aw, joined. A peer with the same id sounds
+// right through the local voice bank.
+std::string LoadedVoiceId();
+// Changes whenever the shared choice does ("" for the game's own).
+std::string ShareSignature();
+// Which of Link, Equipment and the voice come from mods on this PC (the rest are the game's).
+struct LocalParts {
+    bool link, equipment, voice;
+};
+LocalParts LocalState();
+// The game's own body model (cl.bdl) and the models a puppet draws as equipment (swgripa.bdl, swa.bdl, sha.bdl,
+// swgripms.bdl, swms.bdl, shms.bdl), read from the disc's Link.arc: what a vanilla player's puppet is made of on a PC
+// whose own Link is a mod's. False until the disc is open.
+bool VanillaPuppetParts(std::vector<unsigned char>& body, std::map<std::string, std::vector<unsigned char>>& equipment);
 // fn is called after an Apply that changed the player model (the first one too, when it gives a model),
 // from the thread that applied: it must not call back into mods. Colors follow the model through it.
 void SetModelListener(void (*fn)());

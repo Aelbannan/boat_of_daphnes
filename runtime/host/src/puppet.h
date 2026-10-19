@@ -41,8 +41,23 @@ void bluewake_puppet_remote_update(int id, const uint8_t* wire, size_t length);
 // The player's own body model (the cl.bdl of a validated custom Link.arc): used the next time that
 // player's puppet is made (the next scene, or when it first shows). Empty clears it: Link's own.
 void bluewake_puppet_remote_model(int id, const uint8_t* bdl, size_t length);
+// The player's own equipment models (BDL files) by slot: 0 swgripa (the sword), 1 swgripms (the Master Sword), 2 sha (the
+// shield), 3 shms (the Mirror Shield), 4 swa (the sword's blade), 5 swms (the Master Sword's blade), 6 hands, 7 katsura (the hair of the Outset clothes). Used when that
+// player's puppet is made (a puppet already made is made again). Empty clears the slot: the game's own models of the local
+// Link. A PC whose own Link is a mod's sets the game's models here for players with none of their own.
+#define BLUEWAKE_PUPPET_EQUIP_SLOTS 8
+void bluewake_puppet_remote_equipment(int id, int slot, const uint8_t* bdl, size_t length);
+// The owner's voice: an id ("" the game's) and whether the local audio has that voice's bank loaded (the game reads its voice
+// files once at start, so only the local voice can be sounded; it is for the log and the scenario checks).
+void bluewake_puppet_remote_voice(int id, const char* voice_id, bool local_bank);
 // The owner's Link Voice Pitch (a ratio, 1.0 normal): the puppet's voice is made at it.
 void bluewake_puppet_remote_voice_pitch(int id, float ratio);
+// A puppet's voice from its own player's voice bank: called (on the game thread) when a puppet whose owner's voice bank is not the
+// local one starts a voice, with Link's voice id (0x1800 + id), the gains for the left and right channel from the puppet's
+// distance and side (1 at most) and the owner's pitch ratio. Returns true when it played the voice (from a decoded bank), and
+// the local bank's voice is then not made. False: the local bank plays it, as before.
+typedef bool (*BluewakePuppetVoiceFn)(int player_id, int voice_id, float left, float right, float pitch);
+void bluewake_puppet_set_voice_player(BluewakePuppetVoiceFn fn);
 // J3DMatPacket::draw hook: tells the renderer whose puppet the next material draw belongs to (texture variants).
 bool bluewake_puppet_mat_observes(u32 address);
 void bluewake_puppet_mat_enter(CPUState* cpu, u32 address);

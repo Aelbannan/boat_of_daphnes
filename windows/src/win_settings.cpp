@@ -98,6 +98,7 @@ bool bluewake_autosave_take_done(int* slot, bool* ok);
 // session log and Dev Tools: every present, and the game's own frames.
 extern "C" void bluewake_bunny_hood_enable(bool on);
 extern "C" void bluewake_text_swap_enable(bool on);
+extern "C" void bluewake_text_swap_set_female(bool on);
 extern "C" void bluewake_host_set_pad_unfocused_block(bool block);
 
 namespace aurora::gfx {
@@ -1749,6 +1750,7 @@ void frame(void*) {
         place_window(w);
     }
     apply_test_changes();
+    bluewake_text_swap_set_female(CVarGetInteger("gCosmetics.PlayerGender", 0) != 0); // Cosmetics Editor > Link > Player Gender (live; also a test's BLUEWAKE_TEST_SET)
     if (g_toggle_fullscreen) {
         g_toggle_fullscreen = false;
         set_fullscreen(w, !is_fullscreen(w));
@@ -1937,6 +1939,7 @@ extern "C" void bw_settings_apply_launch(void) {
     options += ",runtime_fixes"; // DVDCheckDisk: a disc is in (the three-button reset)
     bluewake_bunny_hood_enable(CVarGetInteger("gExperimental.BunnyHood", 1) != 0); // on by default (11c)
     bluewake_text_swap_enable(CVarGetInteger(CVAR_ENHANCEMENT("Crenando"), 0) != 0);
+    bluewake_text_swap_set_female(CVarGetInteger("gCosmetics.PlayerGender", 0) != 0);
     options += ",bunny_hood"; // the Bunny Hood's hooks (docs/fork/bunny-hood.md); they do nothing until the hood is owned; a module without it has no such option
     bluewake_intro_skip_set(CVarGetInteger(CVAR_ENHANCEMENT("SkipIntroWithStart"), 1) != 0);
     apply_preferences(); // before the game starts: a randomizer session applies its seed at boot

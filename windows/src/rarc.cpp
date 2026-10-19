@@ -128,10 +128,14 @@ bool ReplaceMembers(std::vector<uint8_t>& arc, const std::vector<uint8_t>& donor
     return true;
 }
 
-bool Yaz0Expand(std::vector<uint8_t>& data) {
+bool Yaz0Expand(std::vector<uint8_t>& data, size_t max_size) {
     if (data.size() < 16 || be32(data, 0) != 0x59617A30u /* Yaz0 */)
         return false;
     const uint32_t size = be32(data, 4);
+    // Decompression bomb limits: the declared size is bounded in itself and by what the compressed data can make
+    // (a 2- or 3-byte code makes at most 273 bytes, and a code byte covers 8 of them: under 140 times the input).
+    if (size > max_size || static_cast<uint64_t>(size) > static_cast<uint64_t>(data.size()) * 140u)
+        return false;
     std::vector<uint8_t> out;
     out.reserve(size);
     size_t at = 16;

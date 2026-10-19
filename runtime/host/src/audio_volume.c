@@ -32,6 +32,8 @@ void bluewake_audio_volume_set(int music, int sfx, int fanfare) {
     atomic_store(&g_fanfare, fanfare < 0 ? 0 : fanfare > 100 ? 100 : fanfare);
 }
 
+int bluewake_audio_volume_sfx_percent(void) { return atomic_load(&g_sfx); }
+
 static float read_float(CPUState* cpu, u32 address) {
     const u32 bits = mem_read32(cpu, address);
     float f;

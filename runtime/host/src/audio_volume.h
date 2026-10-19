@@ -17,5 +17,6 @@
 // Streams (the cutscene music of JAIStreamMgr) are not touched.
 void bluewake_audio_volume_set(int music_percent, int sfx_percent, int fanfare_percent); // any thread, 0 to 100
 void bluewake_audio_volume_retrace(CPUState* cpu); // the game thread, every retrace
+int bluewake_audio_volume_sfx_percent(void); // the Sound Effects setting, 0 to 100 (for sounds the host mixes itself)
 
 #endif

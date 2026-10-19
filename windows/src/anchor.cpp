@@ -7,6 +7,12 @@
 #include "anchor_client.h"
 #include "anchor_content.h"
 #include "link_colors.h"
+#include "mods.h"
+#include "player_parts.h"
+#include "voice_bank.h"
+
+#include <memory>
+#include <mutex>
 #include "item_found.h"
 #include "notifications.h"
 #include "item_found.h"
@@ -48,6 +54,8 @@ extern "C" {
 #include "team_sync.h"
 }
 
+extern "C" void dol_aurora_audio_mix_voice(const int16_t* mono, uint32_t frames, float gain_left, float gain_right, float step);
+extern "C" int bluewake_audio_volume_sfx_percent(void);
 extern "C" bool bw_settings_menu_is_open(void);  // win_settings.cpp
 
 namespace online {
@@ -86,6 +94,7 @@ struct Player {
 constexpr const char* kAnchorProtocol = "bod-anchor-2026.10.18";
 
 std::map<int, Player> g_players;
+void puppet_gone(int id); // below, with the puppet content
 int g_self, g_owner;
 anchor::Status g_last_status = anchor::Status::Disconnected;
 std::string g_notice; // the last message from the server
@@ -451,12 +460,12 @@ void handle(const std::string& text) {
         }
         for (const auto& [id, old] : before)
             if (g_players.find(id) == g_players.end())
-                bluewake_puppet_remote_remove(id);
+                puppet_gone(id);
         // Offline players keep their place in the list but not a puppet slot (16): a player who reconnects comes back
         // under a new id, and the old ids' slots filled up until a newcomer got only a nametag.
         for (const auto& [id, p] : g_players)
             if (!p.online && !p.self)
-                bluewake_puppet_remote_remove(id);
+                puppet_gone(id);
         // The session log: who came, went online or offline.
         for (const auto& [id, p] : g_players) {
             const auto old = before.find(id);
@@ -857,6 +866,169 @@ void pvp_frame(bool connected, bool self_set) {
 }
 
 // Each frame: the puppets. The host reads Link's pose while online, and draws
+// ----------------------------------------------------- puppet content ----
+// What each puppet is made of, as far as the app knows: the player's own content (from the server) where there is
+// some, and else -- on a PC whose own Link or equipment is a mod's, so the game's resident models are not stock -- the
+// game's own models from the disc, so a stock player stays stock for the others' eyes.
+struct PuppetContent {
+    bool body = false, equipment = false;          // the player's own content provides it
+    bool supplied_body = false, supplied_equipment = false, supplied_hands = false; // the disc's models are set for it
+    bool voice_set = false;                        // the puppet has been told whose voice it has
+};
+std::map<int, PuppetContent> g_puppet_content;
+
+// The voice banks of the players whose own bank is decoded (Ready::bank), for their puppets' voices. Read by the game thread
+// (a puppet starts a voice) and written by the app's.
+std::mutex g_bank_mutex;
+std::map<int, std::shared_ptr<const voice_bank::Bank>> g_player_bank;
+std::map<int, std::string> g_player_voice;
+
+// The base level of Link's voice at the output (measured in the game: a voice sweep, tests in docs/fork/anchor-puppets.md) times
+// the Sound Effects setting, the distance and the side from puppet.c.
+bool play_puppet_voice(int player, int voice, float left, float right, float pitch) {
+    std::shared_ptr<const voice_bank::Bank> bank;
+    std::string name;
+    {
+        std::lock_guard<std::mutex> lock(g_bank_mutex);
+        const auto it = g_player_bank.find(player);
+        if (it == g_player_bank.end() || !it->second)
+            return false;
+        bank = it->second;
+        name = g_player_voice[player];
+    }
+    if (voice < 0 || voice >= voice_bank::kVoiceIds || bank->voice[static_cast<size_t>(voice)].empty())
+        return false; // a voice this bank has no wave for: the local bank
+    std::vector<int16_t> tone;
+    if (std::getenv("BLUEWAKE_PUPPET_VOICE_TONE") != nullptr) { // testing: a 1 kHz tone of the voice's length in place of the voice
+        tone.resize(bank->voice[static_cast<size_t>(voice)].size());
+        for (size_t i = 0; i < tone.size(); ++i)
+            tone[i] = static_cast<int16_t>(10000.0 * std::sin(2.0 * 3.14159265358979 * 1000.0 * static_cast<double>(i) / 32000.0));
+    }
+    const std::vector<int16_t>& pcm = tone.empty() ? bank->voice[static_cast<size_t>(voice)] : tone;
+    const float sfx = static_cast<float>(bluewake_audio_volume_sfx_percent()) / 100.0f;
+    // BLUEWAKE_PUPPET_VOICE_GAIN=<x> (testing): the base level times x, to find the voices in a capture.
+    static const float test_gain = std::getenv("BLUEWAKE_PUPPET_VOICE_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("BLUEWAKE_PUPPET_VOICE_GAIN"))) : 1.0f;
+    const float base = 0.12f * sfx * test_gain;
+    dol_aurora_audio_mix_voice(pcm.data(), static_cast<uint32_t>(pcm.size()), left * base, right * base, pitch);
+    std::fprintf(stderr, "[voice] player %d voice id %d from its own bank %.12s (%zu samples), gain L %.3f R %.3f, pitch %.2f\n", player, voice,
+                 name.c_str(), pcm.size(), static_cast<double>(left * base), static_cast<double>(right * base), static_cast<double>(pitch));
+    return true;
+}
+
+int equipment_slot(const std::string& name) {
+    static const char* const kNames[] = {"swgripa.bdl", "swgripms.bdl", "sha.bdl", "shms.bdl", "swa.bdl", "swms.bdl", "hands.bdl", "katsura.bdl"};
+    for (int i = 0; i < 8; ++i)
+        if (name == kNames[i])
+            return i;
+    return -1;
+}
+
+void puppet_gone(int id) {
+    g_puppet_content.erase(id);
+    {
+        std::lock_guard<std::mutex> lock(g_bank_mutex);
+        g_player_bank.erase(id);
+        g_player_voice.erase(id);
+    }
+    bluewake_puppet_remote_remove(id);
+}
+
+// The game's own models for a puppet that has none of its own, when this PC's resident ones are a mod's.
+void sync_stock_models(int id) {
+    PuppetContent& pc = g_puppet_content[id];
+    if (!pc.voice_set) { // stock players: the game's voice
+        pc.voice_set = true;
+        bluewake_puppet_remote_voice(id, "", content::LocalVoiceId().empty());
+    }
+    const mods::LocalParts local = mods::LocalState();
+    const bool want_body = !pc.body && local.link;
+    const bool want_equipment = !pc.equipment && local.equipment;
+    const bool want_hands = !pc.body && local.link;
+    if (want_body == pc.supplied_body && want_equipment == pc.supplied_equipment && want_hands == pc.supplied_hands)
+        return;
+    std::vector<unsigned char> body;
+    std::map<std::string, std::vector<unsigned char>> equipment;
+    if ((want_body || want_equipment || want_hands) && !mods::VanillaPuppetParts(body, equipment))
+        return; // the disc is not open yet: tried again
+    if (want_body != pc.supplied_body) {
+        if (want_body)
+            bluewake_puppet_remote_model(id, body.data(), body.size());
+        else
+            bluewake_puppet_remote_model(id, nullptr, 0);
+    }
+    for (const char* name : {"swgripa.bdl", "swgripms.bdl", "sha.bdl", "shms.bdl", "swa.bdl", "swms.bdl", "hands.bdl", "katsura.bdl"}) {
+        const int slot = equipment_slot(name);
+        const bool hands = slot >= 6; // the hands and the hair go with the body
+        const bool want = hands ? want_hands : want_equipment;
+        const bool had = hands ? pc.supplied_hands : pc.supplied_equipment;
+        if (want == had)
+            continue;
+        const auto it = equipment.find(name);
+        if (want && it != equipment.end())
+            bluewake_puppet_remote_equipment(id, slot, it->second.data(), it->second.size());
+        else
+            bluewake_puppet_remote_equipment(id, slot, nullptr, 0);
+    }
+    if (want_body || want_equipment || want_hands)
+        std::fprintf(stderr, "[anchor] player %d is stock on this PC's modded Link: the game's own %s%s%s are used for the puppet\n", id,
+                     want_body ? "body " : "", want_equipment ? "equipment " : "", want_hands ? "hands" : "");
+    pc.supplied_body = want_body;
+    pc.supplied_equipment = want_equipment;
+    pc.supplied_hands = want_hands;
+}
+
+// A peer's content arrived: set it on the puppet (it is made again with it).
+void apply_content(const content::Ready& r) {
+    PuppetContent& pc = g_puppet_content[r.id];
+    pc.body = r.has_body;
+    pc.equipment = r.has_equipment;
+    pc.supplied_body = pc.supplied_equipment = pc.supplied_hands = false; // replaced below or by sync_stock_models
+    pc.voice_set = true;
+    if (r.has_body)
+        bluewake_puppet_remote_model(r.id, r.body.data(), r.body.size());
+    else
+        bluewake_puppet_remote_model(r.id, nullptr, 0);
+    for (int slot = 0; slot < 8; ++slot)
+        bluewake_puppet_remote_equipment(r.id, slot, nullptr, 0);
+    for (const auto& [name, bytes] : r.equipment) {
+        const int slot = equipment_slot(name);
+        if (slot >= 0 && slot < 6 && r.has_equipment)
+            bluewake_puppet_remote_equipment(r.id, slot, bytes.data(), bytes.size());
+    }
+    // The body's own hands and hair (a custom body's skeleton is Link's, and its hands are made for it).
+    if (r.has_body && !r.hands.empty())
+        bluewake_puppet_remote_equipment(r.id, 6, r.hands.data(), r.hands.size());
+    if (r.has_body && !r.hair.empty())
+        bluewake_puppet_remote_equipment(r.id, 7, r.hair.data(), r.hair.size());
+    bluewake_puppet_remote_voice(r.id, r.voice.c_str(), r.voice == content::LocalVoiceId());
+    {
+        std::lock_guard<std::mutex> lock(g_bank_mutex);
+        g_player_bank[r.id] = r.bank;
+        g_player_voice[r.id] = r.voice;
+    }
+    std::fprintf(stderr, "[anchor] player %d's puppet: body %s, equipment %s (%zu models), voice %s\n", r.id, r.has_body ? "custom" : "stock",
+                 r.has_equipment ? "custom" : "stock", r.equipment.size(), r.voice.empty() ? "stock" : r.voice.c_str());
+    sync_stock_models(r.id);
+}
+
+// Their content went (or sharing was turned off): the puppet is stock again.
+void clear_content(int id) {
+    PuppetContent& pc = g_puppet_content[id];
+    pc = PuppetContent{};
+    pc.voice_set = true;
+    bluewake_puppet_remote_model(id, nullptr, 0);
+    for (int slot = 0; slot < 8; ++slot)
+        bluewake_puppet_remote_equipment(id, slot, nullptr, 0);
+    bluewake_puppet_remote_voice(id, "", content::LocalVoiceId().empty());
+    {
+        std::lock_guard<std::mutex> lock(g_bank_mutex);
+        g_player_bank.erase(id);
+        g_player_voice.erase(id);
+    }
+    std::fprintf(stderr, "[anchor] player %d's puppet is stock again\n", id);
+    sync_stock_models(id);
+}
+
 // the puppets of the players in this scene (when the setting is on).
 void update_puppets(bool connected) {
     {   // the tunic colour changed in the Cosmetics Editor: tell the room
@@ -901,6 +1073,7 @@ void update_puppets(bool connected) {
     const bool puppets = true; // always Link models (the setting was removed)
     bluewake_puppet_enable(connected || self_set, puppets || self_set);
     bluewake_puppet_set_sounds(CVarGetInteger("gNetwork.Anchor.PuppetSounds", 1) != 0);
+    bluewake_puppet_set_voice_player(play_puppet_voice);
     pvp_frame(connected, self_set);
     // Custom player content: published, advertised, and fetched in the background.
     content::Tick(http_base(), share_content() && puppets, connected);
@@ -915,14 +1088,16 @@ void update_puppets(bool connected) {
     if (content::LocalChanged() && connected)
         send_state();
     for (const int id : content::TakeCleared())
-        bluewake_puppet_remote_model(id, nullptr, 0);
+        clear_content(id);
     for (const content::Ready& r : content::TakeReady())
-        bluewake_puppet_remote_model(r.id, r.body.data(), r.body.size());
+        apply_content(r);
     if (!connected)
         return;
     for (const auto& [id, p] : g_players)
-        if (!p.self && p.online)
+        if (!p.self && p.online) {
             content::Want(id, p.content);
+            sync_stock_models(id);
+        }
     const BluewakeLocation where = bluewake_game_location();
     const Uint64 now = SDL_GetTicks();
     for (const auto& [id, p] : g_players) {

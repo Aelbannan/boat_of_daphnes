@@ -227,6 +227,9 @@ add_executable(BlueWake
     src/input_viewer.cpp
     src/mods.cpp
     src/rarc.cpp
+    src/player_parts.cpp
+    src/content_validate.cpp
+    src/voice_bank.cpp
     src/hud_colors.cpp
     src/randomizer_menu.cpp
     src/rando_pack.cpp
