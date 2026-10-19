@@ -167,6 +167,13 @@ The loop was short: change RecompCore, build host-only, play, look, repeat.
 
 ## What's left, with leads
 
+- **Ultra (8192 maps).** Sharper still, but it dropped frames on an RTX 5070 Ti (four cascades drawn at 8192 every
+  frame) and showed a wedge of self-shading on the cliff under Link that moved with the camera. Lead: draw the far
+  cascades less often than every frame; they barely change.
+- **Long shadows fading toward the tip** (sky light filling them in), tried and taken out: faded by the distance to the
+  blocker the map holds, a tree's shadow inside a mountain's came out a different shade from the mountain's around
+  it. The map keeps only the blocker nearest the sun, so a fade needs something that knows a point is already in
+  another shadow.
 - **A blue Chuchu's oval.** The game draws it itself (it stays with the HD look off) and it doesn't go through
   either of the paths the map skips (`DOL_AURORA_GAME_SHADOWS` on or off makes no difference). The goal is no
   GameCube-style darkening next to the HD shadows: find what makes that draw distinct (a frame-interp trace on a state
