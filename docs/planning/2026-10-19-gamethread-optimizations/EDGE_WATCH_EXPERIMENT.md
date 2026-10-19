@@ -34,7 +34,27 @@ locality analysis, never as the performance candidate in an A/B comparison.
 The separate diagnostic build reuses the baseline generated sources, PGO profile,
 compiler and CMake options, adding only the profiling macro. Outputs remain under
 `build/desktop-edge-watch-profile/` beside the existing baseline build directory.
-The baseline packaged binary is preserved. Diagnostic gameplay has not run yet.
+The baseline packaged binary is preserved.
+
+## Desktop diagnostic result
+
+The diagnostic module completed a headless run from `quick-7505.bwstate` to the
+11105-retrace ceiling, exiting with status 0. The same mod mismatch remains.
+Local raw evidence: `profiling/desktop-edge-watch-01/run.log` under the workspace's
+BlueWake parent directory. The log confirms the diagnostic module was loaded.
+
+| Counter | Observed |
+|---|---:|
+| Calls | 171,904,733 |
+| Adjacent raw-address repeats | 5,875,921 (3.42%) |
+| Table probes | 213,335,408 (1.24 per call, including range rejects) |
+| Unwatched answers | 128,455,253 |
+
+Decision: defer a one-entry last-address cache. Only 3.42% of calls repeat the
+previous raw address, while its key comparison would affect every lookup. This
+does not prove a cache is slower, or characterize multi-entry cache locality;
+it provides insufficient support to prioritize that implementation. These are
+whole-run counts including startup, not a timed A/B optimization result.
 
 ## Validation and decision
 
