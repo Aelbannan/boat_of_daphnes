@@ -35,15 +35,14 @@ previous packaged app beside the new one. It signs locally with an ad-hoc
 signature; `--identity NAME` selects an installed Mac signing identity. Device
 options `--ipa`, `--app`, `--profile` and `--install` do not apply to Mac.
 
-The Mac build also accepts `--combined-optimizations` for personal
-Mac builds. It selects the imported preparation/native helpers measured in the
-reconciliation ledger, applies the same configuration during local training and
-compilation, and records it in the app's provenance. The packaged app enables
-those compatible paths when launched; explicit diagnostic environment overrides
-still win. Original 30 Hz game logic and display-mode preferences stay unchanged.
-This option is off by default until clean player-build and sustained acceptance
-finish. Changing the option preserves and regenerates incompatible source;
-matching completed work is reused. This does not enable PadMint Mac support.
+Personal Mac, iPhone and iPad builds get the same module preparations as the Windows and Linux builders:
+`--combined-optimizations`, `--lean-blocks`, `--lean-memory`, `--lean-deadlines` and `--behaviour-timing`, all on
+by default. On the benchmark tour they made the game 64 to 77% faster on an M3 Max and 75 to 81% faster on an
+iPad Pro, with a smaller module and a shorter compile
+([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). `--conservative` builds the plain translation instead;
+naming any of the five builds exactly the ones named. The same configuration is used for local training and
+compilation and recorded in the app, and the app turns on its side of each when it starts. Changing the
+options preserves and regenerates incompatible source; matching completed work is reused.
 
 `--app-only --platform macos` builds the shell without game files. It is for
 local packaging checks, not a playable build or an accepted public release.
