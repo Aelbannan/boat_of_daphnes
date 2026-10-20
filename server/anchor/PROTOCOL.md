@@ -28,7 +28,7 @@ online. Those players receive it in the next `UPDATE_TEAM_STATE` they ask for.
 | --- | --- | --- | --- |
 | `HANDSHAKE` | client, first | `protocol` (1), `clientId` (to rejoin as the same player), `clientState`, `roomState` (used if the room is new or ownerless) | gives the player an id; the first player online owns the room; answers `UPDATE_ROOM_STATE` and sends everyone `ALL_CLIENT_STATE` |
 | `UPDATE_CLIENT_STATE` | client | `state`: `name`, `color`, `teamId`, `version`, `settingsHash`, `seed`, `isSaveLoaded`, `isGameComplete`, `stage`, `room`, `point` | stores the player's record, sends everyone `ALL_CLIENT_STATE` |
-| `UPDATE_ROOM_STATE` | room owner | `roomState`: `syncItemsAndFlags`, `teleportMode`, `showLocationsMode`, `pvpMode`, `listed`, `title`, and the player-interaction settings `pvp` (`off`, `no_damage`, `on`), `pvpScale` (damage multiplier, 0.25-4), `pvpFriendlyFire` (0/1: hits within a team), `playerCollision` (0/1) | stores it (the interaction settings clamped to their ranges) and sends it to everyone; refused for other players |
+| `UPDATE_ROOM_STATE` | room owner | `roomState`: `syncItemsAndFlags`, `teleportMode`, `showLocationsMode`, `pvpMode`, `listed`, `title`, and the player-interaction settings `pvp` (`off`, `no_damage`, `on`), `pvpScale` (damage multiplier, 0.25-4), `pvpFriendlyFire` (0/1: hits within a team), `playerCollision` (0/1), `allowCarrying` (0/1, default 0: players may lift each other) | stores it (the interaction settings clamped to their ranges) and sends it to everyone; refused for other players |
 | `UPDATE_TEAM_STATE` | client | `state` (the team's save data, see below), `targetClientId` (when answering a request) | stores it as the team's state and empties the team's queue; forwards it when targeted |
 | `REQUEST_TEAM_STATE` | client | none | forwards it to a teammate who has a save loaded; if none is online, answers with the stored `state` and `queue` |
 | `PLAYER_UPDATE` | client | pose (below) | sends it only to players whose `stage` is the sender's |
@@ -56,6 +56,9 @@ These carry Wind Waker's data. The client defines them.
 | `TELEPORT_TO` | one player | `stage`, `room`, `point`, `pos`, `angle` |
 | `DAMAGE_PLAYER` | one player | `damage`, `effect` (reserved: the game does not send it yet) |
 | `PVP_HIT` | one player (`targetClientId` required; dropped while the room's `pvp` is `off`) | `damage` (the attacker's attack power), `hitType` (the game's attack type bits), `pos` (the attacker's place), `direction` ([x, z], from the attacker to the target) |
+| `CARRY_START` | one player (`targetClientId` required; dropped while the room's `allowCarrying` is 0) | `pos` (the carrier's hands, [x, y, z]), `angle` (the carrier's s16 facing), `stage`, `room`: the sender's game has lifted the receiver's puppet like a pot and asks to hold them |
+| `CARRY_POS` | one player (same rules, about 15 a second) | `pos`, `angle`, `phase` (`held`, or `thrown` while the arc flies): where the receiver's Link is held or flies; the receiver follows it with no input |
+| `CARRY_END` | one player (`targetClientId` required; always relayed, so a hold can always end) | `reason` (`put`, `thrown`, `refused`, `busy`, `breakfree`, `area`, `event`, `timeout`, `left`), `pos`, `angle` (where the receiver is let go; for a throw, where the arc landed), `hurt` (1: a thrown player takes a hit when PvP is On). Either side sends it: the carrier when they put down or throw, the carried player when they refuse or break free with a button |
 | `GAME_COMPLETE` | room | none (reserved: the game does not send it yet) |
 
 **Team state.** `state` is the save's synced parts as [[offset, value], ...] (`runtime/host/src/team_sync.c`:
@@ -75,3 +78,24 @@ A player's game names what its own save just gained, so teammates can show "<nam
 `{"type":"ITEM_FOUND","itemId":<tww dItemNo, 0-255>,"name":"<English name>","targetTeamId":"<team>"}`.
 It is relayed by the server's default case to the team's online members (the server adds `clientId`);
 it is not queued (`addToQueue` is absent), so a player who joins later gets no toasts for old items.
+
+## Carrying players (CARRY_START, CARRY_POS, CARRY_END)
+
+A player lifts another player's puppet with the game's own lift (A near it, as with a pot) when the room's
+`allowCarrying` is 1. All three types are relayed to one player (`targetClientId`); a build that does not know them
+ignores them, and a build that is not carried is never sent any. The server only drops `CARRY_START` and `CARRY_POS`
+while `allowCarrying` is 0 (`CARRY_END` always goes through).
+
+1. The carrier's game sees the lift begin (the puppet's stand-in actor gets the game's carry status) and sends
+   `CARRY_START` to that player.
+2. The carried player's game answers by doing nothing if it can carry (the hold begins at the next `CARRY_POS`), or
+   `CARRY_END` with `reason` `refused` (the room setting, an event, a scene change, the sea, the other player is
+   not in the same stage and room) or `busy` (already carried). The carrier's game then lets go.
+3. While held, the carrier sends `CARRY_POS` about 15 times a second. The carried player's Link is placed at `pos`
+   (the carrier's hands, lowered), faces `angle`, takes no input and plays Link's crouch animation, and so does the
+   puppet in every other game, because the pose stream carries it. A hold with no `CARRY_POS` for 3 seconds ends.
+4. The carrier puts down or throws: `CARRY_POS` with `phase` `thrown` follows the arc (the carrier's game simulates it
+   from the game's own throw speed), then `CARRY_END` (`put` or `thrown`, with `pos` the landing place). Nothing is
+   damaged, except that in a room with PvP `on` a thrown player takes a small hit (`hurt` 1).
+5. Either end ends the hold when the stage or room changes, an event or a cutscene starts, or the other player goes
+   offline (`area`, `event`, `left`). The carried player can always press B: `CARRY_END` with `breakfree`.

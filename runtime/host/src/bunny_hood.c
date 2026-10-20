@@ -681,6 +681,17 @@ static void menu_sync(CPUState* cpu) {
     redirect_charm_text(cpu, hood);
 }
 
+u8 bluewake_bunny_hood_real_collect(CPUState* cpu) { return g_translated ? g_real : collect_byte(cpu); }
+
+void bluewake_bunny_hood_add_owned(CPUState* cpu, u8 owned_bits) {
+    owned_bits &= (u8)(BLUEWAKE_BUNNY_CHARM_OWNED | BLUEWAKE_BUNNY_HOOD_OWNED);
+    if (g_translated) {
+        g_real |= owned_bits; // the screen's view follows on its next frame
+    } else {
+        mem_write8(cpu, BLUEWAKE_BUNNY_COLLECT, (u8)(collect_byte(cpu) | owned_bits));
+    }
+}
+
 static void set_slot(CPUState* cpu, bool hood) {
     if (!g_translated)
         return;

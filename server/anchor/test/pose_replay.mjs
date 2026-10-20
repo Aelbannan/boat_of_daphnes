@@ -8,7 +8,9 @@
 //   pack: a wwrando model folder (Link.arc, metadata.txt, color_masks, sound): the mate has that mod's Link, equipment
 //         and voice. Or parts of several folders: "link=<folder>,equip=<folder>,voice=<folder>" (any of the three; one
 //         left out is the game's own). Several mods give a mixed assortment: Young Link's body with Samus's equipment.
-//   env:  MATE_NAME (default "Mate"), MATE_DX / MATE_DZ (offset from Link, default 150 / 0), VOICE_PITCH,
+//   env:  MATE_COLORS ("Hero.Tunic=ff0000,Hero.Hat=00ff00": the mate's Link colors, as a client shares them), MATE_COLORS2 and
+//         MATE_COLORS_AFTER (seconds after the game's first pose: the colors change to MATE_COLORS2, as a player does in the Cosmetics Editor),
+//         MATE_NAME (default "Mate"), MATE_DX / MATE_DZ (offset from Link, default 150 / 0), VOICE_PITCH,
 //         MATE_OFFLINE_AFTER (seconds: the mate disconnects then, for the leave scenarios),
 //         MATE_LEGACY=1 (publish as an older client does: a plain manifest with only Link.arc),
 //         MATE_GEAR=1 (the replayed pose has the Hero's Sword on the back and the Hero's Shield on the arm, as a player
@@ -83,6 +85,7 @@ async function publish(spec) {
   if (!process.env.MATE_LEGACY) body.parts = parts;
   const manifest = Buffer.from(JSON.stringify(body));
   const hash = await upload(manifest, 'manifest');
+  mateParts = parts;
   console.log(`pack ${spec}: ${list.length} files, ${totalSize} bytes, parts ${JSON.stringify(parts)}, manifest ${hash}`);
   return hash;
 }
@@ -101,6 +104,7 @@ function withGear(pose) {
   return out;
 }
 
+let mateParts = null;
 const content = pack ? await publish(pack) : '';
 const mateName = process.env.MATE_NAME || 'Mate';
 const dx = Number(process.env.MATE_DX ?? 150);
@@ -108,8 +112,19 @@ const dz = Number(process.env.MATE_DZ ?? 0);
 const ws = new WebSocket(`${base}/ws?room=${room}`);
 const frames = [];
 let t0 = 0, at = 0, latest = null;
-ws.onopen = () => ws.send(JSON.stringify({ type: 'HANDSHAKE', protocol: 1,
-  clientState: { name: mateName, teamId: 'red', stage: 'sea', room: 44, isSaveLoaded: true, content, voicePitch: Number(process.env.VOICE_PITCH || 0) } }));
+const state = () => ({ name: mateName, teamId: 'red', stage: 'sea', room: 44, isSaveLoaded: true, content, voicePitch: Number(process.env.VOICE_PITCH || 0),
+  linkModel: mateParts && mateParts.link ? 1 : 0, linkColors: colors });
+let colors = process.env.MATE_COLORS || '';
+let colorsChanged = false;
+if (process.env.MATE_COLORS2)
+  setInterval(() => { // MATE_COLORS_AFTER seconds after the first pose from the game (so after the game has started)
+    if (colorsChanged || !t0 || Date.now() - t0 < Number(process.env.MATE_COLORS_AFTER || 20) * 1000) return;
+    colorsChanged = true;
+    colors = process.env.MATE_COLORS2;
+    console.log(`colors now ${colors}`);
+    ws.send(JSON.stringify({ type: 'UPDATE_CLIENT_STATE', state: state() }));
+  }, 500);
+ws.onopen = () => ws.send(JSON.stringify({ type: 'HANDSHAKE', protocol: 1, clientState: state() }));
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.type === 'PLAYER_UPDATE' && m.pose) {

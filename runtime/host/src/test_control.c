@@ -1,6 +1,7 @@
 // Test control: see test_control.h.
 #include "test_control.h"
 
+#include "chart_reveal.h"
 #include "game_state.h"
 
 #include <stdbool.h>
@@ -48,6 +49,29 @@ static void parse_teleports(void) {
             g_teleports[g_teleport_count++] = t;
         } else {
             fprintf(stderr, "[test] BLUEWAKE_TEST_TELEPORT: ignored entry at '%s'\n", at);
+        }
+        at = strchr(at, ',');
+        if (at != NULL)
+            ++at;
+    }
+}
+
+// BLUEWAKE_TEST_CHART_REVEAL=retrace:0|1[,...]: Reveal Sea Chart switched on or off at a retrace (the setting's live switch).
+typedef struct TestReveal {
+    u64 retrace;
+    bool on;
+} TestReveal;
+static TestReveal g_reveals[16];
+static unsigned g_reveal_count;
+
+static void parse_reveals(void) {
+    const char* list = getenv("BLUEWAKE_TEST_CHART_REVEAL");
+    for (const char* at = list; at != NULL && *at != '\0' && g_reveal_count < 16u;) {
+        unsigned long long retrace = 0;
+        int on = 0;
+        if (sscanf(at, "%llu:%d", &retrace, &on) == 2) {
+            g_reveals[g_reveal_count].retrace = retrace;
+            g_reveals[g_reveal_count++].on = on != 0;
         }
         at = strchr(at, ',');
         if (at != NULL)
@@ -161,6 +185,7 @@ void bluewake_test_control_attach(void) {
     g_poke_count = parse_list("BLUEWAKE_TEST_POKE", true, g_pokes);
     g_peek_count = parse_list("BLUEWAKE_TEST_PEEK", false, g_peeks);
     parse_teleports();
+    parse_reveals();
 }
 
 static u32 read_sized(CPUState* cpu, u32 address, u8 size) {
@@ -201,6 +226,11 @@ void bluewake_test_control_retrace(CPUState* cpu, u64 retrace) {
             fprintf(stderr, "[test] teleport retrace=%llu %s room %d\n", (unsigned long long)retrace, g_teleports[i].stage,
                     g_teleports[i].room);
             bluewake_request_teleport(g_teleports[i].stage, g_teleports[i].room, g_teleports[i].pos, g_teleports[i].angle);
+        }
+    for (unsigned i = 0; i < g_reveal_count; ++i)
+        if (retrace == g_reveals[i].retrace) {
+            fprintf(stderr, "[test] chart reveal retrace=%llu %s\n", (unsigned long long)retrace, g_reveals[i].on ? "on" : "off");
+            bluewake_chart_reveal_enable(g_reveals[i].on);
         }
     for (unsigned i = 0; i < g_peek_count; ++i) {
         const TestEntry* e = &g_peeks[i];

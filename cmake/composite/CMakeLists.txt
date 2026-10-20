@@ -213,8 +213,16 @@ if(BLUEWAKE_FIXED_MEM1)
   if(NOT FIXED_MEM1_SUPPORT)
     message(FATAL_ERROR "Fixed MEM1 requires the supporting pinned runtime")
   endif()
+  # The size of the fixed MEM1 array the recompiled code reaches with its inline fast path: 32 MB (the default) or 64 MB
+  # (-DBLUEWAKE_GUEST_MEM1_SIZE=0x04000000u). The host adapts to what the module reports (module_cpu_contract.h); with 64 MB
+  # the puppets' fast pool is everything above 0x82000000 (32 MB, runtime/host/src/puppet.c bluewake_puppet_fast_range), and
+  # with 32 MB the 2.5 MB below module 1 plus MEM2 (slower, a call per access) for what does not fit.
+  set(BLUEWAKE_GUEST_MEM1_SIZE "0x02000000u" CACHE STRING "Bytes of the module's fixed MEM1 array: 0x02000000u or 0x04000000u")
+  if(NOT BLUEWAKE_GUEST_MEM1_SIZE MATCHES "^0x0[24]000000u$")
+    message(FATAL_ERROR "BLUEWAKE_GUEST_MEM1_SIZE must be 0x02000000u or 0x04000000u")
+  endif()
   target_compile_definitions(${MODULE_NAME} PRIVATE
-    BW_GUEST_MEM1=bw_guest_mem1 BW_GUEST_MEM1_SIZE=0x02000000u)
+    BW_GUEST_MEM1=bw_guest_mem1 BW_GUEST_MEM1_SIZE=${BLUEWAKE_GUEST_MEM1_SIZE})
 endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "" OUTPUT_NAME "${MODULE_NAME}" UNITY_BUILD OFF C_VISIBILITY_PRESET hidden)

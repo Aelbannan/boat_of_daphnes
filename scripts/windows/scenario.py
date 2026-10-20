@@ -179,6 +179,10 @@ def parse_script(text: str, where: str) -> dict:
             # teleport <stage> <room> <x> <y> <z> [angle]: Link to that place (the area reloads), facing angle (s16)
             need(5)
             s["steps"].append({"at": t, "teleport": ":".join(rest[:6] if len(rest) >= 6 else rest[:5] + ["0"])})
+        elif word == "reveal":
+            # reveal <0|1>: Reveal Sea Chart off or on at this point (the setting's live switch)
+            need(1)
+            s["steps"].append({"at": t, "reveal": rest[0]})
         elif word == "peek":
             need(1)
             s["steps"].append({"at": t, "peek": rest})
@@ -248,6 +252,7 @@ class Run:
         self.peeks: list[str] = []
         self.warps: list[str] = []
         self.teleports: list[str] = []
+        self.reveals: list[str] = []
         self.captures: list[int] = []
         self.resizes: list[str] = []
         self.saves: list[tuple[str, int]] = []
@@ -273,6 +278,8 @@ class Run:
                 self.warps.append(f"{at}:{step['warp']}")
             if "resize" in step:
                 self.resizes.append(f"{at}:{step['resize']}")
+            if "reveal" in step:
+                self.reveals.append(f"{at}:{step['reveal']}")
             if "teleport" in step:
                 self.teleports.append(f"{at}:{step['teleport']}")
             if "give" in step:
@@ -357,6 +364,8 @@ class Run:
             env["BLUEWAKE_TEST_WARP"] = ",".join(self.warps)
         if self.resizes:
             env["BLUEWAKE_TEST_RESIZE"] = ",".join(self.resizes)
+        if self.reveals:
+            env["BLUEWAKE_TEST_CHART_REVEAL"] = ",".join(self.reveals)
         if self.teleports:
             env["BLUEWAKE_TEST_TELEPORT"] = ",".join(self.teleports)
         if self.captures:
@@ -615,7 +624,17 @@ def main() -> int:
     args.states = args.out / "states"
     args.module_sha = sha256(args.module)
     with Lock(args.out / "scenarios"):
-        return run_all(args)
+        # BOD_SCENARIO_PRE / BOD_SCENARIO_POST: a command run once the lock is held, before the first game starts and after
+        # the last one ends (anchor_mates/run_mates.sh starts the scripted players there: started earlier, they would run
+        # out their time while another runner holds the lock).
+        pre, post = os.environ.get("BOD_SCENARIO_PRE"), os.environ.get("BOD_SCENARIO_POST")
+        if pre:
+            subprocess.run(pre, shell=True)
+        try:
+            return run_all(args)
+        finally:
+            if post:
+                subprocess.run(post, shell=True)
 
 
 def run_all(args) -> int:

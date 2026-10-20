@@ -46,9 +46,16 @@ void Tick(const std::string& http_base, bool share, bool connected);
 // The manifest hash of the player's own content, "" for none (not sharing, or nothing custom, or still
 // uploading); and whether it changed since the last call (the client state is to be sent again).
 std::string LocalHash();
+// Whether the advertised content has the player's own body model (their Link is a mod's and shared).
+bool LocalSharesBody();
 bool LocalChanged();
 // The id of the player's own voice files as peers see it ("" for the game's); the same ids as Ready::voice.
 std::string LocalVoiceId();
+// The game's own voice bank, decoded from the disc's Audiores/JaiInit.aaf and Banks/voice_0.aw as a peer's bank is: what a
+// stock player's puppet sounds from on a PC whose own voice is a mod's. *pending: the disc is not open yet (ask again).
+// *id is the bank's voice id ("disc-" and the hash's first 16 digits). Null when it cannot be had (the puppet then uses the
+// local bank).
+std::shared_ptr<const voice_bank::Bank> StockVoiceBank(std::string* id, bool* pending);
 // A peer advertised this manifest ("" for none).
 void Want(int id, const std::string& hash);
 void Forget(int id);

@@ -1,9 +1,11 @@
 // Other online players drawn as Link models: see puppet.h.
 #include "puppet.h"
 #include "puppet_pvp.h"
+#include "puppet_carry.h"
 #include "voice_pitch.h"
 
 #include "guest_coro.h"
+#include "gxruntime/guest_memory_dirty.h"
 #include "gxruntime/platform.h"
 #include "bunny_hood.h"
 
@@ -158,6 +160,8 @@ enum {
     GRID_PACKET = 0x2A0u,
     HO_MTX = 0x80u, HO_TEVSTR = 0xB0u, HO_POS = 0xB4u, HO_NRM = 0x8ACu, HO_BACKNRM = 0x10A4u, HO_CUR = 0x18A2u, HO_ALPHA = 0x18A3u,
     HO_SIZE = 0x18A4u,
+    FN_RES_LOAD = 0x80053390u,               // dComIfG_resLoad(request_of_phase_process_class*, arcName)
+    FN_RES_DELETE = 0x800533D0u,             // dComIfG_resDelete(request_of_phase_process_class*, arcName)
     HO_POINTS = 85,
     FN_ENTRY_Z_SORT = 0x802ECAF0u,           // J3DDrawBuffer::entryZSort(packet)
     DRAW_XLU_LIST = 0x20u,                   // dDlst_list_c::mpXluList
@@ -726,7 +730,13 @@ static void write_float(CPUState* cpu, u32 address, float f) {
     mem_write32(cpu, address, bits);
 }
 
-static bool guest_ptr(u32 p) { return p >= 0x80000000u && p < 0x81800000u && (p & 3u) == 0u; }
+// MEM1 (0x80000000 to 0x81800000) or the MEM2 block the host gave the guest (0x90000000 up; bluewake_puppet_mem2_end is set by
+// the hook, 0 when there is none), where the puppets' models live.
+u32 bluewake_puppet_mem2_end;
+u32 bluewake_puppet_mem1_end = 0x81800000u; // the MEM1 array's end (32 or 64 MB: the fast pool lies above the game's 24 MB)
+static bool guest_ptr(u32 p) {
+    return ((p >= 0x80000000u && p < bluewake_puppet_mem1_end) || (p >= 0x90000000u && p < bluewake_puppet_mem2_end)) && (p & 3u) == 0u;
+}
 
 static bool guard_ptr_ok(u32 p) { return guest_ptr(p); }
 
@@ -772,6 +782,7 @@ typedef struct Remote {
     size_t eq_len[EQUIP_SLOTS];
     char voice[40];     // the owner's voice id ("": the game's), and whether the local bank has it
     bool voice_local;
+    bool face_skip;         // his expression's indices are not for the body drawn here (his own model is not the one shown)
     double active_ms;       // when the player last moved or changed what they were doing (who gets room for custom models first)
     double stock_until_ms;  // an eviction: stock until then (room was given to a more active player)
     double retry_custom_ms; // then the custom models are asked for again
@@ -792,6 +803,7 @@ typedef struct Guest {
     u32 sword[2], shield[2], hands; // Link's sword, Master Sword, shield, Mirror Shield and hands models, made with the puppet
     u32 katsura;    // casual clothes' back hair: a second model on the head joint (Link's own data only)
     u32 model_data; // the model data the puppet's model is made from: the game's Link or the player's own
+    unsigned tick;           // frames drawn (far puppets are posed every other one)
     int ds[EQUIP_SLOTS + 1]; // shared data slots held (index + 1; 0 none): [0..7] equipment, hands and hair, [8] the body
     bool denied;             // custom models were asked for and there was no room: made stock; asked again after a while
     double denied_at;
@@ -813,8 +825,12 @@ typedef struct Guest {
         int retry;
         unsigned used; // the draw counter when last drawn
     } att[ATT_MODELS];
-    u32 sail_heap, sail_pkt, sail_zmtx; // a copy of the ship's sail packet, for this puppet's ship
+    u32 sail_heap, sail_pkt, sail_zmtx; // the puppet's sail packet (draw_sail), and the heap it and the phases live in
+    u32 sail_phase;                     // two request_of_phase_process_class (Cloth, Ship) while it holds those archives
+    int sail_tries, sail_said;
+    bool sail_built, sail_given_up;
     u32 line[2];  // mDoExt_3DlineMat1_c objects (made with the puppet): the chain and the rope
+    u32 var[2][3]; // the packets that set (1) and clear (0) the texture variant in P0 and P1's opaque and translucent lists
     u32 packet[4]; // own copies of daPy's cup/aup state packets (entering Link's own would link a list into a loop)
     bool failed;
     int retry; // frames since a failed attempt
@@ -1018,6 +1034,14 @@ void bluewake_puppet_remote_voice(int id, const char* voice_id, bool local_bank)
         snprintf(r->voice, sizeof r->voice, "%s", voice_id != NULL ? voice_id : "");
         r->voice_local = local_bank;
     }
+    unlock();
+}
+
+void bluewake_puppet_remote_face_ok(int id, bool ok) {
+    lock();
+    Remote* r = find_remote(id, true);
+    if (r != NULL)
+        r->face_skip = !ok;
     unlock();
 }
 
@@ -1264,6 +1288,9 @@ static void rel_point(CPUState* cpu, u32 address, const Mat34* inv_base, float o
 // BLUEWAKE_PUPPET_ATTACHMENTS=1: in the 2026.10.17c tests they could hide the whole puppet, and the rope strips showed
 // as a striped board beside it. Expressions, shadows and the smoothing stay on.
 // What a puppet carries and rides (items, boots, charm, the ship and its sail): on unless BLUEWAKE_PUPPET_ATTACHMENTS=0.
+// A test variable read once per place, not every frame (getenv scans the environment).
+#define ENV_SET(name) ({ static signed char set_ = -1; if (set_ < 0) set_ = getenv(name) != NULL; set_ != 0; })
+
 static bool attachments_on(void) {
     static int on = -1;
     if (on < 0) {
@@ -1324,7 +1351,7 @@ static void capture_lines(CPUState* cpu, u32 player, const Mat34* inv_base, Pose
 static void capture_attachments(CPUState* cpu, u32 player, const Mat34* inv_base, Pose* pose) {
     pose->att_n = 0;
     pose->line_n = 0;
-    if (!attachments_on() || getenv("BLUEWAKE_PUPPET_NOATT") != NULL)
+    if (!attachments_on() || ENV_SET("BLUEWAKE_PUPPET_NOATT"))
         return;
     if (lines_on())
         capture_lines(cpu, player, inv_base, pose);
@@ -1337,8 +1364,11 @@ static void capture_attachments(CPUState* cpu, u32 player, const Mat34* inv_base
                 capture_att(cpu, mem_read32(cpu, morf + MORF_MODEL), inv_base, k == 0u ? ATT_KIND_SHIP_BODY : ATT_KIND_SHIP_HEAD, pose);
         }
     pose->sail = false;
+    static int sail_sent_state = -1; // 0 not on the ship, 1 on it without a sail actor, 2 sail furled, 3 sail sent
+    int sail_now = 0;
     if ((mem_read32(cpu, PLAY_STATUS0) & PLAY_STATUS0_SHIP_RIDE) != 0u && guest_ptr(ship)) {
         const u32 grid = mem_read32(cpu, ship + SHIP_GRID);
+        sail_now = !guest_ptr(grid) ? 1 : read_float(cpu, grid + GRID_SCALE_Y) < 0.06f ? 2 : 3;
         if (guest_ptr(grid) && read_float(cpu, grid + GRID_SCALE_Y) >= 0.06f) {
             // The packet's matrix is the view times the sail's place: undone with the view the sail was drawn with.
             const u32 pk = grid + GRID_PACKET;
@@ -1356,6 +1386,12 @@ static void capture_attachments(CPUState* cpu, u32 player, const Mat34* inv_base
                 pose->sail = true;
             }
         }
+    }
+    if (sail_now != sail_sent_state) {
+        sail_sent_state = sail_now;
+        static const char* const kWhy[4] = {"not on the ship", "on the ship, which has no sail actor (nothing to send)", "sail furled (scale.y below 0.06): not sent",
+                                            "sail hoisted: sent with the pose"};
+        fprintf(stderr, "[puppet] sail: %s%s\n", kWhy[sail_now], sail_now == 3 && !pose->sail ? " (but its matrix could not be undone: not sent)" : "");
     }
     const u32 equip_item = mem_read16(cpu, player + PLAYER_EQUIP_ITEM);
     const u32 item_model = mem_read32(cpu, player + PLAYER_EQUIP_ITEM_MODEL);
@@ -1510,7 +1546,12 @@ static void publish_local(const Pose* local) {
 
 // ------------------------------------------------------------- drawing ----
 
+// How much of a puppet is done this frame, from where it is on the screen (puppet_view): the puppets off the screen are not
+// posed, lit, entered or shadowed at all (the same pose is written again when they come back), and far ones are posed every
+// other frame and have no shadow or hands model, and very far ones have no sword or shield. Near puppets are drawn as ever.
+enum { LOD_NEAR = 0, LOD_FAR = 1, LOD_HIDDEN = 2, LOD_VERY_FAR = 3 };
 typedef struct Item {
+    uint8_t lod;
     int slot;
     Mat34 base;
     Mat34 node[CL_JOINTS];
@@ -1526,6 +1567,8 @@ typedef struct Item {
     size_t eq_len[EQUIP_SLOTS];
     char voice[40];
     bool voice_local;
+    bool face_skip;   // see Remote
+    bool body_wanted; // he has a model of his own to show (a puppet made without it is Link's, and his indices do not fit)
     double active_ms;
     bool recreate;
     int id; // the player's id: the texture variant its draws take
@@ -1582,7 +1625,49 @@ static bool voice_placement(CPUState* cpu, const float at[3], float* left, float
 }
 unsigned long long bluewake_host_retrace_count(void); // main.c
 
-static u32 call(GuestCoro* co, u32 fn, u32 a, u32 b, u32 c, u32 d) { return bluewake_guest_call(co, fn, a, b, c, d, 0, 0); }
+// BLUEWAKE_PUPPET_PROF=1 (testing): the time each guest function the puppets call takes, and the phases of a draw, logged
+// every 300 draws.
+static int g_prof = -1;
+static struct { u32 fn; unsigned n; double us; } g_prof_fn[64];
+static double g_prof_phase[8];
+static unsigned g_prof_lod[4];
+static double prof_now_us(void) {
+    LARGE_INTEGER f, t;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&t);
+    return (double)t.QuadPart * 1.0e6 / (double)f.QuadPart;
+}
+static bool prof_on(void) {
+    if (g_prof < 0)
+        g_prof = getenv("BLUEWAKE_PUPPET_PROF") != NULL;
+    return g_prof != 0;
+}
+static u32 call(GuestCoro* co, u32 fn, u32 a, u32 b, u32 c, u32 d) {
+    if (!prof_on())
+        return bluewake_guest_call(co, fn, a, b, c, d, 0, 0);
+    const double t0 = prof_now_us();
+    const u32 r = bluewake_guest_call(co, fn, a, b, c, d, 0, 0);
+    const double dt = prof_now_us() - t0;
+    int i = 0;
+    while (i < 63 && g_prof_fn[i].fn != 0u && g_prof_fn[i].fn != fn)
+        ++i;
+    g_prof_fn[i].fn = fn;
+    ++g_prof_fn[i].n;
+    g_prof_fn[i].us += dt;
+    return r;
+}
+static void prof_report(int draws, int puppets) {
+    fprintf(stderr, "[prof] %d draws, %d puppets: phases us/draw: pose %.0f, calc+light %.0f, draw_puppet %.0f, shadow %.0f, total %.0f" "\n", draws, puppets,
+            g_prof_phase[0] / draws, g_prof_phase[1] / draws, g_prof_phase[2] / draws, g_prof_phase[3] / draws, g_prof_phase[4] / draws);
+    for (int i = 0; i < 64 && g_prof_fn[i].fn != 0u; ++i) {
+        fprintf(stderr, "[prof]   fn %08X: %u calls/draw, %.0f us/draw" "\n", g_prof_fn[i].fn, (unsigned)(g_prof_fn[i].n / (unsigned)draws), g_prof_fn[i].us / draws);
+        g_prof_fn[i].n = 0;
+        g_prof_fn[i].us = 0.0;
+    }
+    fprintf(stderr, "[prof] per draw: %.1f near, %.1f far, %.1f very far, %.1f hidden" "\n", (double)g_prof_lod[0] / draws, (double)g_prof_lod[1] / draws, (double)g_prof_lod[3] / draws, (double)g_prof_lod[2] / draws);
+    memset(g_prof_lod, 0, sizeof g_prof_lod);
+    memset(g_prof_phase, 0, sizeof g_prof_phase);
+}
 
 // J3DModel::calc for a puppet's own model made from the local Link's model data (the hair, sword, shield, blade).
 // The joints are the data's, shared with Link's models, and calcIn calls a joint's mMtxCalc (J3DJoint +0x58) when one
@@ -1699,25 +1784,65 @@ static u32 own_textures(GuestCoro* co, CPUState* cpu, int slot, int id, u32 mode
     return copy;
 }
 
-bool bluewake_puppet_mat_observes(u32 address) { return address == MAT_PACKET_DRAW && g_ptex_any; }
+// The lean module has no hook at J3DMatPacket::draw (the edge service that observed it does not run there), and the host does
+// not see the draws, which the game's own code makes later from the lists. So the variant is set by the lists themselves: each
+// puppet has two small display-list packets per list it draws into (P0, P1 opaque, P1 translucent, all drawn in the order they
+// were entered, the last entered first): one that writes BP 0x79 = its id, entered after the puppet's models (so it is drawn
+// before them), and one that writes 0, entered before them (drawn after). Whatever the puppet's materials draw in between, the
+// renderer finds the player's own recolors for.
+enum { FN_J3D_DRAW_PACKET_VT = 0x8039D928u, VAR_BLOCK = 0x60u + 6u * 0x24u };
+
+bool bluewake_puppet_mat_observes(u32 address) {
+    (void)address;
+    return false;
+}
 
 void bluewake_puppet_mat_enter(CPUState* cpu, u32 address) {
+    (void)cpu;
     (void)address;
-    const u32 pk = cpu->gpr[3];
-    const u32 tex = guest_ptr(pk) ? mem_read32(cpu, pk + MAT_PACKET_TEXTURE) : 0u;
-    u32 variant = 0u;
-    if (tex != 0u)
-        for (int i = 0; i < MAX_REMOTES && variant == 0u; ++i)
-            for (int k = 0; k < PTEX_MAX; ++k)
-                if (g_ptex[i][k] == tex) {
-                    variant = (u32)g_ptex_id[i];
-                    break;
-                }
-    if (variant == 0u && g_ptex_last == 0u)
+}
+
+static bool make_variant_packets(GuestCoro* co, CPUState* cpu, Guest* g, int id) {
+    const u32 block = call(co, FN_NEW_ALIGNED, VAR_BLOCK, 0x20u, 0, 0);
+    if (!guest_ptr(block))
+        return false;
+    for (u32 o = 0; o < VAR_BLOCK; o += 4u)
+        mem_write32(cpu, block + o, 0u);
+    // [0x00] the display list that sets the variant, [0x20] the one that clears it (a BP load, then no-ops to 32 bytes),
+    // [0x40] their two J3DDisplayListObjs, [0x60] six J3DDrawPackets (the clearing ones, then the setting ones).
+    mem_write8(cpu, block + 0x00u, 0x61u);
+    mem_write8(cpu, block + 0x01u, 0x79u);
+    mem_write8(cpu, block + 0x02u, (u8)((u32)id >> 16));
+    mem_write8(cpu, block + 0x03u, (u8)((u32)id >> 8));
+    mem_write8(cpu, block + 0x04u, (u8)id);
+    mem_write8(cpu, block + 0x20u, 0x61u);
+    mem_write8(cpu, block + 0x21u, 0x79u);
+    for (u32 k = 0; k < 2u; ++k) { // obj 0 clears, obj 1 sets
+        const u32 obj = block + 0x40u + 0x10u * k;
+        const u32 dl = block + (k == 0u ? 0x20u : 0x00u);
+        mem_write32(cpu, obj, dl);
+        mem_write32(cpu, obj + 4u, dl);
+        mem_write32(cpu, obj + 8u, 0x20u);
+        mem_write32(cpu, obj + 0xCu, 0x20u);
+    }
+    for (u32 k = 0; k < 6u; ++k) {
+        const u32 pk = block + 0x60u + 0x24u * k;
+        mem_write32(cpu, pk, FN_J3D_DRAW_PACKET_VT);
+        mem_write32(cpu, pk + 0x20u, block + 0x40u + 0x10u * (k / 3u));
+        g->var[k / 3u][k % 3u] = pk;
+    }
+    dol_guest_memory_dirty_mark(block, VAR_BLOCK);
+    return true;
+}
+
+// The packets of one kind (0 clearing, 1 setting) into the three lists a puppet draws in.
+static void enter_variant_packets(GuestCoro* co, CPUState* cpu, const Guest* g, int which) {
+    if (g->var[which][0] == 0u)
         return;
-    g_ptex_last = variant;
-    dol_platform_gx_write(0x61u, 1u);
-    dol_platform_gx_write((0x79u << 24) | (variant & 0xFFFFFFu), 4u);
+    const u32 lists[3] = {mem_read32(cpu, DRAW_LIST + 0x08u), mem_read32(cpu, DRAW_LIST + DRAW_OPA_P1), mem_read32(cpu, DRAW_LIST + DRAW_OPA_P1 + 4u)};
+    for (int k = 0; k < 3; ++k)
+        if (guest_ptr(lists[k]))
+            call(co, FN_ENTRY_IMM, lists[k], g->var[which][k], 0, 0);
 }
 
 // Loads a BDL into the current heap with the game's own loader (as dRes loads a 'BDL ' resource); 0 on any failure.
@@ -1727,6 +1852,7 @@ static u32 load_custom_bdl(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, siz
         return 0u;
     for (size_t i = 0; i < len; ++i)
         mem_write8(cpu, buf + (u32)i, bdl[i]);
+    dol_guest_memory_dirty_mark(buf, (u32)len);
     return call(co, FN_LOAD_BDL, buf, BDL_LOAD_FLAGS, 0, 0);
 }
 
@@ -1734,7 +1860,7 @@ static u32 load_custom_bdl(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, siz
 // that has the same file (the same bytes) makes its models from that data, so five puppets of one mod, or all the stock
 // players on a PC whose own Link is a mod's, cost one copy of the data (300 to 400 KB for a body) and not five. A slot is
 // freed with its last puppet (a scene's end, or the puppet made again).
-enum { DS_SLOTS = 32 };
+enum { DS_SLOTS = 192 }; // 16 players with a body and seven equipment models of their own each, a hundred and some
 typedef struct DataSlot {
     uint64_t key;
     size_t len;
@@ -1742,6 +1868,265 @@ typedef struct DataSlot {
     int refs;
 } DataSlot;
 static DataSlot g_ds[DS_SLOTS];
+
+// ---- the puppets' pools: guest memory outside the game's own heaps ----
+// The GameCube game has 24 MB and its heaps leave the puppets a few hundred KB (the game heap), 545 KB (the Zelda heap) and
+// 1.6 MB of the archive heap, room for two custom bodies. So the puppets' heaps are also made in two pools, each one JKRExpHeap
+// over a block of guest memory, made by the game's own constructor (a child of the root heap only in its tree: the block is no
+// part of the root's range), from which the same solid heaps are made as before (mDoExt_createSolidHeapToCurrent with the pool
+// as the parent). Everything a puppet allocates in such a heap, its models, packets and matrix buffers, is then in the pool.
+//   FAST: memory inside the module's own MEM1 array, which the recompiled code reaches with its inline fast path: the 2.5 MB
+//         at the top of the dynamic REL window (0x81D00000, which the game does not use: it has 24 MB) of a 32 MB module, or
+//         everything above 0x82000000 (up to 32 MB) of a 64 MB one (puppet_fast_range).
+//   MEM2: the Wii's extended RAM (0x90000000, cpu->exram, 64 MB), which the module reaches through its slow path (a call per
+//         access: a puppet there costs about twice the game-thread time), so it takes only what the others cannot hold.
+// A pool is made on first use and kept for the run; a puppet's heap goes back to it when the puppet is deleted. Anything that
+// goes wrong (no such memory, the pool does not take, no room left in it) leaves the puppet to the next tier, the last being the
+// game's heaps as before.
+enum {
+    MEM2_BASE = 0x90000000u,
+    POOL_OBJECT_SIZE = 0x100u,         // room for the JKRExpHeap object itself (it is about 0x80 bytes)
+    JKR_SYSTEM_HEAP = 0x803F7728u,     // JKRHeap::sSystemHeap, sCurrentHeap follows, then sRootHeap
+    JKR_CURRENT_HEAP = 0x803F772Cu,
+    JKR_ROOT_HEAP = 0x803F7730u,
+    FN_EXP_HEAP_CTOR = 0x802B1728u,    // JKRExpHeap::JKRExpHeap(void* data, u32 size, JKRHeap* parent, bool errorFlag)
+    FN_EXP_HEAP_DTOR = 0x802B17B8u,    // JKRExpHeap::~JKRExpHeap()
+    FN_HEAP_TOTAL_FREE = 0x802B08C0u,  // JKRHeap::getTotalFreeSize()
+    FN_HEAP_MAX_FREE = 0x802B0868u,    // JKRHeap::getFreeSize() (the largest block, for an expanded heap)
+    POOL_FAST = 0,
+    POOL_MEM2 = 1,
+    POOLS = 2,
+};
+
+// Where the fast pool is for a MEM1 array of this size; false when there is none.
+bool bluewake_puppet_fast_range(u32 ram_size, u32* base, u32* bytes) {
+    if (ram_size == 0x02000000u) {
+        *base = 0x81D00000u;
+        *bytes = 0x00280000u; // up to the linked module 1 at 0x81F80000
+        return true;
+    }
+    if (ram_size > 0x02000000u) {
+        *base = 0x82000000u;
+        *bytes = ram_size - 0x02000000u;
+        return true;
+    }
+    return false;
+}
+
+typedef struct Pool {
+    const char* name;
+    u32 base, bytes;      // the block
+    u32 heap;             // the pool heap, 0 until made
+    u32 size;             // bytes of its data area
+    bool failed;          // it did not take (or was forgotten): the next tier for the run
+    bool stale;           // a scene began with heaps still in it: reset on the next use
+    int users;            // heaps made from it and not destroyed
+    u32 peak_used;        // the most it has held
+} Pool;
+static Pool g_pools[POOLS] = {{"fast"}, {"MEM2"}};
+
+// Sets the blocks from the host's memory (each hook).
+static void pools_locate(CPUState* cpu) {
+    u32 base = 0u, bytes = 0u;
+    if (bluewake_puppet_fast_range(cpu->ram_size, &base, &bytes) && getenv("BLUEWAKE_PUPPET_NOFAST") == NULL) {
+        g_pools[POOL_FAST].base = base;
+        g_pools[POOL_FAST].bytes = bytes;
+    }
+    g_pools[POOL_MEM2].base = cpu->exram != NULL ? MEM2_BASE : 0u;
+    g_pools[POOL_MEM2].bytes = cpu->exram != NULL ? cpu->exram_size : 0u;
+    bluewake_puppet_mem2_end = cpu->exram != NULL ? MEM2_BASE + cpu->exram_size : 0u;
+    bluewake_puppet_mem1_end = 0x80000000u + cpu->ram_size;
+}
+
+static int pool_of(u32 heap) {
+    for (int i = 0; i < POOLS; ++i)
+        if (g_pools[i].bytes != 0u && heap >= g_pools[i].base && heap - g_pools[i].base < g_pools[i].bytes)
+            return i;
+    return -1;
+}
+
+static void pool_reset(GuestCoro* co, CPUState* cpu, Pool* p);
+static u32 pool_free_of(GuestCoro* co, const Pool* p) { return p->heap != 0u ? call(co, FN_HEAP_TOTAL_FREE, p->heap, 0, 0, 0) : 0u; }
+static u32 pools_used(GuestCoro* co) {
+    u32 used = 0u;
+    for (int i = 0; i < POOLS; ++i)
+        if (g_pools[i].heap != 0u)
+            used += g_pools[i].size - pool_free_of(co, &g_pools[i]);
+    return used;
+}
+static int pools_users(void) {
+    int n = 0;
+    for (int i = 0; i < POOLS; ++i)
+        n += g_pools[i].users;
+    return n;
+}
+
+// The pool, made if need be; NULL when there is none (then the caller uses the next tier).
+static Pool* pool_get(GuestCoro* co, CPUState* cpu, int which) {
+    Pool* p = &g_pools[which];
+    if (p->stale) {
+        p->stale = false;
+        pool_reset(co, cpu, p);
+        for (int i = 0; i < DS_SLOTS; ++i) // their heaps went with the pool
+            if (g_ds[i].heap != 0u && pool_of(g_ds[i].heap) == which)
+                memset(&g_ds[i], 0, sizeof g_ds[i]);
+    }
+    if (p->heap != 0u)
+        return p;
+    if (p->failed || p->bytes < 0x40000u || getenv("BLUEWAKE_PUPPET_NOMEM2") != NULL)
+        return NULL;
+    if (which == POOL_MEM2 && (cpu->exram == NULL || cpu->exram_size < 0x400000u))
+        return NULL;
+    const u32 root = mem_read32(cpu, JKR_ROOT_HEAP);
+    if (!guest_ptr(root)) // the game's heaps are not up yet: asked again
+        return NULL;
+    const u32 data = p->base + POOL_OBJECT_SIZE;
+    const u32 size = (p->bytes - POOL_OBJECT_SIZE) & ~0xFu;
+    for (u32 o = 0; o < POOL_OBJECT_SIZE; o += 4u)
+        mem_write32(cpu, p->base + o, 0u);
+    // The constructor makes the new heap the system and current one if those are the root (it takes a heap without a parent
+    // to be a root): put back as they were.
+    const u32 sys = mem_read32(cpu, JKR_SYSTEM_HEAP), cur = mem_read32(cpu, JKR_CURRENT_HEAP);
+    bluewake_guest_call(co, FN_EXP_HEAP_CTOR, p->base, data, size, root, 0, 0);
+    mem_write32(cpu, JKR_SYSTEM_HEAP, sys);
+    mem_write32(cpu, JKR_CURRENT_HEAP, cur);
+    // The first block's header (its size is the data area less the header), written by the module's own memory accesses and
+    // read back here: if the module did not reach the block the pool is no good.
+    const u32 first_size = mem_read32(cpu, data + 4u);
+    const u32 total = call(co, FN_HEAP_TOTAL_FREE, p->base, 0, 0, 0);
+    if (first_size != size - 0x10u || total != size - 0x10u) {
+        fprintf(stderr, "[puppet] the %s pool did not take (first block %08X, free %08X, wanted %08X): the next tier is used\n", p->name, first_size, total,
+                size - 0x10u);
+        p->failed = true;
+        return NULL;
+    }
+    p->heap = p->base;
+    p->size = size - 0x10u;
+    p->users = 0;
+    p->peak_used = 0u;
+    fprintf(stderr, "[puppet] %s pool %08X: %u KB of heap at %08X (parent: root heap %08X)\n", p->name, p->heap, p->size >> 10, data, root);
+    return p;
+}
+
+// The pool dropped (the scene's end found heaps in it that nothing owns); made again empty on the next use.
+static void pool_reset(GuestCoro* co, CPUState* cpu, Pool* p) {
+    if (p->heap == 0u)
+        return;
+    const u32 sys = mem_read32(cpu, JKR_SYSTEM_HEAP), cur = mem_read32(cpu, JKR_CURRENT_HEAP);
+    bluewake_guest_call(co, FN_EXP_HEAP_DTOR, p->heap, 0, 0, 0, 0, 0); // out of the root's tree
+    mem_write32(cpu, JKR_SYSTEM_HEAP, sys);
+    mem_write32(cpu, JKR_CURRENT_HEAP, cur);
+    p->heap = 0u;
+    p->users = 0;
+}
+
+bool bluewake_puppet_mem2_in_use(void) { return g_pools[POOL_MEM2].heap != 0u; }
+
+// A state was loaded that has no MEM2 pool in its heap tree (main.c): the pools and what was made in them are forgotten (the
+// fast pool's block is MEM1, which the state replaced: whether it holds a pool is not known, so it is not used again).
+// The puppets are made again from the remote table when the draw next finds none.
+void bluewake_puppet_mem2_forget(void) {
+    if (pools_users() == 0 && g_pools[POOL_MEM2].heap == 0u && g_pools[POOL_FAST].heap == 0u)
+        return;
+    for (int i = 0; i < POOLS; ++i) {
+        g_pools[i].heap = 0u;
+        g_pools[i].users = 0;
+    }
+    g_pools[POOL_FAST].failed = true;
+    memset(g_ds, 0, sizeof g_ds);
+    memset(g_guest, 0, sizeof g_guest);
+    memset(g_ptex, 0, sizeof g_ptex);
+}
+
+// A solid heap from a pool, made the current heap (the caller restores it); 0 when it cannot be.
+static u32 pool_solid_heap_from(GuestCoro* co, int which, u32 size) {
+    CPUState* cpu = bluewake_coro_cpu(co);
+    Pool* p = pool_get(co, cpu, which);
+    if (p == NULL)
+        return 0u;
+    const u32 heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, size, p->heap, 0x20u, 0);
+    if (heap == 0u)
+        return 0u;
+    ++p->users;
+    // The textures drawn from memory that was another heap's are cached by the pages' write marks (the graphics' texture
+    // cache): this memory is written by the loader without a flush the marks come from, so the pages are marked here.
+    dol_guest_memory_dirty_mark(heap, size);
+    const u32 used = p->size - pool_free_of(co, p);
+    if (used > p->peak_used)
+        p->peak_used = used;
+    return heap;
+}
+
+// The fast pool first, then MEM2.
+static u32 pool_solid_heap(GuestCoro* co, u32 size) {
+    for (int i = 0; i < POOLS; ++i) {
+        const u32 heap = pool_solid_heap_from(co, i, size);
+        if (heap != 0u)
+            return heap;
+    }
+    return 0u;
+}
+
+// Destroys a puppet heap, from whichever heap it came from (the game's own destroy frees it to its parent).
+static void destroy_puppet_heap(GuestCoro* co, u32 heap) {
+    if (heap == 0u)
+        return;
+    const int which = pool_of(heap);
+    if (which == POOL_MEM2 && bluewake_coro_cpu(co)->exram != NULL)
+        dol_guest_memory_dirty_mark(MEM2_BASE, bluewake_coro_cpu(co)->exram_size); // what was drawn from it is read again
+    else if (which == POOL_FAST)
+        dol_guest_memory_dirty_mark(g_pools[POOL_FAST].base, g_pools[POOL_FAST].bytes);
+    call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+    if (which >= 0 && g_pools[which].users > 0)
+        --g_pools[which].users;
+}
+
+// A puppet's solid heap, the first size that fits: from the fast pool (memory the game does not use, as fast as MEM1), then the
+// game heap, the Zelda heap and (the game heaps are small: a stock puppet takes 90 KB, a custom body 400 KB and more) the
+// archive heap, which has about 1.6 MB of free room that the Link.arc swap reserve leaves, then MEM2. The game's own heaps are
+// the game's: a puppet takes from one only what leaves it a reserve (a scene's actors are made from them: with sixteen puppets'
+// small equipment heaps taken out of them, the game's next allocation failed and it jumped to null, 2026-10-19), so only the
+// heaps left over from the pools use them. The heap is made the current one; the caller restores it. *size is the size that
+// was made (or the last tried).
+enum { ARCHIVE_HEADROOM = 0x100000, GAME_HEAP_RESERVE = 0x30000, ZELDA_HEAP_RESERVE = 0x40000 };
+static u32 create_puppet_heap(GuestCoro* co, const u32* want, int n, u32* size) {
+    u32 heap = pool_solid_heap_from(co, POOL_FAST, *size = want[0]);
+    const char* from = "the fast pool";
+    if (heap == 0u) {
+        const u32 game = call(co, 0x800117E4u, 0, 0, 0, 0); // mDoExt_getGameHeap()
+        const u32 game_free = game != 0u ? call(co, FN_HEAP_TOTAL_FREE, game, 0, 0, 0) : 0u;
+        from = "the game heap";
+        for (int k = 0; k < n && heap == 0u; ++k)
+            if (want[k] + GAME_HEAP_RESERVE <= game_free)
+                heap = call(co, FN_CREATE_HEAP_TO_CURRENT, *size = want[k], 0x20u, 0, 0);
+    }
+    if (heap == 0u) {
+        const u32 zelda = call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0);
+        const u32 zelda_free = zelda != 0u ? call(co, FN_HEAP_TOTAL_FREE, zelda, 0, 0, 0) : 0u;
+        from = "the Zelda heap";
+        for (int k = 0; k < n && heap == 0u && zelda != 0u; ++k)
+            if (want[k] + ZELDA_HEAP_RESERVE <= zelda_free)
+                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], zelda, 0x20u, 0);
+    }
+    if (heap == 0u) {
+        const u32 archive = call(co, 0x80011AB4u, 0, 0, 0, 0); // mDoExt_getArchiveHeap()
+        const u32 total = archive != 0u ? call(co, 0x802B08C0u, archive, 0, 0, 0) : 0u; // JKRHeap::getTotalFreeSize
+        from = "the archive heap";
+        for (int k = 0; k < n && heap == 0u && total > ARCHIVE_HEADROOM; ++k)
+            if (want[k] + ARCHIVE_HEADROOM <= total)
+                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], archive, 0x20u, 0);
+    }
+    if (heap == 0u) {
+        heap = pool_solid_heap_from(co, POOL_MEM2, *size = want[0]);
+        from = "the MEM2 pool";
+    }
+    if (heap == 0u)
+        fprintf(stderr, "[puppet] no heap has room for %u bytes (fast pool %u KB free, MEM2 %u KB free)\n", want[0], pool_free_of(co, &g_pools[POOL_FAST]) >> 10,
+                pool_free_of(co, &g_pools[POOL_MEM2]) >> 10);
+    else
+        fprintf(stderr, "[puppet] heap %08X of %u bytes from %s\n", heap, *size, from);
+    return heap;
+}
 
 static uint64_t fnv64(const uint8_t* p, size_t n) {
     uint64_t h = 0xCBF29CE484222325ull;
@@ -1758,34 +2143,10 @@ static void ds_release(GuestCoro* co, Guest* g) {
             continue;
         if (--g_ds[at].refs == 0) {
             if (g_ds[at].heap != 0u)
-                call(co, FN_DESTROY_HEAP, g_ds[at].heap, 0, 0, 0);
+                destroy_puppet_heap(co, g_ds[at].heap);
             memset(&g_ds[at], 0, sizeof g_ds[at]);
         }
     }
-}
-
-// A puppet's solid heap, the first size that fits: from the game heap, then the Zelda heap, then (the game heaps are small:
-// a stock puppet takes 90 KB, a custom body 400 KB and more) the archive heap, which has about 1.6 MB of free room that
-// the Link.arc swap reserve leaves, but only while 1 MB of it stays free for the next room's archives. The heap is made
-// the current one; the caller restores it. *size is the size that was made (or the last tried).
-enum { ARCHIVE_HEADROOM = 0x100000 };
-static u32 create_puppet_heap(GuestCoro* co, const u32* want, int n, u32* size) {
-    u32 heap = 0u;
-    for (int k = 0; k < n && heap == 0u; ++k)
-        heap = call(co, FN_CREATE_HEAP_TO_CURRENT, *size = want[k], 0x20u, 0, 0);
-    const u32 zelda = heap == 0u ? call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0) : 0u;
-    for (int k = 0; k < n && heap == 0u && zelda != 0u; ++k)
-        heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], zelda, 0x20u, 0);
-    if (heap == 0u) {
-        const u32 archive = call(co, 0x80011AB4u, 0, 0, 0, 0); // mDoExt_getArchiveHeap()
-        const u32 total = archive != 0u ? call(co, 0x802B08C0u, archive, 0, 0, 0) : 0u; // JKRHeap::getTotalFreeSize
-        for (int k = 0; k < n && heap == 0u && total > ARCHIVE_HEADROOM; ++k)
-            if (want[k] + ARCHIVE_HEADROOM <= total)
-                heap = call(co, FN_CREATE_HEAP_TO_CURRENT_FROM, *size = want[k], archive, 0x20u, 0);
-        if (heap != 0u)
-            fprintf(stderr, "[puppet] heap of %u bytes from the archive heap (%u free)\n", *size, total);
-    }
-    return heap;
 }
 
 static u32 load_custom_bdl(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t len);
@@ -1805,11 +2166,13 @@ static int ds_acquire(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t l
     }
     if (free_slot < 0)
         return -1;
-    // The loaded data takes about 1.1 times its file; the heap is cut to what was used.
+    // The loaded data takes about 1.1 times its file and 4 KB more (a file of many materials, more): the heap is cut to what
+    // was used. One size, and a generous one: a loader that finds its heap too small gets no memory for a material and calls
+    // through null (the game's, 2026-10-19: smaller sizes tried when the first did not fit were what crashed).
     u32 size = 0u;
     const u32 n = (u32)len;
-    const u32 want[3] = {n + n / 3u + 0x4000u, n + n / 6u + 0x2000u, n + n / 10u + 0x1000u};
-    const u32 heap = create_puppet_heap(co, want, 3, &size);
+    const u32 want[1] = {n + n / 2u + 0x6000u};
+    const u32 heap = create_puppet_heap(co, want, 1, &size);
     if (heap == 0u) {
         fprintf(stderr, "[puppet] no room for %s of %zu bytes\n", body ? "a body" : "equipment", len);
         return -1;
@@ -1825,7 +2188,7 @@ static int ds_acquire(GuestCoro* co, CPUState* cpu, const uint8_t* bdl, size_t l
     call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
     fprintf(stderr, "[puppet] %s of %zu bytes loaded to %08X (heap %08X, %u bytes used)\n", body ? "body" : "equipment", len, data, heap, used);
     if (data == 0u) {
-        call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+        destroy_puppet_heap(co, heap);
         return -1;
     }
     g_ds[free_slot] = (DataSlot){key, len, heap, data, 1};
@@ -1844,13 +2207,17 @@ static void log_heaps(GuestCoro* co, CPUState* cpu) {
         const u32 block = heap != 0u ? call(co, 0x802B0868u, heap, 0, 0, 0) : 0u;
         n += snprintf(text + n, sizeof text - (size_t)n, " %s %u/%u", kHeaps[i].name, block, total);
     }
-    fprintf(stderr, "[puppet] heaps (largest block/total free):%s\n", text);
+    fprintf(stderr, "[puppet] heaps (largest block/total free):%s fast %u/%u mem2 %u/%u (%d heaps in pools, peak %u + %u KB)\n", text,
+            g_pools[POOL_FAST].heap != 0u ? call(co, FN_HEAP_MAX_FREE, g_pools[POOL_FAST].heap, 0, 0, 0) : 0u, pool_free_of(co, &g_pools[POOL_FAST]),
+            g_pools[POOL_MEM2].heap != 0u ? call(co, FN_HEAP_MAX_FREE, g_pools[POOL_MEM2].heap, 0, 0, 0) : 0u, pool_free_of(co, &g_pools[POOL_MEM2]),
+            pools_users(), g_pools[POOL_FAST].peak_used >> 10, g_pools[POOL_MEM2].peak_used >> 10);
 }
 
 static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data, int room, const uint8_t* bdl, size_t bdl_len, int id,
                           uint8_t* const* eq, const size_t* eq_len) {
     bool custom = bdl != NULL && bdl_len >= 0x40 && bdl_len <= MAX_CUSTOM_BDL;
     log_heaps(co, cpu);
+    const u32 pool_before = pools_used(co);
     size_t eq_total = 0;
     for (int k = 0; k < EQUIP_SLOTS; ++k)
         if (eq[k] != NULL && eq_len[k] >= 0x20 && eq_len[k] <= MAX_CUSTOM_BDL)
@@ -1889,9 +2256,9 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
     }
     {
         // The models made from that data take about 90 KB (the heap is cut to what was used).
-        const u32 want[3] = {0x28000u, 0x1C000u, 0x14000u};
+        const u32 want[1] = {0x28000u};
         u32 size = 0u;
-        heap = create_puppet_heap(co, want, 3, &size);
+        heap = create_puppet_heap(co, want, 1, &size);
         if (heap == 0u) {
             ds_release(co, g);
             g->failed = true;
@@ -1914,6 +2281,9 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
             g->packet[k] = pk + 0x10u * k;
         }
     }
+    memset(g->var, 0, sizeof g->var);
+    if (!make_variant_packets(co, cpu, g, id))
+        fprintf(stderr, "[puppet] player %d: no room for the packets that set its texture variant: its colors are Link's\n", id);
     if (model != 0u && tev != 0u && pos != 0u && pk != 0u) {
         for (u32 i = 0; i < 0xB0u; i += 4u)
             mem_write32(cpu, tev + i, 0u);
@@ -1999,7 +2369,7 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
     call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
     g->katsura = katsura;
     if (model == 0u || tev == 0u || pos == 0u || pk == 0u) {
-        call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+        destroy_puppet_heap(co, heap);
         ds_release(co, g);
         g->failed = true;
         fprintf(stderr, "[puppet] the puppet model could not be made (model %08X)\n", model);
@@ -2037,6 +2407,11 @@ static void create_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_da
     }
     fprintf(stderr, "[puppet] model %08X made from %s (heap %08X, adjust returned %u)\n", model,
             custom ? "the player's own model" : "Link's", heap, used);
+    if (g_pools[POOL_FAST].heap != 0u || g_pools[POOL_MEM2].heap != 0u) {
+        const u32 pool_after = pools_used(co);
+        fprintf(stderr, "[puppet] player %d: %u KB more of the pools (data and models; data shared with other players is not counted again), the pools hold %u KB\n", id,
+                (pool_after > pool_before ? pool_after - pool_before : 0u) >> 10, pool_after >> 10);
+    }
 }
 
 static void set_shape_hidden(CPUState* cpu, u32 shape, bool hidden) {
@@ -2075,13 +2450,24 @@ static void att_forget_textures(Guest* g, u32 ptex) {
 }
 
 static void att_free(GuestCoro* co, Guest* g) {
+    if (g->sail_phase != 0u) { // the archives it loaded for the sail (none when the PC's own ship had them)
+        static const char* const kNames[2] = {"Cloth", "Ship"};
+        for (int k = 0; k < 2; ++k)
+            if (mem_read32(bluewake_coro_cpu(co), g->sail_phase + 8u * (u32)k + 4u) == 2u) {
+                for (int i = 0; i < 6; ++i)
+                    mem_write8(bluewake_coro_cpu(co), g->pos + 0x50u + (u32)i, (u8)kNames[k][i]);
+                call(co, FN_RES_DELETE, g->sail_phase + 8u * (u32)k, g->pos + 0x50u, 0, 0);
+            }
+    }
     if (g->sail_heap != 0u)
-        call(co, FN_DESTROY_HEAP, g->sail_heap, 0, 0, 0);
-    g->sail_heap = g->sail_pkt = g->sail_zmtx = 0u;
+        destroy_puppet_heap(co, g->sail_heap);
+    g->sail_heap = g->sail_pkt = g->sail_zmtx = g->sail_phase = 0u;
+    g->sail_tries = g->sail_said = 0;
+    g->sail_built = g->sail_given_up = false;
     for (int i = 0; i < ATT_MODELS; ++i) {
         att_forget_textures(g, g->att[i].ptex);
         if (g->att[i].heap != 0u)
-            call(co, FN_DESTROY_HEAP, g->att[i].heap, 0, 0, 0);
+            destroy_puppet_heap(co, g->att[i].heap);
         memset(&g->att[i], 0, sizeof g->att[i]);
     }
 }
@@ -2098,7 +2484,9 @@ static void att_make(GuestCoro* co, CPUState* cpu, Guest* g, struct AttModel* m)
     }
     // The ship's hull is skinned on the CPU (the game changes the shared data's display lists for it): room for its arrays.
     const u32 heap_size = strcmp(m->arc, "Ship") == 0 && m->idx == 17u ? 0x60000u : ATT_HEAP;
-    u32 heap = call(co, FN_CREATE_HEAP_TO_CURRENT, heap_size, 0x20u, 0, 0);
+    u32 heap = pool_solid_heap(co, heap_size);
+    if (heap == 0u)
+        heap = call(co, FN_CREATE_HEAP_TO_CURRENT, heap_size, 0x20u, 0, 0);
     if (heap == 0u) {
         const u32 zelda = call(co, FN_GET_ZELDA_HEAP, 0, 0, 0, 0);
         if (zelda != 0u)
@@ -2130,7 +2518,7 @@ static void att_make(GuestCoro* co, CPUState* cpu, Guest* g, struct AttModel* m)
     }
     call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
     if (model == 0u) {
-        call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+        destroy_puppet_heap(co, heap);
         return;
     }
     m->heap = heap;
@@ -2155,7 +2543,7 @@ static struct AttModel* att_get(GuestCoro* co, CPUState* cpu, Guest* g, const ch
     }
     att_forget_textures(g, use->ptex);
     if (use->heap != 0u)
-        call(co, FN_DESTROY_HEAP, use->heap, 0, 0, 0);
+        destroy_puppet_heap(co, use->heap);
     memset(use, 0, sizeof *use);
     memcpy(use->arc, arc, ATT_ARC - 1);
     use->idx = idx;
@@ -2166,47 +2554,124 @@ static struct AttModel* att_get(GuestCoro* co, CPUState* cpu, Guest* g, const ch
 
 static u32 call_f(GuestCoro* co, u32 fn, float f1, float f2, float f3, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f);
 
-// The sail cloth (daHo_packet_c, a J3DMatPacket): a copy of the local ship's own packet (its material and shape are shared)
-// with the puppet's points, normals taken from the local sail, its place and lighting, entered in the Z-sorted translucent
-// list as daGrid_c::_draw does.
+// The sail cloth (daHo_packet_c, a J3DMatPacket), made as daGrid_c's own create does and independent of the local ship: the
+// puppet's own packet (the game's constructors, the cloth class's vtable), its 85 points from the sender, the normals worked out
+// from them by the cloth class's own functions, its place and lighting, entered in the Z-sorted translucent list. Its draw reads
+// two pictures from the "Ship" and "Cloth" archives, which a PC without a ship of its own does not have: the puppet loads them
+// as daGrid_c does (dComIfG_resLoad, a step each frame) and gives them back with its models.
+enum {
+    FN_MAT_PACKET_CT = 0x802DB36Cu,   // J3DMatPacket::J3DMatPacket()
+    FN_SHAPE_PACKET_CT = 0x802DB524u, // J3DShapePacket::J3DShapePacket()
+    HO_VTABLE = 0x8038BBE0u,          // __vt__13daHo_packet_c
+    FN_HO_SET_NRM_MTX = 0x800E8D48u,  // daHo_packet_c::setNrmMtx(cXyz&)
+    FN_HO_SET_NRM_VTX = 0x800E8D74u,  // daHo_packet_c::setNrmVtx(cXyz* out, int x, int y)
+    FN_HO_SET_TOP_NRM = 0x800E92ACu,  // daHo_packet_c::setTopNrmVtx(cXyz* out)
+    FN_HO_SET_BACK_NRM = 0x800E8CC0u, // daHo_packet_c::setBackNrm()
+    RES_SHIP_NEW_HO1 = 0x17,          // dRes_ID_SHIP_BTI_NEW_HO1_e (the sail's picture)
+    RES_CLOTH_TOON = 0x3,             // dRes_ID_CLOTH_BTI_CLOTHTOON_e (its shading)
+    PHASE_COMPLETE = 4, PHASE_ERROR = 5,
+};
+
+// Says what this puppet's sail is doing when that changes (state: 1 waits, 2 drawn, 3 given up).
+static void sail_say(Guest* g, int state, const char* why) {
+    if (g->sail_said == state)
+        return;
+    g->sail_said = state;
+    fprintf(stderr, "[puppet] slot %d (player %d): sail %s\n", (int)(g - g_guest), g->id, why);
+}
+
+static bool sail_archive_ready(GuestCoro* co, CPUState* cpu, Guest* g, const char* arc, int res) {
+    for (int i = 0;; ++i) {
+        mem_write8(cpu, g->pos + 0x50u + (u32)i, (u8)arc[i]);
+        if (arc[i] == '\0')
+            break;
+    }
+    return guest_ptr(call(co, FN_GET_RES, g->pos + 0x50u, (u32)res, RES_OBJECT_INFO, RES_OBJECT_INFO_NUM));
+}
+
 static void draw_sail(GuestCoro* co, CPUState* cpu, Guest* g, const Item* it) {
     if (!it->sail)
         return;
-    const u32 ship = mem_read32(cpu, SHIP_ACTOR);
-    const u32 grid = guest_ptr(ship) ? mem_read32(cpu, ship + SHIP_GRID) : 0u;
-    if (!guest_ptr(grid))
+    if (g->sail_given_up)
         return;
-    const u32 tmpl = grid + GRID_PACKET;
-    if (g->sail_pkt == 0u) {
-        const u32 heap = call(co, FN_CREATE_HEAP_TO_CURRENT, 0x3000u, 0x20u, 0, 0);
+    if (g->sail_heap == 0u) {
+        // Everything the sail needs from the guest's memory, in one small heap of its own (freed with the puppet's models).
+        u32 heap = pool_solid_heap(co, 0x3000u);
         if (heap == 0u)
-            return;
-        const u32 pkt = call(co, FN_NEW_ALIGNED, HO_SIZE + 0x40u, 0x20u, 0, 0);
-        const u32 zm = call(co, FN_NEW, 0x30u, 0, 0, 0);
-        call(co, FN_ADJUST_HEAP, heap, 0, 0, 0);
-        call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
-        if (!guest_ptr(pkt) || !guest_ptr(zm)) {
-            call(co, FN_DESTROY_HEAP, heap, 0, 0, 0);
+            heap = call(co, FN_CREATE_HEAP_TO_CURRENT, 0x3000u, 0x20u, 0, 0);
+        if (heap == 0u) {
+            sail_say(g, 3, "not drawn: no heap for it");
+            g->sail_given_up = true;
             return;
         }
-        for (u32 o = 0; o < HO_SIZE; o += 4u)
-            mem_write32(cpu, pkt + o, mem_read32(cpu, tmpl + o));
-        mem_write32(cpu, pkt + 4u, 0u); // J3DPacket::mpNextPacket
+        const u32 pkt = call(co, FN_NEW_ALIGNED, HO_SIZE + 0x40u, 0x20u, 0, 0);
+        const u32 zm = call(co, FN_NEW, 0x30u, 0, 0, 0);
+        const u32 ph = call(co, FN_NEW, 0x10u, 0, 0, 0); // two request_of_phase_process_class
+        call(co, FN_ADJUST_HEAP, heap, 0, 0, 0);
+        call(co, FN_RESTORE_HEAP, 0, 0, 0, 0);
+        if (!guest_ptr(pkt) || !guest_ptr(zm) || !guest_ptr(ph)) {
+            destroy_puppet_heap(co, heap);
+            sail_say(g, 3, "not drawn: no memory for its packet");
+            g->sail_given_up = true;
+            return;
+        }
+        for (u32 o = 0; o < HO_SIZE + 0x40u; o += 4u)
+            mem_write32(cpu, pkt + o, 0u);
+        for (u32 o = 0; o < 0x10u; o += 4u)
+            mem_write32(cpu, ph + o, 0u);
         g->sail_heap = heap;
         g->sail_pkt = pkt;
         g->sail_zmtx = zm;
-        fprintf(stderr, "[puppet] slot %d: sail packet copy %08X of %08X\n", (int)(g - g_guest), pkt, tmpl);
+        g->sail_phase = ph;
+    }
+    if (!g->sail_built) {
+        // The two archives the cloth draws from. A PC with a ship has them (daGrid_c holds them); else this puppet loads them.
+        if (ENV_SET("BLUEWAKE_PUPPET_SAIL_LOAD") || !sail_archive_ready(co, cpu, g, "Ship", RES_SHIP_NEW_HO1) ||
+            !sail_archive_ready(co, cpu, g, "Cloth", RES_CLOTH_TOON)) { // (the variable: testing, loads them even when the PC has them)
+            static const char* const kNames[2] = {"Cloth", "Ship"};
+            u32 states[2];
+            for (int k = 0; k < 2; ++k) {
+                for (int i = 0; i < 6; ++i)
+                    mem_write8(cpu, g->pos + 0x50u + (u32)i, (u8)kNames[k][i]);
+                states[k] = call(co, FN_RES_LOAD, g->sail_phase + 8u * (u32)k, g->pos + 0x50u, 0, 0) & 0xFFu;
+            }
+            if (states[0] == PHASE_ERROR || states[1] == PHASE_ERROR || ++g->sail_tries > 600) {
+                sail_say(g, 3, "not drawn: the Ship and Cloth archives could not be loaded here");
+                g->sail_given_up = true;
+                return;
+            }
+            if (states[0] != PHASE_COMPLETE || states[1] != PHASE_COMPLETE) {
+                sail_say(g, 1, "waits: the Ship and Cloth archives are loading (this PC has no ship of its own)");
+                return;
+            }
+            fprintf(stderr, "[puppet] slot %d: loaded the Ship and Cloth archives for the sail\n", (int)(g - g_guest));
+        }
+        // daHo_packet_c::daHo_packet_c(): the J3DMatPacket and the embedded J3DShapePacket, then the cloth class's vtable, the
+        // shape packet set (the Z sort clears it) and the alpha opaque.
+        const u32 pkt = g->sail_pkt;
+        call(co, FN_MAT_PACKET_CT, pkt, 0, 0, 0);
+        call(co, FN_SHAPE_PACKET_CT, pkt + 0x3Cu, 0, 0, 0);
+        mem_write32(cpu, pkt, HO_VTABLE);
+        mem_write32(cpu, pkt + 0x28u, pkt + 0x3Cu); // J3DMatPacket::mpShapePacket
+        mem_write8(cpu, pkt + HO_ALPHA, 0xFFu);
+        g->sail_built = true;
+        fprintf(stderr, "[puppet] slot %d: sail packet %08X made from the ship archive's own resources (the local ship %s)\n", (int)(g - g_guest), pkt,
+                guest_ptr(mem_read32(cpu, SHIP_ACTOR)) ? "exists but is not used" : "does not exist");
     }
     const u32 pk = g->sail_pkt;
-    const u32 cur = mem_read8(cpu, tmpl + HO_CUR) & 1u;
-    for (int i = 0; i < HO_POINTS; ++i)
-        for (u32 k = 0; k < 3u; ++k) {
-            write_float(cpu, pk + HO_POS + 12u * (u32)i + 4u * k, (float)it->sail_pt[i][k] / 8.0f);
-            mem_write32(cpu, pk + HO_NRM + 12u * (u32)i + 4u * k, mem_read32(cpu, tmpl + HO_NRM + cur * 12u * HO_POINTS + 12u * (u32)i + 4u * k));
-            mem_write32(cpu, pk + HO_BACKNRM + 12u * (u32)i + 4u * k, mem_read32(cpu, tmpl + HO_BACKNRM + cur * 12u * HO_POINTS + 12u * (u32)i + 4u * k));
-        }
+    // The sender's points are the packet's current set; the normals come from them by the cloth class's own functions (its yaw
+    // field is 0, as in the game, so the light direction only has to be something).
     mem_write8(cpu, pk + HO_CUR, 0u);
-    mem_write8(cpu, pk + HO_ALPHA, 0xFFu);
+    for (int i = 0; i < HO_POINTS; ++i)
+        for (u32 k = 0; k < 3u; ++k)
+            write_float(cpu, pk + HO_POS + 12u * (u32)i + 4u * k, (float)it->sail_pt[i][k] / 8.0f);
+    call(co, FN_HO_SET_NRM_MTX, pk, g->pos + 0x60u, 0, 0);
+    u32 nrm = pk + HO_NRM;
+    for (u32 y = 0; y < 12u; ++y)
+        for (u32 x = 0; x < 7u; ++x, nrm += 12u)
+            call(co, FN_HO_SET_NRM_VTX, pk, nrm, x, y);
+    call(co, FN_HO_SET_TOP_NRM, pk, nrm, 0, 0);
+    call(co, FN_HO_SET_BACK_NRM, pk, 0, 0, 0);
     mem_write32(cpu, pk + HO_TEVSTR, g->tevstr);
     Mat34 view, mm;
     read_mat(cpu, J3D_SYS, &view);
@@ -2214,12 +2679,15 @@ static void draw_sail(GuestCoro* co, CPUState* cpu, Guest* g, const Item* it) {
     write_mat(cpu, pk + HO_MTX, &mm);
     write_mat(cpu, g->sail_zmtx, &it->sail_mtx);
     const u32 buffer = mem_read32(cpu, DRAW_LIST + DRAW_XLU_LIST);
-    if (!guest_ptr(buffer))
+    if (!guest_ptr(buffer)) {
+        sail_say(g, 1, "waits: the translucent draw list is not there");
         return;
+    }
     const u32 saved = mem_read32(cpu, buffer + 0x1Cu);
     mem_write32(cpu, buffer + 0x1Cu, g->sail_zmtx);
     call(co, FN_ENTRY_Z_SORT, buffer, pk, 0, 0);
     mem_write32(cpu, buffer + 0x1Cu, saved);
+    sail_say(g, 2, "drawn");
 }
 
 // The hookshot's chain and the grappling hook's rope: a strip of two points between his hand and its end, entered in the
@@ -2281,7 +2749,7 @@ static void draw_attachments(GuestCoro* co, CPUState* cpu, Guest* g, const Item*
         write_mat(cpu, m->model + MODEL_BASE_MTX, &a->base);
         for (int j = 0; j < a->nj; ++j)
             write_mat(cpu, nodes + 48u * (u32)j, &a->node[j]);
-        if (getenv("BLUEWAKE_PUPPET_ATTLOG") != NULL) { // diagnosis
+        if (ENV_SET("BLUEWAKE_PUPPET_ATTLOG")) { // diagnosis
             static int said;
             if (said++ < 12) {
                 const u32 shapes_n = mem_read16(cpu, data + 0x7Cu), shapes = mem_read32(cpu, data + 0x80u);
@@ -2395,7 +2863,13 @@ static void draw_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data
               root_joint = joint_node(cpu, joints, CL_ROOT);
     mem_write32(cpu, J3D_SYS + 0x38u, g->model);
     mem_write32(cpu, J3D_SYS + 0x58u, tex);
-    const char* only = getenv("BLUEWAKE_PUPPET_ONLY");
+    static const char* only_text;
+    static bool only_read;
+    if (!only_read) {
+        only_read = true;
+        only_text = getenv("BLUEWAKE_PUPPET_ONLY");
+    }
+    const char* only = only_text;
     if (only != NULL) { // diagnosis: just these root materials (hex mask), no eyes
         const unsigned mask = (unsigned)strtoul(only, NULL, 16);
         for (int i = 0; i < 4; ++i) {
@@ -2466,7 +2940,10 @@ static void draw_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data
     u32 face_mat[PUPPET_FACE_MAX], face_tev[PUPPET_FACE_MAX], face_anm[PUPPET_FACE_MAX], face_old[PUPPET_FACE_MAX];
     u8 face_slot[PUPPET_FACE_MAX];
     int face_n = 0;
-    if (!g->custom && it->face_n != 0) {
+    // His indices (material, slot, texture number) are those of his own model. They fit the body drawn when that is the same file
+    // (a stock player's on the game's own model, even one supplied from the disc; a custom player's on his own model), not Link
+    // standing in for a model that could not be had.
+    if (!it->face_skip && (g->custom || !it->body_wanted) && it->face_n != 0) {
         const u32 count = mem_read16(cpu, model_data + MODEL_DATA_MATERIAL_NUM);
         const u32 mats = mem_read32(cpu, model_data + MODEL_DATA_MATERIALS);
         for (int i = 0; i < it->face_n && guest_ptr(mats); ++i) {
@@ -2494,6 +2971,13 @@ static void draw_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data
     }
     if (face_n != 0) {
         static int said;
+        static u16 last_face[MAX_REMOTES];
+        static int changes[MAX_REMOTES];
+        const int fs = (int)(g - g_guest);
+        if (last_face[fs] != it->face[0].tex && changes[fs]++ < 12) // his expression changed: the log says so (a few times)
+            fprintf(stderr, "[puppet] slot %d: expression %u -> %u (%d textures; body is %s)\n", fs, (unsigned)last_face[fs], (unsigned)it->face[0].tex, face_n,
+                    g->custom ? "a model" : "Link's");
+        last_face[fs] = it->face[0].tex;
         if (said++ < 2)
             fprintf(stderr, "[puppet] slot %d: %d expression textures set (first: material %u slot %u texture %u, his own %u)\n", it->slot,
                     face_n, (unsigned)it->face[0].mat, (unsigned)it->face[0].slot, (unsigned)it->face[0].tex, face_old[0]);
@@ -2514,7 +2998,7 @@ static void draw_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data
     for (int e = 0; e < 2; ++e) {
         const uint8_t kind = e == 0 ? it->sword : it->shield;
         const u32 equip = kind == 1 || kind == 2 ? (e == 0 ? g->sword[kind - 1] : g->shield[kind - 1]) : 0u;
-        if (equip == 0u)
+        if (equip == 0u || it->lod == LOD_VERY_FAR)
             continue;
         write_mat(cpu, equip + MODEL_BASE_MTX, e == 0 ? &it->sword_mtx : &it->shield_mtx);
         calc_puppet_part(co, cpu, equip);
@@ -2534,7 +3018,7 @@ static void draw_puppet(GuestCoro* co, CPUState* cpu, Guest* g, u32 vanilla_data
         }
     }
     // The hands model: the shapes he chose (fists, a grip, a bow hand), at the body's hand joints.
-    if (g->hands != 0u && (it->hands != 0)) {
+    if (g->hands != 0u && (it->hands != 0) && it->lod == LOD_NEAR) {
         const u32 hdata = mem_read32(cpu, g->hands + MODEL_DATA);
         const u32 hjoints = guest_ptr(hdata) ? mem_read32(cpu, hdata + 0x2Cu) : 0u;
         const u32 hnodes = mem_read32(cpu, g->hands + MODEL_NODE_MTX);
@@ -2593,7 +3077,7 @@ static u32 call_f(GuestCoro* co, u32 fn, float f1, float f2, float f3, u32 a, u3
 // ground check, then a real shadow with the puppet's model (and its hair, sword and shield) or, where the game's eight
 // real shadows are used up, the simple blob. No ground below (the open sea, a pit): none, as for Link.
 static void puppet_shadow(GuestCoro* co, CPUState* cpu, Guest* g, const Item* it) {
-    const bool off = getenv("BLUEWAKE_PUPPET_NOSHADOW") != NULL; // diagnosis
+    const bool off = ENV_SET("BLUEWAKE_PUPPET_NOSHADOW"); // diagnosis
     if (off)
         return;
     const u32 s = g->pos;
@@ -2671,6 +3155,7 @@ static void draw_body(GuestCoro* co, void* arg) {
         publish_local(pose);
     }
     bluewake_pvp_fiber(co, cpu); // the bodies and target actors of the puppets (puppet_pvp.c)
+    bluewake_carry_fiber(co, cpu); // a lifted Link crouches, a hold is let go (puppet_carry.c)
     // Puppets are made (or made again) before any is drawn, the most recently active player's first, so that when the game's
     // heaps cannot hold every custom body the ones that are moving get them; and a player who is active while others sit
     // still takes a custom body's room from the one that has been still longest (that one is stock for 20 seconds).
@@ -2693,7 +3178,7 @@ static void draw_body(GuestCoro* co, void* arg) {
             if (it->recreate && g->heap != 0u) {
                 // The player's own model came after the puppet was made as Link's (or room came free): made again.
                 att_free(co, g);
-                call(co, FN_DESTROY_HEAP, g->heap, 0, 0, 0);
+                destroy_puppet_heap(co, g->heap);
                 ds_release(co, g);
                 memset(g_ptex[it->slot], 0, sizeof g_ptex[it->slot]);
                 memset(g, 0, sizeof *g);
@@ -2724,7 +3209,7 @@ static void draw_body(GuestCoro* co, void* arg) {
                                 (it->active_ms - vi->active_ms) / 1000.0);
                         att_free(co, vg);
                         if (vg->heap != 0u)
-                            call(co, FN_DESTROY_HEAP, vg->heap, 0, 0, 0);
+                            destroy_puppet_heap(co, vg->heap);
                         ds_release(co, vg);
                         memset(g_ptex[vi->slot], 0, sizeof g_ptex[vi->slot]);
                         memset(vg, 0, sizeof *vg);
@@ -2741,7 +3226,7 @@ static void draw_body(GuestCoro* co, void* arg) {
                         unlock();
                         // This puppet again, now that there is room.
                         att_free(co, g);
-                        call(co, FN_DESTROY_HEAP, g->heap, 0, 0, 0);
+                        destroy_puppet_heap(co, g->heap);
                         ds_release(co, g);
                         memset(g_ptex[it->slot], 0, sizeof g_ptex[it->slot]);
                         memset(g, 0, sizeof *g);
@@ -2757,11 +3242,24 @@ static void draw_body(GuestCoro* co, void* arg) {
             }
         }
     }
+    const bool prof = prof_on();
+    double prof_prev = prof ? prof_now_us() : 0.0;
+    const double prof_start = prof_prev;
+    int prof_puppets = 0;
+#define PROF_PHASE(k)     do {         if (prof) {             const double t_ = prof_now_us();             g_prof_phase[k] += t_ - prof_prev;             prof_prev = t_;         }     } while (0)
     for (int n = 0; n < w->count; ++n) {
         Item* it = &w->item[n];
         Guest* g = &g_guest[it->slot];
         if (g->model == 0u)
             continue;
+        if (prof)
+            ++g_prof_lod[it->lod];
+        if (it->lod == LOD_HIDDEN) // off the screen: nothing is done for it this frame (see LOD_HIDDEN)
+            continue;
+        ++prof_puppets;
+        const bool far_off = it->lod == LOD_FAR || it->lod == LOD_VERY_FAR;
+        const bool skip_pose = far_off && (g->tick++ & 1u) != 0u; // far: posed and lit every other frame, drawn with the last
+        prof_prev = prof ? prof_now_us() : 0.0;
         // The pose: the matrices the game would have calculated.
         if (g->remap) {
             // Link's joints relative to the base, to each joint's own translation from its parent.
@@ -2791,6 +3289,7 @@ static void draw_body(GuestCoro* co, void* arg) {
                     mat_mul(&it->base, &fixed[i], &it->node[i]);
             }
         }
+        if (!skip_pose) {
         write_mat(cpu, g->model + MODEL_BASE_MTX, &it->base);
         const u32 nodes = mem_read32(cpu, g->model + MODEL_NODE_MTX);
         if (!guest_ptr(nodes))
@@ -2810,9 +3309,11 @@ static void draw_body(GuestCoro* co, void* arg) {
                         mem_write8(cpu, to + b, (u8)mem_read8(cpu, from + b));
             }
         }
+        PROF_PHASE(0);
         mem_write32(cpu, J3D_SYS + 0x38u, g->model); // J3DModel::calc sets it first
         call(co, FN_CALC_WEIGHT_ENV, g->model, 0, 0, 0);
-        if (getenv("BLUEWAKE_PUPPET_COPYW") != NULL) { // diagnosis: Link's own envelope matrices, moved to the puppet
+        }
+        if (ENV_SET("BLUEWAKE_PUPPET_COPYW")) { // diagnosis: Link's own envelope matrices, moved to the puppet
             const u32 cl = mem_read32(cpu, player + PLAYER_CL_MODEL);
             const u32 n = mem_read16(cpu, w->model_data + 0x30u);
             const u32 from = mem_read32(cpu, cl + 0x90u), to = mem_read32(cpu, g->model + 0x90u);
@@ -2880,10 +3381,33 @@ static void draw_body(GuestCoro* co, void* arg) {
             if (effect != 0u)
                 call(co, FN_SE_START, effect, g->pos + 0x10u, 0, 0);
         }
-        call(co, FN_SETTING_TEVSTRUCT, ENV_LIGHT, 9u, g->pos, g->tevstr);
-        call(co, FN_SET_LIGHT_TEV, ENV_LIGHT, g->model, g->tevstr, 0);
+        if (!skip_pose) {
+            call(co, FN_SETTING_TEVSTRUCT, ENV_LIGHT, 9u, g->pos, g->tevstr);
+            call(co, FN_SET_LIGHT_TEV, ENV_LIGHT, g->model, g->tevstr, 0);
+        }
+        PROF_PHASE(1);
+        enter_variant_packets(co, cpu, g, 0); // (drawn after the puppet's models)
         draw_puppet(co, cpu, g, w->model_data, player, it);
-        puppet_shadow(co, cpu, g, it);
+        enter_variant_packets(co, cpu, g, 1); // (drawn before them)
+        {
+            static unsigned said;
+            if (said++ < 3 || (said & 0x3FFF) == 0)
+                fprintf(stderr, "[puppet] slot %d (player %d): texture variant packets entered around its models (%08X %08X %08X)\n", it->slot, it->id,
+                        g->var[1][0], g->var[1][1], g->var[1][2]);
+        }
+        PROF_PHASE(2);
+        if (!far_off) // far puppets have no shadow
+            puppet_shadow(co, cpu, g, it);
+        PROF_PHASE(3);
+    }
+#undef PROF_PHASE
+    if (prof) {
+        static int draws;
+        g_prof_phase[4] += prof_now_us() - prof_start;
+        if (prof_puppets != 0 && ++draws >= 300) {
+            prof_report(draws, prof_puppets);
+            draws = 0;
+        }
     }
     mem_write32(cpu, J3D_SYS + 0x48u, saved_opa);
     mem_write32(cpu, J3D_SYS + 0x4Cu, saved_xlu);
@@ -2897,11 +3421,15 @@ static void delete_body(GuestCoro* co, void* arg) {
     for (int i = 0; i < MAX_REMOTES; ++i) {
         att_free(co, &g_guest[i]);
         if (g_guest[i].heap != 0u)
-            call(co, FN_DESTROY_HEAP, g_guest[i].heap, 0, 0, 0);
+            destroy_puppet_heap(co, g_guest[i].heap);
         ds_release(co, &g_guest[i]);
         memset(g_ptex[i], 0, sizeof g_ptex[i]);
         memset(&g_guest[i], 0, sizeof g_guest[i]);
     }
+    for (int i = 0; i < POOLS; ++i)
+        if (g_pools[i].heap != 0u)
+            fprintf(stderr, "[puppet] scene end: %s pool %u of %u KB free, %d heaps in use, peak use %u KB\n", g_pools[i].name, pool_free_of(co, &g_pools[i]) >> 10,
+                    g_pools[i].size >> 10, g_pools[i].users, g_pools[i].peak_used >> 10);
     g_scene_id = 0u;
 }
 
@@ -2940,6 +3468,38 @@ static bool remote_pose_any(const Remote* r, double now, Pose* out, bool need_sh
     }
     #undef SNAP_T
     return true;
+}
+
+// Where a puppet is for the draw: LOD_HIDDEN when its bounding sphere is out of the camera's frustum (or beyond the draw
+// distance), LOD_FAR when it is far off. proj_view is the camera's projection times view (the tag code's), clip space
+// (x, y, z, w) from a column vector; a sphere is out when it is beyond a side plane by more than its radius.
+enum { PUPPET_RADIUS = 130, PUPPET_FAR_DISTANCE = 1600, PUPPET_VERY_FAR_DISTANCE = 3500, PUPPET_HIDE_DISTANCE = 9000 };
+static int puppet_view(const float* pv, const float pos[3]) {
+    const float x = pos[0], y = pos[1] + 60.0f, z = pos[2]; // about the middle of the body
+    float c[4];
+    for (int k = 0; k < 4; ++k)
+        c[k] = pv[k * 4] * x + pv[k * 4 + 1] * y + pv[k * 4 + 2] * z + pv[k * 4 + 3];
+    const float r = (float)PUPPET_RADIUS;
+    // The side planes are the rows w+x, w-x, w+y, w-y of proj_view: a point's distance from one is its row times the point
+    // over the row's xyz length.
+    const float side[4] = {c[3] + c[0], c[3] - c[0], c[3] + c[1], c[3] - c[1]};
+    const float sign_[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (int k = 0; k < 4; ++k) {
+        float nx = 0.0f;
+        for (int m = 0; m < 3; ++m) {
+            const float row = pv[12 + m] + sign_[k][0] * pv[m] + sign_[k][1] * pv[4 + m];
+            nx += row * row;
+        }
+        if (side[k] < -r * sqrtf(nx))
+            return LOD_HIDDEN;
+    }
+    // Behind the camera, and the distance along its view (w is the depth for a perspective projection).
+    const float lw = sqrtf(pv[12] * pv[12] + pv[13] * pv[13] + pv[14] * pv[14]);
+    if (c[3] < -r * lw)
+        return LOD_HIDDEN;
+    if (c[3] > (float)PUPPET_HIDE_DISTANCE)
+        return LOD_HIDDEN;
+    return c[3] > (float)PUPPET_VERY_FAR_DISTANCE ? LOD_VERY_FAR : c[3] > (float)PUPPET_FAR_DISTANCE ? LOD_FAR : LOD_NEAR;
 }
 
 static bool remote_pose(const Remote* r, double now, Pose* out) { return remote_pose_any(r, now, out, true); }
@@ -3335,6 +3895,7 @@ static void build_item(const Pose* p, Item* it) {
 }
 
 u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
+    pools_locate(cpu);
     if (id == BLUEWAKE_PUPPET_HOOK_DELETE) {
         if (g_coro_delete == NULL)
             g_coro_delete = bluewake_coro_create(delete_body);
@@ -3371,6 +3932,11 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         g_chart_mem = 0u;
         g_scratch = 0u;
         g_model_ids = 0;
+        for (int i = 0; i < POOLS; ++i)
+            if (g_pools[i].users != 0) { // heaps the scene's end did not free: the pool is made again empty (see pool_get)
+                fprintf(stderr, "[puppet] a new scene with %d puppet heaps still in the %s pool: the pool is reset\n", g_pools[i].users, g_pools[i].name);
+                g_pools[i].stale = true;
+            }
         memset(g_guest, 0, sizeof g_guest);
         g_scene_id = scene_id;
     }
@@ -3431,6 +3997,7 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         it->slot = i;
         it->id = r->id;
         build_item(&p, it);
+        it->lod = view_ok && !ENV_SET("BLUEWAKE_PUPPET_NOCULL") ? (uint8_t)puppet_view(proj_view, it->pos) : (uint8_t)LOD_NEAR;
         it->bdl = NULL;
         it->bdl_len = 0;
         for (int k = 0; k < EQUIP_SLOTS; ++k) {
@@ -3439,6 +4006,8 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         }
         snprintf(it->voice, sizeof it->voice, "%s", r->voice);
         it->voice_local = r->voice_local;
+        it->face_skip = r->face_skip;
+        it->body_wanted = r->bdl != NULL;
         it->active_ms = r->active_ms;
         if (r->retry_custom_ms > 0.0 && now_ms() >= r->retry_custom_ms) {
             r->retry_custom_ms = 0.0;
@@ -3449,7 +4018,7 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         it->voice_pitch = r->voice_pitch;
         if (r->last_proc >= 0 && r->last_proc != (int)p.proc && p.proc != 0xFFFFu && atomic_load(&g_sounds))
             it->voice_proc = (int)p.proc;
-        if (r->last_proc != (int)p.proc && getenv("BLUEWAKE_PUPPET_PROC_LOG") != NULL)
+        if (r->last_proc != (int)p.proc && ENV_SET("BLUEWAKE_PUPPET_PROC_LOG"))
             fprintf(stderr, "[puppet] player %d proc %d -> %u\n", r->id, r->last_proc, (unsigned)p.proc);
         r->last_proc = p.proc == 0xFFFFu ? -1 : (int)p.proc;
         {   // BLUEWAKE_PUPPET_TEST_VOICE=<proc> (testing): every 180th frame each puppet starts that action, so its voice is made
@@ -3507,7 +4076,7 @@ u32 bluewake_puppet_hook(CPUState* cpu, u32 id) {
         }
     }
     unlock();
-    if (w->count == 0 && !map_alloc_wanted() && !chart_alloc_wanted() && !g_cap_pending && !bluewake_pvp_wants_fiber())
+    if (w->count == 0 && !map_alloc_wanted() && !chart_alloc_wanted() && !g_cap_pending && !bluewake_pvp_wants_fiber() && !bluewake_carry_wants_fiber())
         return 0u;
     return bluewake_coro_step(g_coro_draw, cpu, SITE_DRAW, NULL);
 }

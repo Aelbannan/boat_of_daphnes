@@ -6,6 +6,7 @@
 
 #include "anchor_client.h"
 #include "anchor_content.h"
+#include "anchor_carry.h"
 #include "link_colors.h"
 #include "mods.h"
 #include "player_parts.h"
@@ -74,6 +75,7 @@ struct Player {
     ImVec4 color{1, 1, 1, 1};
     std::string content; // the manifest hash of their custom player content (empty: none)
     int voice_pitch = 0; // their Link Voice Pitch in percent (0: normal), shared with the content
+    int link_model = -1;      // 0 the game's Link, 1 a mod's that is shared, 2 a mod's that is not; -1 not told (see client_state)
     std::string link_colors; // their Link colors (link_colors::LocalSpec), shared with the content; empty: the game's own
     std::string client_version; // their Anchor protocol (kAnchorProtocol); a different one cannot play together
     std::string seed;           // their randomizer seed ("" in a vanilla session)
@@ -113,6 +115,7 @@ int g_room_pvp = BLUEWAKE_PVP_OFF;
 int g_room_pvp_scale = 100; // percent of the damage a hit does
 bool g_room_friendly_fire;  // hits between players of one team
 bool g_room_collision = true;
+bool g_room_carry;          // players may lift each other (roomState allowCarrying)
 bool g_item_baseline;    // item_found has the save as sync started with
 Uint64 g_last_save_toast; // SYNC_SAVE's "Save updated from team", at most every 20 s
 
@@ -231,6 +234,9 @@ picojson::object client_state() {
     s["point"] = picojson::value(static_cast<int64_t>(where.point));
     s["isSaveLoaded"] = picojson::value(where.stage[0] != '\0');
     s["content"] = picojson::value(share_content() ? content::LocalHash() : std::string());
+    // Which body the expression sent with the pose is for: 0 Link as the game has him, 1 a mod's Link that is shared (the content's
+    // body), 2 a mod's Link that is not (others cannot show its expression on any model they have). An old client sends nothing.
+    s["linkModel"] = picojson::value(static_cast<int64_t>(!mods::LocalState().link ? 0 : (share_content() && content::LocalSharesBody() ? 1 : 2)));
     // Link Voice Pitch (Cosmetics Editor), shared as the content is: others play this player's puppet's voice at it. An old
     // client ignores the field.
     s["voicePitch"] = picojson::value(static_cast<int64_t>(share_content() ? local_voice_pitch() : 0));
@@ -296,6 +302,7 @@ void send_room_state() {
     r["pvpScale"] = picojson::value(g_room_pvp_scale / 100.0);
     r["pvpFriendlyFire"] = picojson::value(static_cast<int64_t>(g_room_friendly_fire ? 1 : 0));
     r["playerCollision"] = picojson::value(static_cast<int64_t>(g_room_collision ? 1 : 0));
+    r["allowCarrying"] = picojson::value(static_cast<int64_t>(g_room_carry ? 1 : 0));
     picojson::object m;
     m["type"] = picojson::value("UPDATE_ROOM_STATE");
     m["roomState"] = picojson::value(r);
@@ -413,6 +420,29 @@ void request_teleport(int id) {
 
 // Whether a hit between me and that player counts: the room has PvP on, and they are not on my team unless the room allows
 // friendly fire.
+bool in_my_scene(const Player& p, const BluewakeLocation& where, Uint64 now);
+bool pvp_allowed(const Player& p);
+
+carry::Env carry_env() {
+    carry::Env e;
+    e.send = [](picojson::object m) { send(std::move(m)); };
+    e.in_my_scene = [](int id) {
+        const auto it = g_players.find(id);
+        return it != g_players.end() && in_my_scene(it->second, bluewake_game_location(), SDL_GetTicks());
+    };
+    e.hurt_allowed = [](int id) {
+        const auto it = g_players.find(id);
+        return it != g_players.end() && g_room_pvp == BLUEWAKE_PVP_ON && pvp_allowed(it->second);
+    };
+    e.name = [](int id) {
+        const auto it = g_players.find(id);
+        return it != g_players.end() ? it->second.name : std::string("Player");
+    };
+    e.toast = [](const std::string& who, const std::string& what) { toast(who, what); };
+    e.hit = [](int from, const float pos[3]) { bluewake_pvp_incoming(from, 1, 0x2u, pos); };
+    return e;
+}
+
 bool pvp_allowed(const Player& p) {
     if (g_room_pvp == BLUEWAKE_PVP_OFF || p.self)
         return false;
@@ -444,6 +474,7 @@ void handle(const std::string& text) {
             p.content = c.count("content") && c.at("content").is<std::string>() ? c.at("content").get<std::string>() : "";
             p.voice_pitch = c.count("voicePitch") && c.at("voicePitch").is<int64_t>()
                                 ? std::clamp(static_cast<int>(c.at("voicePitch").get<int64_t>()), -50, 100) : 0;
+            p.link_model = c.count("linkModel") && c.at("linkModel").is<int64_t>() ? static_cast<int>(c.at("linkModel").get<int64_t>()) : -1;
             p.link_colors = c.count("linkColors") && c.at("linkColors").is<std::string>() ? c.at("linkColors").get<std::string>() : "";
             p.client_version = c.count("clientVersion") && c.at("clientVersion").is<std::string>() ? c.at("clientVersion").get<std::string>() : "";
             p.seed = c.count("seed") && c.at("seed").is<std::string>() ? c.at("seed").get<std::string>() : "";
@@ -493,6 +524,7 @@ void handle(const std::string& text) {
                                    ? std::clamp(static_cast<int>(std::lround(r.at("pvpScale").get<double>() * 100.0)), 25, 400) : 100;
             g_room_friendly_fire = r.count("pvpFriendlyFire") && r.at("pvpFriendlyFire").is<int64_t>() && r.at("pvpFriendlyFire").get<int64_t>() != 0;
             g_room_collision = !r.count("playerCollision") || !r.at("playerCollision").is<int64_t>() || r.at("playerCollision").get<int64_t>() != 0;
+            g_room_carry = r.count("allowCarrying") && r.at("allowCarrying").is<int64_t>() && r.at("allowCarrying").get<int64_t>() != 0;
         }
     } else if (type == "PLAYER_UPDATE") {
         const int from = m.count("clientId") && m.at("clientId").is<int64_t>() ? static_cast<int>(m.at("clientId").get<int64_t>()) : 0;
@@ -509,10 +541,15 @@ void handle(const std::string& text) {
         it->second.pose_time = SDL_GetTicks();
         // The joint matrices, for the puppet (older clients send none: a marker).
         if (m.count("pose") && m.at("pose").is<std::string>()) {
-            const std::vector<unsigned char> wire = base64_decode(m.at("pose").get<std::string>());
+            std::vector<unsigned char> wire = base64_decode(m.at("pose").get<std::string>());
+            carry::fix_pose(from, wire); // a player I carry is shown at my hands
             if (!wire.empty())
                 bluewake_puppet_remote_update(from, wire.data(), wire.size());
         }
+    } else if (type == "CARRY_START" || type == "CARRY_POS" || type == "CARRY_END") {
+        const int from = m.count("clientId") && m.at("clientId").is<int64_t>() ? static_cast<int>(m.at("clientId").get<int64_t>()) : 0;
+        if (g_players.count(from) != 0 && !g_players.at(from).self)
+            carry::handle(type, m, from, carry_env());
     } else if (type == "PVP_HIT") {
         // Another player's game says it hit mine. The room's mode and the teams' friendly-fire setting decide here too (the
         // server drops hits while PvP is off, but a hit is the target's game's to take or leave).
@@ -820,6 +857,8 @@ void draw_markers() {
 // that often.
 void pvp_frame(bool connected, bool self_set) {
     static const char* test = std::getenv("BLUEWAKE_PVP_TEST");
+    carry::set_room_allowed(connected && g_room_carry);
+    carry::frame(connected, carry_env());
     if (connected) {
         bluewake_pvp_set_rules(g_room_collision, g_room_pvp, g_room_pvp_scale);
         const BluewakeLocation where = bluewake_game_location();
@@ -874,6 +913,7 @@ struct PuppetContent {
     bool body = false, equipment = false;          // the player's own content provides it
     bool supplied_body = false, supplied_equipment = false, supplied_hands = false; // the disc's models are set for it
     bool voice_set = false;                        // the puppet has been told whose voice it has
+    std::string hash;                              // the manifest the content here came from
 };
 std::map<int, PuppetContent> g_puppet_content;
 
@@ -896,15 +936,18 @@ bool play_puppet_voice(int player, int voice, float left, float right, float pit
         bank = it->second;
         name = g_player_voice[player];
     }
-    if (voice < 0 || voice >= voice_bank::kVoiceIds || bank->voice[static_cast<size_t>(voice)].empty())
-        return false; // a voice this bank has no wave for: the local bank
+    // Decoded on its first use (the bank keeps the compressed waves): a voice this bank has no wave for, or that the memory
+    // caps refuse, is the local bank's.
+    const std::vector<int16_t>* decoded = bank->Voice(voice);
+    if (decoded == nullptr)
+        return false;
     std::vector<int16_t> tone;
     if (std::getenv("BLUEWAKE_PUPPET_VOICE_TONE") != nullptr) { // testing: a 1 kHz tone of the voice's length in place of the voice
-        tone.resize(bank->voice[static_cast<size_t>(voice)].size());
+        tone.resize(decoded->size());
         for (size_t i = 0; i < tone.size(); ++i)
             tone[i] = static_cast<int16_t>(10000.0 * std::sin(2.0 * 3.14159265358979 * 1000.0 * static_cast<double>(i) / 32000.0));
     }
-    const std::vector<int16_t>& pcm = tone.empty() ? bank->voice[static_cast<size_t>(voice)] : tone;
+    const std::vector<int16_t>& pcm = tone.empty() ? *decoded : tone;
     const float sfx = static_cast<float>(bluewake_audio_volume_sfx_percent()) / 100.0f;
     // BLUEWAKE_PUPPET_VOICE_GAIN=<x> (testing): the base level times x, to find the voices in a capture.
     static const float test_gain = std::getenv("BLUEWAKE_PUPPET_VOICE_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("BLUEWAKE_PUPPET_VOICE_GAIN"))) : 1.0f;
@@ -924,6 +967,7 @@ int equipment_slot(const std::string& name) {
 }
 
 void puppet_gone(int id) {
+    carry::player_gone(id);
     g_puppet_content.erase(id);
     {
         std::lock_guard<std::mutex> lock(g_bank_mutex);
@@ -933,13 +977,45 @@ void puppet_gone(int id) {
     bluewake_puppet_remote_remove(id);
 }
 
+// A puppet with the game's own voice. Where this PC's voice is the game's, the local bank is that voice. Where it is a mod's, the
+// local bank would make a stock player sound like the mod, so the disc's own bank (decoded as a peer's is) plays instead. False
+// when that bank is wanted but the disc is not open yet: asked again.
+bool set_stock_voice(int id) {
+    if (content::LocalVoiceId().empty()) {
+        {
+            std::lock_guard<std::mutex> lock(g_bank_mutex);
+            g_player_bank.erase(id);
+            g_player_voice.erase(id);
+        }
+        bluewake_puppet_remote_voice(id, "", true);
+        return true;
+    }
+    std::string vid;
+    bool pending = false;
+    const std::shared_ptr<const voice_bank::Bank> bank = content::StockVoiceBank(&vid, &pending);
+    if (pending)
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(g_bank_mutex);
+        if (bank) {
+            g_player_bank[id] = bank;
+            g_player_voice[id] = vid;
+        } else {
+            g_player_bank.erase(id);
+            g_player_voice.erase(id);
+        }
+    }
+    bluewake_puppet_remote_voice(id, bank ? vid.c_str() : "", false);
+    std::fprintf(stderr, "[anchor] player %d is stock and this PC's voice is a mod's: their puppet plays %s\n", id,
+                 bank ? "the game's own voice bank from the disc" : "the local bank (the disc's could not be decoded)");
+    return true;
+}
+
 // The game's own models for a puppet that has none of its own, when this PC's resident ones are a mod's.
 void sync_stock_models(int id) {
     PuppetContent& pc = g_puppet_content[id];
-    if (!pc.voice_set) { // stock players: the game's voice
-        pc.voice_set = true;
-        bluewake_puppet_remote_voice(id, "", content::LocalVoiceId().empty());
-    }
+    if (!pc.voice_set) // stock players: the game's voice
+        pc.voice_set = set_stock_voice(id);
     const mods::LocalParts local = mods::LocalState();
     const bool want_body = !pc.body && local.link;
     const bool want_equipment = !pc.equipment && local.equipment;
@@ -981,9 +1057,10 @@ void sync_stock_models(int id) {
 void apply_content(const content::Ready& r) {
     PuppetContent& pc = g_puppet_content[r.id];
     pc.body = r.has_body;
+    pc.hash = r.hash;
     pc.equipment = r.has_equipment;
     pc.supplied_body = pc.supplied_equipment = pc.supplied_hands = false; // replaced below or by sync_stock_models
-    pc.voice_set = true;
+    pc.voice_set = true; // (set below: the pack's voice, or the game's)
     if (r.has_body)
         bluewake_puppet_remote_model(r.id, r.body.data(), r.body.size());
     else
@@ -1000,8 +1077,10 @@ void apply_content(const content::Ready& r) {
         bluewake_puppet_remote_equipment(r.id, 6, r.hands.data(), r.hands.size());
     if (r.has_body && !r.hair.empty())
         bluewake_puppet_remote_equipment(r.id, 7, r.hair.data(), r.hair.size());
-    bluewake_puppet_remote_voice(r.id, r.voice.c_str(), r.voice == content::LocalVoiceId());
-    {
+    if (r.voice.empty()) {
+        pc.voice_set = set_stock_voice(r.id); // (a pack without a voice: the game's)
+    } else {
+        bluewake_puppet_remote_voice(r.id, r.voice.c_str(), r.voice == content::LocalVoiceId());
         std::lock_guard<std::mutex> lock(g_bank_mutex);
         g_player_bank[r.id] = r.bank;
         g_player_voice[r.id] = r.voice;
@@ -1015,16 +1094,10 @@ void apply_content(const content::Ready& r) {
 void clear_content(int id) {
     PuppetContent& pc = g_puppet_content[id];
     pc = PuppetContent{};
-    pc.voice_set = true;
     bluewake_puppet_remote_model(id, nullptr, 0);
     for (int slot = 0; slot < 8; ++slot)
         bluewake_puppet_remote_equipment(id, slot, nullptr, 0);
-    bluewake_puppet_remote_voice(id, "", content::LocalVoiceId().empty());
-    {
-        std::lock_guard<std::mutex> lock(g_bank_mutex);
-        g_player_bank.erase(id);
-        g_player_voice.erase(id);
-    }
+    pc.voice_set = set_stock_voice(id);
     std::fprintf(stderr, "[anchor] player %d's puppet is stock again\n", id);
     sync_stock_models(id);
 }
@@ -1113,6 +1186,13 @@ void update_puppets(bool connected) {
                                          uint8_t(std::lround(p.color.y * 255.f)), uint8_t(std::lround(p.color.z * 255.f)));
         if (!p.self)
             link_colors::SetPlayerColors(id, p.link_colors); // this player's puppet wears their colors (variant = their id)
+        if (!p.self) {
+            // Their expression (face texture numbers) is for their own model: the puppet shows it when it wears that model (or
+            // both are the game's Link).
+            const PuppetContent& pc = g_puppet_content[id];
+            const bool face_ok = p.link_model == 2 ? false : p.link_model == 1 ? (pc.body && pc.hash == p.content) : true;
+            bluewake_puppet_remote_face_ok(id, face_ok);
+        }
         if (!p.self)
             bluewake_puppet_remote_voice_pitch(id, p.voice_pitch != 0 ? 1.0f + float(p.voice_pitch) / 100.0f : 0.0f);
     }
@@ -1307,13 +1387,15 @@ void chat_send(std::string text) {
 }
 
 // The chat's body: the history, then the input line.
-void embed_chat(float scale) {
+// fill: the Chat window's log takes the height that is left. In the menu (a scrolling column) it has a fixed height:
+// "the rest" there grew with the box every frame, so the Network tab grew without end (user 2026-10-19).
+void embed_chat(float scale, bool fill) {
     if (anchor::GetStatus() != anchor::Status::Connected) {
         ImGui::TextDisabled("Not connected to Anchor. Turn Anchor on in Network > Anchor to chat.");
         return;
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() + 4 * scale;
-    if (ImGui::BeginChild("##chatlog", ImVec2(0, -footer), ImGuiChildFlags_Borders)) {
+    if (ImGui::BeginChild("##chatlog", ImVec2(0, fill ? -footer : 160 * scale), ImGuiChildFlags_Borders)) {
         ImGui::PushTextWrapPos(0.f);
         for (const ChatLine& l : g_chat) {
             ImGui::TextColored(l.color, "%s", l.name.c_str());
@@ -1375,6 +1457,12 @@ void draw_room_settings() {
         changed = true;
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Players are solid: they push each other apart instead of walking through, and Z can target one.");
+    if (ImGui::Checkbox("Allow Carrying Players", &g_room_carry))
+        changed = true;
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Players can lift each other like pots (A beside a player) and throw or put them down. The lifted "
+                          "player is held at the carrier's hands with no control, and can break free with B. Nobody is hurt "
+                          "unless PvP is On.");
     ImGui::EndDisabled();
     if (!owner) {
         const auto it = g_players.find(g_owner);
@@ -1386,7 +1474,7 @@ void draw_room_settings() {
 }
 
 void draw_chat_window(float scale, float fontScale) {
-    shipmenu::PopoutWindow("Chat", "gOpenWindows.Chat", ImVec2(420 * scale, 280 * scale), 0.92f, fontScale, [&] { embed_chat(scale); });
+    shipmenu::PopoutWindow("Chat", "gOpenWindows.Chat", ImVec2(420 * scale, 280 * scale), 0.92f, fontScale, [&] { embed_chat(scale, true); });
 }
 
 // --- The chat hotkey overlay -------------------------------------------------------------------------------------
@@ -1631,11 +1719,26 @@ void BuildMenu(shipmenu::Menu& m) {
                  "see a Samus and a Young Link. What others share is downloaded in the background and kept in the "
                  "cache folder beside the game (up to 500 MB). Off: yours is not sent, theirs is not downloaded or "
                  "used, and other players are drawn as the game's own Link.");
+    m.AddWidget(H, "Anchor", 1, "Room Settings", WidgetType::SeparatorText);
+    m.AddWidget(H, "Anchor", 1, "Player Interaction", WidgetType::Custom)
+        .HideInSearch()
+        .CustomFunction([](WidgetInfo&) { draw_room_settings(); });
+    m.AddWidget(H, "Anchor", 1, "Sync from Team", WidgetType::Button)
+        .Tooltip("Asks the team for its progress again and merges it into your save now (as Ship of Harkinian's): for when "
+                 "items or flags a teammate got have not arrived. Needs a save in play.")
+        .Callback([](WidgetInfo&) {
+            if (!g_sync_on) {
+                toast("", "Sync from Team needs a save in play, connected to a room that syncs.");
+                return;
+            }
+            g_team_state_requested = false; // asked for again on the next frame
+            std::fprintf(stderr, "[anchor] sync from team asked for\n");
+        });
     m.AddWidget(H, "Anchor", 1, "Chat", WidgetType::Window)
         .CVar("gOpenWindows.Chat")
         .HideInSearch()
         .Tooltip("A text chat with the room. Popout puts it in a window of its own; while it is not open, what others say is a notification.")
-        .CustomFunction([](WidgetInfo&) { embed_chat(shipmenu::MenuScale()); });
+        .CustomFunction([](WidgetInfo&) { embed_chat(shipmenu::MenuScale(), false); });
     m.AddWidget(H, "Anchor", 1, "Chat Hotkey", WidgetType::Custom).HideInSearch().CustomFunction([](WidgetInfo&) {
         static bool waiting;
         const ImGuiKey cur = static_cast<ImGuiKey>(chat_key());
@@ -1669,21 +1772,6 @@ void BuildMenu(shipmenu::Menu& m) {
             break;
         }
     });
-    m.AddWidget(H, "Anchor", 1, "Room Settings", WidgetType::SeparatorText);
-    m.AddWidget(H, "Anchor", 1, "Player Interaction", WidgetType::Custom)
-        .HideInSearch()
-        .CustomFunction([](WidgetInfo&) { draw_room_settings(); });
-    m.AddWidget(H, "Anchor", 1, "Sync from Team", WidgetType::Button)
-        .Tooltip("Asks the team for its progress again and merges it into your save now (as Ship of Harkinian's): for when "
-                 "items or flags a teammate got have not arrived. Needs a save in play.")
-        .Callback([](WidgetInfo&) {
-            if (!g_sync_on) {
-                toast("", "Sync from Team needs a save in play, connected to a room that syncs.");
-                return;
-            }
-            g_team_state_requested = false; // asked for again on the next frame
-            std::fprintf(stderr, "[anchor] sync from team asked for\n");
-        });
     m.AddWidget(H, "Anchor", 1, "Current Room", WidgetType::SeparatorText);
     m.AddWidget(H, "Anchor", 1, "Anchor Room", WidgetType::Custom)
         .HideInSearch()
@@ -1778,6 +1866,8 @@ void Frame(float scale, float fontScale) {
         g_room_pvp_scale = 100;
         g_room_friendly_fire = false;
         g_room_collision = true;
+        g_room_carry = false;
+        carry::reset();
     }
     g_last_status = status;
     if (status == anchor::Status::Connected) {

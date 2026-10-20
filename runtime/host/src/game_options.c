@@ -11,6 +11,7 @@
 #include "puppet.h"
 #include "puppet_pvp.h"
 #include "bunny_hood.h"
+#include "chart_reveal.h"
 #include "text_swap.h"
 #include "blank_thp.h"
 #include "gxruntime/dvd.h"
@@ -649,6 +650,8 @@ static u32 native_hook(CPUState* cpu, u32 id) {
         // Link Voice Pitch: linkVoiceStart's seStart call, f2 (the pitch) just copied from the 1.0 in f1.
         return bluewake_voice_pitch_apply(cpu);
     case BLUEWAKE_PUPPET_HOOK_DRAW:
+        // Reveal Sea Chart: the open chart's panes, before the 2D list is drawn (the save's map bits are not touched).
+        bluewake_chart_reveal_pass(cpu);
         // The same site draws the Bunny Hood: whichever has a guest call in flight goes on first.
         // The autosave's guest calls are made from it too.
         if (bluewake_bunny_hood_draw_active())
@@ -1189,7 +1192,21 @@ static void preferences_retrace(CPUState* cpu) {
     videos_state = want ? 1 : 0;
 }
 
+// The crawl speed (daPy_lk_c's HIO, 0x8035DB94): doubled by Faster Crawling and Climbing only. Modules built before
+// options.txt moved the write gave it to Faster Rolling (as Better Wind Waker bundles it), so it is set here once a
+// second from the two options: 6.0 with faster crawling, the game's 3.0 without.
+static void crawl_speed_retrace(CPUState* cpu) {
+    static unsigned n;
+    if (++n % 60u != 0u || !bluewake_game_options_has("faster_animations") || !bluewake_game_options_has("faster_movement"))
+        return;
+    const float want = bluewake_game_options_get("faster_animations") ? 6.0f : 3.0f;
+    union { float f; u32 u; } v = {want};
+    if (mem_read32(cpu, 0x8035DB94u) != v.u)
+        mem_write32(cpu, 0x8035DB94u, v.u);
+}
+
 void bluewake_game_options_retrace(CPUState* cpu) {
+    crawl_speed_retrace(cpu);
     {
         static int log = -1;
         static unsigned n;

@@ -18,13 +18,14 @@ const MAX_QUEUE = 2000;          // stored packets per team
 const MAX_MESSAGE = 64 * 1024;   // bytes
 const PVP_MODES = ['off', 'no_damage', 'on'];
 
-// The player-interaction settings (pvp mode, damage scale, friendly fire, player collision) as the room keeps them: a value
+// The player-interaction settings (pvp mode, damage scale, friendly fire, player collision, carrying) as the room keeps them: a value
 // out of range or of the wrong kind becomes the default, so no client has to guard against a stranger's JSON.
 function cleanInteraction(rs) {
   if ('pvp' in rs && !PVP_MODES.includes(rs.pvp)) rs.pvp = 'off';
   if ('pvpScale' in rs) rs.pvpScale = Math.min(4, Math.max(0.25, Number(rs.pvpScale) || 1));
   if ('pvpFriendlyFire' in rs) rs.pvpFriendlyFire = rs.pvpFriendlyFire ? 1 : 0;
   if ('playerCollision' in rs) rs.playerCollision = rs.playerCollision ? 1 : 0;
+  if ('allowCarrying' in rs) rs.allowCarrying = rs.allowCarrying ? 1 : 0;
   return rs;
 }
 
@@ -41,7 +42,7 @@ export class Room extends DurableObject {
     this.state = (await this.ctx.storage.get('state')) || {
       nextId: 1,
       owner: 0,
-      roomState: { syncItemsAndFlags: 1, teleportMode: 1, showLocationsMode: 1, pvpMode: 0, listed: 0, title: '', pvp: 'off', pvpScale: 1, pvpFriendlyFire: 0, playerCollision: 1 },
+      roomState: { syncItemsAndFlags: 1, teleportMode: 1, showLocationsMode: 1, pvpMode: 0, listed: 0, title: '', pvp: 'off', pvpScale: 1, pvpFriendlyFire: 0, playerCollision: 1, allowCarrying: 0 },
       clients: {}, // id -> client state (online kept current)
       teams: {},   // team -> { snapshot, queue: [] }
       lobbyKey: crypto.randomUUID(),
@@ -212,6 +213,12 @@ export class Room extends DurableObject {
         // One player hits another (the attacker's game says so, the target's takes it): only to the target, and only
         // while the room has PvP on, so a client that ignores the setting still cannot hit anyone.
         if (!msg.targetClientId || !s.roomState.pvp || s.roomState.pvp === 'off') return;
+        return this.relay(ws, a, msg, me);
+      case 'CARRY_START':
+      case 'CARRY_POS':
+        // One player lifts another (the carrier's game says so, the carried player's takes it): only to the carried
+        // player, and only while the room allows carrying. CARRY_END is always relayed, so a hold can always be let go.
+        if (!msg.targetClientId || !s.roomState.allowCarrying) return;
         return this.relay(ws, a, msg, me);
       default:
         return this.relay(ws, a, msg, me);

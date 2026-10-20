@@ -17,6 +17,9 @@
 #define BLUEWAKE_FIXED_CPU_ABI_VERSION 4u
 #define BLUEWAKE_FIXED_MEM1_ABI_VERSION 5u
 #define BLUEWAKE_MODULE_MEM1_SIZE 0x02000000u
+/* A module built with BW_GUEST_MEM1_SIZE 0x04000000u (64 MB) is accepted too: the host reads the size the module reports,
+ * and the puppets' fast pool takes everything above 0x82000000 (puppet.c, bluewake_puppet_fast_range). */
+#define BLUEWAKE_MODULE_MEM1_SIZE_BIG 0x04000000u
 
 typedef CPUState* (*BlueWakeModuleCPUFn)(void);
 typedef u8* (*BlueWakeModuleMEM1Fn)(u32* size);
@@ -67,8 +70,8 @@ static inline const char* bw_module_select_storage(
     u8* mem1 = mem1_getter != NULL ? mem1_getter(&mem1_size) : NULL;
     if (mem1_getter != NULL) {
         if (mem1 == NULL || (uintptr_t)mem1 % 16u != 0 ||
-            mem1_size != BLUEWAKE_MODULE_MEM1_SIZE)
-            return "module MEM1 must be aligned storage of exactly 32 MiB";
+            (mem1_size != BLUEWAKE_MODULE_MEM1_SIZE && mem1_size != BLUEWAKE_MODULE_MEM1_SIZE_BIG))
+            return "module MEM1 must be aligned storage of exactly 32 or 64 MiB";
         const uintptr_t ram_start = (uintptr_t)mem1, cpu_start = (uintptr_t)state;
         if (ram_start > UINTPTR_MAX - mem1_size ||
             cpu_start > UINTPTR_MAX - sizeof(CPUState) ||

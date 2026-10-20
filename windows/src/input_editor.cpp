@@ -1,4 +1,7 @@
 // The Input Editor window and the controller rules around it. See input_editor.h.
+extern "C" {
+#include "game_options.h"
+}
 #include "input_editor.h"
 #include "gba_window.h"
 #include "ship_menu.h"
@@ -349,7 +352,14 @@ void flip_camera(unsigned port, bool x) {
 void apply_camera_to(unsigned port, bool log) {
     if (PADGetIndexForPort(port) < 0)
         return;
-    const bool want_x = CVarGetInteger(CVAR_SETTING("Controls.InvertCameraX"), 0) != 0;
+    const bool want_x_setting = CVarGetInteger(CVAR_SETTING("Controls.InvertCameraX"), 0) != 0;
+    // With the module's camera hook (option invert_camera_x, dCamera_c::updatePad) only the camera turns the other way;
+    // the C-stick itself stays as it is, so the Wind Waker's conducting and everything else read it normally. A module
+    // without the hook falls back to inverting the stick.
+    const bool camera_hook = bluewake_game_options_has("invert_camera_x");
+    if (camera_hook)
+        bluewake_game_options_set("invert_camera_x", want_x_setting);
+    const bool want_x = camera_hook ? false : want_x_setting;
     const bool want_y = CVarGetInteger(CVAR_SETTING("Controls.InvertCameraY"), 0) != 0;
     bool known = false;
     bool changed = false;

@@ -51,6 +51,7 @@ bool g_stop = false;
 
 std::string g_base;
 std::string g_local_hash;
+bool g_local_body = false; // the advertised content has the player's own body (parts.link)
 bool g_local_changed = false;
 std::string g_published_model = "\x01"; // never a model's name: forces the first check
 std::string g_published_base;
@@ -72,26 +73,40 @@ std::vector<int> g_cleared;
 
 std::mutex g_cache_mutex; // the cache folder: stores and the purge do not interleave
 
-// Decoded voice banks by voice id, shared between the players that have the same one. A bank lives as long as a peer
-// holds it; a new one is not decoded when the live ones already hold kMaxBankMemory (the puppet keeps the local bank).
-constexpr size_t kMaxBankMemory = 32u * 1024 * 1024;
+// Voice banks by voice id (the hash of the init and wave files), shared between the players that have the same one. A bank
+// lives as long as a peer holds it. It holds the compressed waves its voices use and decodes a voice when first played
+// (voice_bank.h), so 16 distinct banks come to a few MB; a new one is refused (the puppet keeps the local bank) when the live
+// ones already hold kMaxBankMemory, and a voice is refused when all banks' PCM reaches voice_bank::kMaxDecodedTotal.
+constexpr size_t kMaxBankMemory = 128u * 1024 * 1024;
 std::mutex g_bank_mutex;
 std::map<std::string, std::weak_ptr<const voice_bank::Bank>> g_banks;
 
-std::shared_ptr<const voice_bank::Bank> bank_for(const std::string& voice_id, const std::vector<uint8_t>& aaf, const std::vector<uint8_t>& aw, size_t* live_bytes) {
+std::shared_ptr<const voice_bank::Bank> bank_for(const std::string& voice_id, const std::vector<uint8_t>& aaf, const std::vector<uint8_t>& aw, size_t* live_bytes,
+                                                 bool* shared, int* live_banks) {
     std::lock_guard<std::mutex> lock(g_bank_mutex);
     size_t live = 0;
+    int banks = 0;
+    if (shared != nullptr)
+        *shared = false;
     for (auto it = g_banks.begin(); it != g_banks.end();) {
         if (const auto b = it->second.lock()) {
-            if (it->first == voice_id)
+            if (it->first == voice_id) {
+                if (shared != nullptr)
+                    *shared = true;
+                if (live_bytes != nullptr)
+                    *live_bytes = b->Bytes();
                 return b;
+            }
             live += b->Bytes();
+            ++banks;
             ++it;
         } else
             it = g_banks.erase(it);
     }
     if (live_bytes != nullptr)
         *live_bytes = live;
+    if (live_banks != nullptr)
+        *live_banks = banks;
     if (live >= kMaxBankMemory)
         return nullptr;
     auto bank = std::make_shared<voice_bank::Bank>();
@@ -272,6 +287,7 @@ void publish(std::string base, std::string model) {
     std::vector<mods::PackFile> files;
     mods::SharedParts parts;
     std::string hash;
+    bool body_shared = false;
     if (!model.empty() && mods::ActivePlayerPack(name, files, parts)) {
         // Our own files are checked as a peer would check them: a damaged mod is not sent (the server would refuse it).
         std::vector<mods::PackFile> kept;
@@ -326,15 +342,24 @@ void publish(std::string base, std::string model) {
             std::sort(files.begin(), files.end(), [](const mods::PackFile& a, const mods::PackFile& b) { return a.path < b.path; });
             // Only what the server lacks goes up. The voice is optional: a server that does not take it (an older one)
             // still gets the body and the equipment.
-            const auto upload = [&](const std::string& h, const std::vector<uint8_t>& bytes, const char* kind) {
+            const auto upload = [&](const std::string& h, const std::vector<uint8_t>& bytes, const char* kind,
+                                     const std::string& what) {
                 const Http head = request(base, "HEAD", "/content/" + h, nullptr, 0);
                 if (head.ok && head.status == 200)
                     return true;
                 const Http put = request(base, "PUT", "/content/" + h + (kind ? std::string("?kind=") + kind : ""), &bytes, 4096);
                 if (!put.ok || (put.status != 201 && put.status != 204)) {
-                    std::fprintf(stderr, "[content] upload of %.12s failed (%d)\n", h.c_str(), put.status);
+                    // The server's refusal names the part and why (its error body, JSON { error }); a transport failure has no status.
+                    std::string why(put.body.begin(), put.body.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(put.body.size(), 200)));
+                    for (char& c : why)
+                        if (c < 32 || c > 126)
+                            c = ' ';
+                    std::fprintf(stderr, "[content] upload of %.12s (%s, %s, %zu bytes) failed: status %d%s, server said \"%s\"\n", h.c_str(),
+                                 what.c_str(), kind ? kind : "archive", bytes.size(), put.status, put.ok ? "" : " (no response)", why.c_str());
                     return false;
                 }
+                std::fprintf(stderr, "[content] uploaded %.12s (%s, %s, %zu bytes): status %d\n", h.c_str(), what.c_str(), kind ? kind : "archive",
+                             bytes.size(), put.status);
                 return true;
             };
             bool ok = true;
@@ -342,8 +367,9 @@ void publish(std::string base, std::string model) {
             for (auto it = files.begin(); it != files.end();) {
                 const std::string h = Sha256Hex(it->bytes.data(), it->bytes.size());
                 const char* kind = it->role == "voice" ? (it->path == "sound/JaiInit.aaf" ? "aaf" : "wave") : nullptr;
-                if (!upload(h, it->bytes, kind)) {
+                if (!upload(h, it->bytes, kind, it->path)) {
                     if (it->role == "voice") { // the voice is dropped altogether
+                        std::fprintf(stderr, "[content] the voice is not shared: %s was refused by the server\n", it->path.c_str());
                         parts.voice = false;
                         for (auto v = list.begin(); v != list.end();)
                             v = v->get("role").to_str() == "voice" ? list.erase(v) : v + 1;
@@ -374,8 +400,9 @@ void publish(std::string base, std::string model) {
                 const std::string text = picojson::value(m).serialize();
                 const std::vector<uint8_t> manifest(text.begin(), text.end());
                 const std::string manifest_hash = Sha256Hex(manifest.data(), manifest.size());
-                if (manifest.size() <= kMaxManifest && upload(manifest_hash, manifest, "manifest")) {
+                if (manifest.size() <= kMaxManifest && upload(manifest_hash, manifest, "manifest", "manifest")) {
                     hash = manifest_hash;
+                    body_shared = parts.link;
                     std::fprintf(stderr, "[content] sharing %s: link=%d equipment=%s voice=%d, %zu files, %zu bytes, manifest %.12s\n", name.c_str(),
                                  parts.link ? 1 : 0, parts.equipment.empty() ? "game" : parts.equipment.c_str(), parts.voice ? 1 : 0, files.size(),
                                  total(), hash.c_str());
@@ -385,6 +412,7 @@ void publish(std::string base, std::string model) {
             std::fprintf(stderr, "[content] %s is over %zu MB: not shared\n", name.c_str(), kMaxPack >> 20);
     }
     std::lock_guard<std::mutex> lock(g_mutex);
+    g_local_body = body_shared;
     if (g_local_hash != hash) {
         g_local_hash = hash;
         g_local_changed = true;
@@ -475,9 +503,16 @@ void fetch_peer(std::string base, int id, std::string hash, unsigned long long e
                     (ganon == nullptr || (fetch_blob(base, ganon->sha256, ganon->size, g, epoch) && cv::ValidateWave(g, &r2)))) {
                     ready.voice = aaf->sha256.substr(0, 16) + wave->sha256.substr(0, 16);
                     size_t live = 0;
-                    ready.bank = bank_for(ready.voice, a, w, &live);
-                    std::fprintf(stderr, "[content] player %d's voice %s: %s (%zu bytes of PCM in use by banks)\n", id, ready.voice.c_str(),
-                                 ready.bank ? "decoded" : "not decoded, the local bank is used", live);
+                    bool shared = false;
+                    int banks = 0;
+                    ready.bank = bank_for(ready.voice, a, w, &live, &shared, &banks);
+                    if (ready.bank)
+                        std::fprintf(stderr, "[content] player %d's voice %s: bank %s (%d voices playable, %zu KB held; %d other banks hold %zu KB, PCM decoded in all banks %zu KB of %zu KB)\n", id,
+                                     ready.voice.c_str(), shared ? "shared with another player" : "ready", ready.bank->Playable(), ready.bank->Bytes() >> 10, banks,
+                                     live >> 10, voice_bank::DecodedTotal() >> 10, voice_bank::kMaxDecodedTotal >> 10);
+                    else
+                        std::fprintf(stderr, "[content] player %d's voice %s: bank not made, the local bank is used (%d banks hold %zu KB of %zu KB)\n", id, ready.voice.c_str(), banks,
+                                     live >> 10, kMaxBankMemory >> 10);
                     any = true;
                 } else
                     std::fprintf(stderr, "[content] the voice of player %d could not be used (%s %s)\n", id, r1.c_str(), r2.c_str());
@@ -589,6 +624,39 @@ std::string LocalHash() {
 }
 
 std::string LocalVoiceId() { return mods::LoadedVoiceId(); }
+
+std::shared_ptr<const voice_bank::Bank> StockVoiceBank(std::string* id, bool* pending) {
+    static std::shared_ptr<const voice_bank::Bank> bank; // held for the session: every stock player's puppet shares it
+    static std::string bank_id;
+    static bool tried;
+    if (pending != nullptr)
+        *pending = false;
+    if (!tried) {
+        std::vector<unsigned char> aaf, aw;
+        if (!mods::VanillaVoiceFiles(aaf, aw)) {
+            if (pending != nullptr)
+                *pending = true;
+            return nullptr;
+        }
+        tried = true;
+        std::string hex = Sha256Hex(aaf.data(), aaf.size()).substr(0, 16) + Sha256Hex(aw.data(), aw.size()).substr(0, 16);
+        bank_id = "disc-" + hex;
+        bank = bank_for(bank_id, std::vector<uint8_t>(aaf.begin(), aaf.end()), std::vector<uint8_t>(aw.begin(), aw.end()), nullptr, nullptr, nullptr);
+        if (bank)
+            std::fprintf(stderr, "[content] the game's own voice bank %s decoded from the disc (%d voices playable, %zu KB held) for stock players' puppets\n",
+                         bank_id.c_str(), bank->Playable(), bank->Bytes() >> 10);
+        else
+            std::fprintf(stderr, "[content] the game's own voice bank could not be made from the disc: stock players' puppets use the local bank\n");
+    }
+    if (id != nullptr)
+        *id = bank_id;
+    return bank;
+}
+
+bool LocalSharesBody() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_local_body && !g_local_hash.empty();
+}
 
 bool LocalChanged() {
     std::lock_guard<std::mutex> lock(g_mutex);

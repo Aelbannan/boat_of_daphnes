@@ -63,5 +63,8 @@ bool VanillaPuppetParts(std::vector<unsigned char>& body, std::map<std::string, 
 // fn is called after an Apply that changed the player model (the first one too, when it gives a model),
 // from the thread that applied: it must not call back into mods. Colors follow the model through it.
 void SetModelListener(void (*fn)());
+// The game's own voice files (Audiores/JaiInit.aaf and Audiores/Banks/voice_0.aw) read from the disc: what a stock player's
+// puppet sounds from on a PC whose own voice is a mod's. False until the disc is open.
+bool VanillaVoiceFiles(std::vector<unsigned char>& aaf, std::vector<unsigned char>& aw);
 
 } // namespace mods

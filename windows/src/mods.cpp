@@ -1178,6 +1178,15 @@ bool VanillaPuppetParts(std::vector<unsigned char>& body, std::map<std::string, 
     return true;
 }
 
+bool VanillaVoiceFiles(std::vector<unsigned char>& aaf, std::vector<unsigned char>& aw) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_disc_open)
+        return false;
+    aaf = disc_file("Audiores/JaiInit.aaf");
+    aw = disc_file("Audiores/Banks/voice_0.aw");
+    return !aaf.empty() && !aw.empty();
+}
+
 void SetModelListener(void (*fn)()) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_model_listener = fn;

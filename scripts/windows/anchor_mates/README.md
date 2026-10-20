@@ -11,3 +11,7 @@
 - `afc_map.py <run.log> <JaiInit.aaf> <voice_0.aw>` (the game's own bank, from your disc) prints, from a voice sweep (`anchor_parts_sweep` with `--env BLUEWAKE_DSP_HLE_AFC_TRACE=1`), the wave of
   the vanilla voice bank each voice id played (the table in `windows/src/voice_wave_map.inc`). It reads the disc's
   `JaiInit.aaf` and `voice_0.aw` from a folder set in `SCR` inside the script.
+- Sets `Q` (16 players with 16 different bodies, equipment sets and voice banks: the mods of build/mate_mods plus `voicevar_<n>` banks,
+  copies of a bank with one sample byte changed, for the mods without sound), `Z` (16 stock players) and `E` (the anchor_puppets Mate).
+  `BOD_MATE_COUNT=n` limits Q and Z to the first n; `BOD_MATE_SERVER` names the server. With `BOD_SCENARIO_PRE`/`BOD_SCENARIO_POST`
+  (commands scenario.py runs once it holds the lock) the mates start only when the game does.

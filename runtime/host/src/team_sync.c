@@ -1,5 +1,6 @@
 // Team sync: see team_sync.h.
 #include "team_sync.h"
+#include "bunny_hood.h"
 
 #include <stdatomic.h>
 #include <stdio.h>
@@ -16,6 +17,9 @@ enum {
     STAGES = 16u,
     KEY_NUM = 0x20u,          // dSv_memBit_c: mTbox, mSwitch[4], mItem, mVisitedRoom[2], mKeyNum, mDungeonItem
     LIVE = 0x778u,            // dSv_info_c::mMemory: the current stage's copy, put back when it is left
+    COLLECT4 = 0x0B4u + 4u,   // mCollect[4]: Hero's Charm / Bunny Hood owned (0x01, 0x04), worn (0x02, 0x08), shown (0x10)
+    COLLECT4_SYNC = 0x05u,    // only ownership travels: wearing is personal
+    QUIET_RETRACES = 60,      // no event for this long before a teammate's state is merged
     STABLE_RETRACES = 30,     // the stage must hold this long before its live copy counts
 };
 
@@ -170,6 +174,8 @@ static void track_live_table(CPUState* cpu) {
 // The byte as the game will keep it: for the stage in play, its save table
 // with the live copy's bits.
 static uint8_t effective(CPUState* cpu, uint16_t o) {
+    if (o == COLLECT4)
+        return (uint8_t)(bluewake_bunny_hood_real_collect(cpu) & COLLECT4_SYNC);
     uint8_t b = mem_read8(cpu, SAVE + o);
     if (g_live_table >= 0 && o >= MEMORY + (uint16_t)g_live_table * MEMORY_SIZE &&
         o < MEMORY + (uint16_t)(g_live_table + 1) * MEMORY_SIZE)
@@ -178,6 +184,10 @@ static uint8_t effective(CPUState* cpu, uint16_t o) {
 }
 
 static void write_merged(CPUState* cpu, uint16_t o, uint8_t value) {
+    if (o == COLLECT4) {
+        bluewake_bunny_hood_add_owned(cpu, (uint8_t)(value & COLLECT4_SYNC));
+        return;
+    }
     mem_write8(cpu, SAVE + o, value);
     if (g_live_table >= 0 && o >= MEMORY + (uint16_t)g_live_table * MEMORY_SIZE &&
         o < MEMORY + (uint16_t)(g_live_table + 1) * MEMORY_SIZE) {
@@ -209,13 +219,25 @@ void bluewake_team_sync_enable(bool on) {
     unlock();
 }
 
+static int g_quiet; // retraces since an event last ran
+
 void bluewake_team_sync_retrace(CPUState* cpu) {
-    if (!atomic_load(&g_enabled) || !safe_point(cpu))
+    if (!atomic_load(&g_enabled))
+        return;
+    if (cpu != NULL && cpu->ram != NULL && mem_read8(cpu, EVENT_MODE) != 0u)
+        g_quiet = 0;
+    else if (g_quiet < QUIET_RETRACES)
+        ++g_quiet;
+    if (!safe_point(cpu))
         return;
     lock();
     track_live_table(cpu);
+    // A teammate's state is merged only in a settled place: the stage held for a while and no event for a while.
+    // Flags written while a scene is loading or just after a cutscene could start one again (event 238 at the pirate
+    // ship looped on a merge, 2026-10-19); the changes wait in the queue.
+    const bool settled = g_live_table >= 0 && g_quiet >= QUIET_RETRACES;
     // A teammate's gains first, so they are not taken for ours.
-    for (unsigned i = 0; i < g_in_count && g_have_shadow; ++i) {
+    for (unsigned i = 0; i < g_in_count && g_have_shadow && settled; ++i) {
         const BluewakeSyncChange c = g_in[i];
         if (c.offset >= KEY_DELTA && c.offset < KEY_DELTA + STAGES) {
             const unsigned t = c.offset - KEY_DELTA;
@@ -234,14 +256,15 @@ void bluewake_team_sync_retrace(CPUState* cpu) {
         if (r == NULL)
             continue;
         const uint8_t mine = effective(cpu, c.offset);
+        const uint8_t theirs = c.offset == COLLECT4 ? (uint8_t)(c.value & COLLECT4_SYNC) : c.value; // an older build's worn bits are ignored
         uint8_t merged;
-        if (improves(r, c.offset, mine, c.value, &merged)) {
+        if (improves(r, c.offset, mine, theirs, &merged)) {
             write_merged(cpu, c.offset, merged);
             fprintf(stderr, "[sync] in 0x%03X: %02X -> %02X\n", c.offset, mine, merged);
         }
         g_shadow[c.offset] = effective(cpu, c.offset);
     }
-    if (g_have_shadow)
+    if (g_have_shadow && settled)
         g_in_count = 0;
     // Our own gains since the last look.
     for (unsigned k = 0; k < sizeof kRegions / sizeof kRegions[0]; ++k) {

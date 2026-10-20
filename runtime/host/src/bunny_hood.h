@@ -56,6 +56,10 @@ void bluewake_bunny_hood_draw_for(GuestCoro* co, int slot, const float* link_nod
 bool bluewake_bunny_hood_give(void);
 // The hood is worn on the local player now (Anchor sends this flag in the puppet pose).
 bool bluewake_bunny_hood_worn(void);
+// Team sync: the collect byte as it really is (while the pause screen shows the hood in the charm's bits, the screen's
+// view is in the game's byte), and owned bits (charm 0x01, hood 0x04) added to it from a teammate. Worn bits never travel.
+uint8_t bluewake_bunny_hood_real_collect(CPUState* cpu);
+void bluewake_bunny_hood_add_owned(CPUState* cpu, uint8_t owned_bits);
 
 #ifdef __cplusplus
 }

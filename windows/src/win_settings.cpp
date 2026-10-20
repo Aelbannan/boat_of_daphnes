@@ -92,11 +92,13 @@ void dol_aurora_audio_set_master_volume(float volume);
 void bluewake_audio_volume_set(int music_percent, int sfx_percent, int fanfare_percent);
 void bluewake_autosave_configure(int interval_minutes, bool on_new_item);
 bool bluewake_autosave_take_done(int* slot, bool* ok);
+void bluewake_text_speed_set(int speed);
 }
 
 // Aurora's frame counters (lib/gfx/common.hpp, linked in statically), for the
 // session log and Dev Tools: every present, and the game's own frames.
 extern "C" void bluewake_bunny_hood_enable(bool on);
+extern "C" void bluewake_chart_reveal_enable(bool on); // runtime/host/src/chart_reveal.h
 extern "C" void bluewake_text_swap_enable(bool on);
 extern "C" void bluewake_text_swap_set_female(bool on);
 extern "C" void bluewake_host_set_pad_unfocused_block(bool block);
@@ -151,8 +153,6 @@ struct BetterWwRow {
 const BetterWwRow kBetterWw[] = {
     {"tingle_chests", "Quality of Life", 0, "Convenience", "Tingle Chests Without Tuner",
      "Allows Tingle Chests to be opened with normal Bombs, without the Tingle Tuner."},
-    {"reveal_sea_chart", "Quality of Life", 0, "Convenience", "Reveal Sea Chart (New Files)",
-     "Reveals the whole Sea Chart on new save files."},
     {"skip_intro_movie", "Skips & Speed-ups", 0, "Cutscenes", "Skip Opening Movie",
      "Skips the story told when a new game starts (and the one on the title screen): the game goes straight to "
      "Outset Island."},
@@ -553,13 +553,20 @@ void module_tooltip(WidgetInfo& wi, const char* text, const char* option) {
         : "Randomizer sessions only: this game module has no switch for it yet.");
 }
 
+// Reveal Sea Chart: the open chart is drawn as if every square were discovered; the save is not touched.
+void apply_reveal_sea_chart() {
+    bluewake_chart_reveal_enable(CVarGetInteger(CVAR_ENHANCEMENT("RevealSeaChart"), 0) != 0);
+}
+
 void apply_port_options() {
     apply_preferences();
+    apply_reveal_sea_chart();
     for (const auto& row : kBetterWw)
         if (!is_sail_option(row.name))
             bluewake_game_options_set(row.name, CVarGetInteger(better_ww_cvar(row.name).c_str(), row.def) != 0);
     apply_sail_options();
     apply_autosave();
+    bluewake_text_speed_set(std::clamp(CVarGetInteger(CVAR_ENHANCEMENT("TextSpeed"), 1), 1, 5));
     bluewake_game_options_set("widescreen_culling", CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 1) != 0);
     bluewake_game_options_set("hud_edges", CVarGetInteger(CVAR_ENHANCEMENT("HudAtScreenEdges"), 1) != 0);
 }
@@ -643,13 +650,13 @@ bool relaunch() { return bodplat::Relaunch(); }
 const char* const kPresetNames[] = {"Default", "Vanilla Plus", "Enhanced", "Randomizer"};
 const char* const kPresetInfo[] = {
     "Every enhancement off, as the original game plays.",
-    "Quality of life that keeps the game's feel: Tingle Chests Without Tuner, Reveal Sea Chart (New Files), Keep "
+    "Quality of life that keeps the game's feel: Tingle Chests Without Tuner, Reveal Sea Chart, Keep "
     "Watered Trees, Longer Forest Water Timer, Treasure Light Up Close (Treasure).",
     "Vanilla Plus and the speed-ups: Instant Text, Faster Rolling, Faster Block Pushing, Faster Crawling and Climbing, "
     "Faster Ballad of Gales, Skip Song Replays, Skip Opening Movie, Faster Grappling Hook, Turn While Swinging, Faster "
     "Transitions, Quick Doors, Swift Sail.",
     "What suits a randomizer seed, nothing that changes where a place can be reached: the Enhanced speed-ups without "
-    "Quick Doors, and with Reveal Sea Chart (New Files), Keep Watered Trees and Treasure Light Up Close (All). Tingle "
+    "Quick Doors, and with Reveal Sea Chart, Keep Watered Trees and Treasure Light Up Close (All). Tingle "
     "Chests Without Tuner and Unrestricted Boat stay off.",
 };
 
@@ -657,6 +664,7 @@ std::vector<std::pair<std::string, int>> preset_values(int preset) {
     std::map<std::string, int> v;
     for (const auto& row : kBetterWw)
         v[better_ww_cvar(row.name)] = 0;
+    v[CVAR_ENHANCEMENT("RevealSeaChart")] = 0;
     v[CVAR_ENHANCEMENT("FasterTransitions")] = 0;
     v[CVAR_ENHANCEMENT("QuickDoors")] = 0;
     v[CVAR_ENHANCEMENT("KeepWateredTrees")] = 0;
@@ -669,7 +677,7 @@ std::vector<std::pair<std::string, int>> preset_values(int preset) {
         flag(CVAR_ENHANCEMENT("KeepWateredTrees"));
         flag(CVAR_ENHANCEMENT("LongerForestWaterTimer"));
         flag(CVAR_ENHANCEMENT("TreasureLightUpClose"), preset == 3 ? 3 : 1);
-        on("reveal_sea_chart");
+        flag(CVAR_ENHANCEMENT("RevealSeaChart"));
         if (preset != 3)
             on("tingle_chests");
     }
@@ -1245,6 +1253,21 @@ void build_enhancements() {
                            .DefaultValue(row.def)
                            .Tooltip(row.tooltip);
         widget.Callback([name = row.name](WidgetInfo&) { apply_better_ww(name); });
+        if (std::strcmp(row.name, "tingle_chests") == 0)
+            m.AddWidget(H, row.sidebar, row.column, "Reveal Sea Chart", WidgetType::CVarCheckbox)
+                .CVar(CVAR_ENHANCEMENT("RevealSeaChart"))
+                .DefaultValue(0)
+                .Tooltip("Shows the whole sea chart. Turning it off shows your file's own progress again; your save is "
+                         "never changed.")
+                .Callback([](WidgetInfo&) { apply_reveal_sea_chart(); });
+        if (std::strcmp(row.name, "instant_text") == 0)
+            m.AddWidget(H, row.sidebar, row.column, "Text Speed: %dx", WidgetType::CVarSliderInt)
+                .CVar(CVAR_ENHANCEMENT("TextSpeed"))
+                .Range(1, 5, 1)
+                .DefaultValue(1)
+                .Tooltip("How many characters a text box types out each frame, from 1x (the game's speed) to 5x. Waits, "
+                         "sounds, choices and names still work as in the game. Instant Text, when on, comes first.")
+                .Callback([](WidgetInfo&) { apply_port_options(); });
         if (std::strcmp(row.name, "skip_intro_movie") == 0)
             m.AddWidget(H, row.sidebar, row.column, "Remove Title and Ending Videos", WidgetType::CVarCheckbox)
                 .CVar(CVAR_ENHANCEMENT("RemoveTitleAndEndingVideos"))

@@ -62,7 +62,9 @@ write d_a_ship.rel+0xDBE8 swift_sail f32 110.0         # sailing speed 55
 write d_a_ship.rel+0xDBC0 swift_sail f32 160.0         # initial speed 80
 
 # Faster rolling.
-write 0x8035DB94 faster_movement f32 6.0
+# The crawl speed (Better Wind Waker doubles it with the rolling change): with Faster Crawling and Climbing, not with
+# Faster Rolling. game_options.c keeps it right for modules built before this line moved.
+write 0x8035DB94 faster_animations f32 6.0
 write 0x8035D3D0 faster_movement f32 0.3529412          # rolling speed per walking speed, 6/17
 write 0x8035D3D4 faster_movement f32 20.0               # rolling base speed
 

@@ -50,6 +50,9 @@ void bluewake_puppet_remote_equipment(int id, int slot, const uint8_t* bdl, size
 // The owner's voice: an id ("" the game's) and whether the local audio has that voice's bank loaded (the game reads its voice
 // files once at start, so only the local voice can be sounded; it is for the log and the scenario checks).
 void bluewake_puppet_remote_voice(int id, const char* voice_id, bool local_bank);
+// Whether the owner's expression (the texture numbers sent with his pose) is for the model his puppet shows: false when his own
+// model is a mod's that is not what the puppet wears (not shared, or not arrived yet). Default true.
+void bluewake_puppet_remote_face_ok(int id, bool ok);
 // The owner's Link Voice Pitch (a ratio, 1.0 normal): the puppet's voice is made at it.
 void bluewake_puppet_remote_voice_pitch(int id, float ratio);
 // A puppet's voice from its own player's voice bank: called (on the game thread) when a puppet whose owner's voice bank is not the
@@ -78,6 +81,9 @@ bool bluewake_puppet_drawn(int id, float head[3]);
 bool bluewake_puppet_tag(int id, float weight, float ndc[3]);
 // Whether puppets make Link's voice and sound effects as they start actions (rolls, jumps, cuts, damage).
 void bluewake_puppet_set_sounds(bool on);
+// Where the puppets' fast pool lies in a MEM1 array of this size (32 MB: the top of the dynamic REL window; 64 MB: everything
+// above 0x82000000); false when none.
+bool bluewake_puppet_fast_range(u32 ram_size, u32* base, u32* bytes);
 // Test: the local pose is also fed back as player 1000, offset sideways by this
 // many units (BLUEWAKE_PUPPET_SELF).
 void bluewake_puppet_self_test(float offset);

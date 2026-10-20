@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace voice_bank {
@@ -175,38 +176,85 @@ int WaveForVoice(int id) { return id >= 0 && id < kVoiceIds ? kVoice[id].wave : 
 
 float PitchForVoice(int id) { return id >= 0 && id < kVoiceIds && kVoice[id].ratio != 0 ? static_cast<float>(kVoice[id].ratio) / 2048.0f : 1.0f; }
 
-size_t Bank::Bytes() const {
-    size_t n = 0;
-    for (const auto& v : voice)
-        n += v.size() * sizeof(int16_t);
+namespace {
+std::atomic<size_t> g_decoded_total{0};
+} // namespace
+
+size_t DecodedTotal() { return g_decoded_total.load(); }
+
+Bank::~Bank() { g_decoded_total -= decoded_bytes_.load(); }
+
+size_t Bank::Bytes() const { return raw_bytes_ + decoded_bytes_.load(); }
+
+int Bank::Decoded() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    int n = 0;
+    for (int i = 0; i < kVoiceIds; ++i)
+        n += state_[i] == 1 ? 1 : 0;
     return n;
 }
 
+const std::vector<int16_t>* Bank::Voice(int id) const {
+    if (id < 0 || id >= kVoiceIds)
+        return nullptr;
+    std::lock_guard<std::mutex> lock(mutex_);
+    const size_t i = static_cast<size_t>(id);
+    if (state_[i] == 1)
+        return pcm_[i].get();
+    if (state_[i] == 2)
+        return nullptr;
+    state_[i] = 2; // until it is decoded
+    const int w = WaveForVoice(id);
+    if (w < 0 || static_cast<size_t>(w) >= waves_.size() || static_cast<size_t>(w) >= wave_data_.size() || wave_data_[static_cast<size_t>(w)].empty())
+        return nullptr;
+    const Wave& wave = waves_[static_cast<size_t>(w)];
+    std::vector<int16_t> pcm;
+    if (!DecodeAfc(wave_data_[static_cast<size_t>(w)].data(), wave_data_[static_cast<size_t>(w)].size(), pcm, kMaxWaveSamples))
+        return nullptr;
+    auto out = std::make_unique<std::vector<int16_t>>(Resample(pcm, wave.rate * PitchForVoice(id))); // the game plays it that much faster
+    const size_t bytes = out->size() * sizeof(int16_t);
+    if (out->empty())
+        return nullptr;
+    if (decoded_bytes_.load() + bytes > kMaxBankBytes || g_decoded_total.load() + bytes > kMaxDecodedTotal) {
+        std::fprintf(stderr, "[voice] voice %d not decoded: %zu KB decoded in this bank (cap %zu KB), %zu of %zu KB in all banks\n", id,
+                     decoded_bytes_.load() >> 10, kMaxBankBytes >> 10, g_decoded_total.load() >> 10, kMaxDecodedTotal >> 10);
+        return nullptr;
+    }
+    decoded_bytes_ += bytes;
+    g_decoded_total += bytes;
+    pcm_[i] = std::move(out);
+    state_[i] = 1;
+    return pcm_[i].get();
+}
+
+void Bank::DecodeAll() const {
+    for (int id = 0; id < kVoiceIds; ++id)
+        Voice(id);
+}
+
 bool Build(const std::vector<uint8_t>& aaf, const std::vector<uint8_t>& aw, Bank& out, std::string* error) {
-    out = Bank{};
-    std::vector<Wave> waves;
-    if (!ParseWaves(aaf, aw.size(), waves, error))
+    out.waves_.clear();
+    out.wave_data_.clear();
+    out.playable_ = 0;
+    out.raw_bytes_ = 0;
+    if (!ParseWaves(aaf, aw.size(), out.waves_, error))
         return false;
-    out.voice.resize(kVoiceIds);
-    size_t total = 0;
-    int made = 0;
+    out.wave_data_.resize(out.waves_.size());
     for (int id = 0; id < kVoiceIds; ++id) {
         const int w = WaveForVoice(id);
-        if (w < 0 || static_cast<size_t>(w) >= waves.size() || waves[static_cast<size_t>(w)].format != 0)
+        if (w < 0 || static_cast<size_t>(w) >= out.waves_.size())
             continue;
-        std::vector<int16_t> pcm;
-        const Wave& wave = waves[static_cast<size_t>(w)];
-        if (!DecodeAfc(aw.data() + wave.offset, wave.size, pcm, kMaxWaveSamples))
+        const Wave& wave = out.waves_[static_cast<size_t>(w)];
+        if (wave.format != 0 || wave.size == 0 || wave.size % 9 != 0 || wave.size / 9 * 16 > kMaxWaveSamples)
             continue;
-        out.voice[static_cast<size_t>(id)] = Resample(pcm, wave.rate * PitchForVoice(id)); // the game plays it that much faster
-        total += out.voice[static_cast<size_t>(id)].size() * sizeof(int16_t);
-        if (total > kMaxBankBytes) { // over the cap: the rest stay with the local bank
-            out.voice[static_cast<size_t>(id)].clear();
-            break;
+        auto& data = out.wave_data_[static_cast<size_t>(w)];
+        if (data.empty()) {
+            data.assign(aw.begin() + wave.offset, aw.begin() + wave.offset + wave.size);
+            out.raw_bytes_ += data.size();
         }
-        ++made;
+        ++out.playable_;
     }
-    return made > 0 ? true : fail(error, "no voice of the bank could be decoded");
+    return out.playable_ > 0 ? true : fail(error, "no voice of the bank could be decoded");
 }
 
 } // namespace voice_bank

@@ -1010,6 +1010,8 @@ int main(void) {
             f"-DBLUEWAKE_GATHER_PIPE={'ON' if self.args.gather_pipe else 'OFF'}",
             f"-DBLUEWAKE_INLINE_FP={'ON' if self.args.inline_fp else 'OFF'}",
             f"-DBLUEWAKE_FIXED_MEM1={'ON' if self.args.fixed_mem1 else 'OFF'}",
+            # BLUEWAKE_GUEST_MEM1_SIZE=0x04000000u in the environment: a 64 MB fixed MEM1 array (the puppets' fast pool), else 32 MB.
+            f"-DBLUEWAKE_GUEST_MEM1_SIZE={os.environ.get('BLUEWAKE_GUEST_MEM1_SIZE') or '0x02000000u'}",
             f"-DCOMPOSITE_OPTIMIZATION_LEVEL={opt_level}", f"-DCOMPOSITE_DIR={self.out / 'composite-src'}",
             f"-DGXRUNTIME_DIR={rc / 'GXRuntime'}", f"-DABI_DIR={rc / 'Source/Core/Core/PowerPC/StaticRecomp'}",
             f"-DCOMPOSITE_COLD_SOURCES_FILE={cold if cold is not None else ''}"])

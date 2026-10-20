@@ -161,8 +161,11 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/guest_coro.c
     ${BLUEWAKE_HOST_SRC}/puppet.c
     ${BLUEWAKE_HOST_SRC}/puppet_pvp.c
+    ${BLUEWAKE_HOST_SRC}/puppet_carry.c
     ${BLUEWAKE_HOST_SRC}/bunny_hood.c
+    ${BLUEWAKE_HOST_SRC}/chart_reveal.c
     ${BLUEWAKE_HOST_SRC}/text_swap.c
+    ${BLUEWAKE_HOST_SRC}/text_speed.c
     ${BLUEWAKE_HOST_SRC}/cosmetics.c
     ${BLUEWAKE_HOST_SRC}/game_state.c
     ${BLUEWAKE_HOST_SRC}/jabun_guard.c
@@ -218,6 +221,7 @@ add_executable(BlueWake
     src/gx_texture.cpp
     src/png_decode.cpp
     src/anchor.cpp
+    src/anchor_carry.cpp
     src/anchor_client.cpp
     src/anchor_content.cpp
     src/item_found.cpp

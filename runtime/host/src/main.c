@@ -30,6 +30,7 @@
 #include "guest_checkpoint.h"
 #include "edge_intercepts.h"
 #include "game_options.h"
+#include "text_speed.h"
 #include "rando_ui.h"
 #include "rando_seed.h"
 #include "ui_pad.h"
@@ -63,6 +64,7 @@
 #include "pad_waypoint.h"
 #include "pad_wire.h"
 #include "rel_scratch_allocator.h"
+#include "puppet.h"
 #include "return_census.h"
 #include "scheduler_contract.h"
 #include "save_state.h"
@@ -213,6 +215,15 @@ static bool host_add_shared_guest_alias(u32 linked_start, u32 size,
 #define BLUEWAKE_LINKED_RAM_SIZE BLUEWAKE_MODULE_MEM1_SIZE
 #define BLUEWAKE_DYNAMIC_SCRATCH_BASE 0x81820000u
 #define BLUEWAKE_DYNAMIC_SCRATCH_LIMIT 0x81F80000u
+// The puppets' fast pool (puppet.c) takes the top of that window in a 32 MB MEM1 array (the game has 24 MB and the window
+// is 7.5 MB of which the first fit uses the bottom): the dynamic REL images stop where the pool begins.
+static u32 host_scratch_limit(const CPUState* cpu) {
+    u32 base = 0u, bytes = 0u;
+    if (getenv("BLUEWAKE_PUPPET_NOFAST") == NULL && bluewake_puppet_fast_range(cpu->ram_size, &base, &bytes) &&
+        base > BLUEWAKE_DYNAMIC_SCRATCH_BASE && base < BLUEWAKE_DYNAMIC_SCRATCH_LIMIT)
+        return base;
+    return BLUEWAKE_DYNAMIC_SCRATCH_LIMIT;
+}
 
 // Minimal DSP/ARAM control-register handshake needed by __OSInitAudioSystem.
 // The full audio engine remains a later P5 subsystem; this state models only
@@ -3274,7 +3285,7 @@ static bool host_find_rel_scratch(CPUState* cpu, u32 size, u32* address) {
             (BlueWakeScratchRange){slot.address, slot.capacity};
     }
     const bool found = bluewake_rel_scratch_first_fit(
-        BLUEWAKE_DYNAMIC_SCRATCH_BASE, BLUEWAKE_DYNAMIC_SCRATCH_LIMIT, size,
+        BLUEWAKE_DYNAMIC_SCRATCH_BASE, host_scratch_limit(cpu), size,
         occupied, count, address);
     free(occupied);
     return found;
@@ -6253,6 +6264,7 @@ static void host_sync_vi_cycles(CPUState* cpu) {
         aurora_backend_service_present();
         host_mods_reapply(cpu);
         bluewake_game_options_retrace(cpu);
+        bluewake_text_speed_retrace(cpu);
         bluewake_widescreen_retrace(cpu);
         bluewake_test_control_retrace(cpu, g_host_retrace_count);
         bluewake_cosmetics_retrace(cpu);
@@ -7659,6 +7671,11 @@ static u64 host_state_chunk_digest(const StaticRecompModuleDesc* mod) {
                          (size_t)mod->num_chunk_ranges * sizeof(u64), 0u);
 }
 
+// puppet.c: whether the puppets' MEM2 pool exists (its heaps are in MEM2, so a state needs MEM2 too), and its being forgotten
+// when a state without MEM2 is loaded.
+extern bool bluewake_puppet_mem2_in_use(void);
+extern void bluewake_puppet_mem2_forget(void);
+
 static void host_state_header(HostStateHeader* header, const CPUState* cpu,
                               const StaticRecompModuleDesc* mod) {
     memset(header, 0, sizeof(*header));
@@ -7706,6 +7723,9 @@ static bool host_state_save(const char* path, CPUState* cpu,
     bool ok = bw_state_write_chunk(writer, "HEADER", &header, sizeof header);
     ok = ok && bw_state_write_chunk(writer, "CPU", cpu, header.cpu_pod_size);
     ok = ok && bw_state_write_chunk(writer, "MEM1", cpu->ram, cpu->ram_size);
+    // MEM2 only when the puppets have a pool in it (a state saved otherwise has none, and loads on any build).
+    if (cpu->exram != NULL && bluewake_puppet_mem2_in_use())
+        ok = ok && bw_state_write_chunk(writer, "MEM2", cpu->exram, cpu->exram_size);
     if (aram_buffer() != NULL)
         ok = ok && bw_state_write_chunk(writer, "ARAM", aram_buffer(), ARAM_SIZE);
     // Aliases: count, then (start, size, bytes) in registration order.
@@ -7909,6 +7929,20 @@ static bool host_state_load(const char* path, CPUState* cpu,
         dol_aurora_gx_drain();
     memcpy(cpu, chunk->data, saved.cpu_pod_size);
     memcpy(cpu->ram, mem1->data, cpu->ram_size);
+    if (cpu->exram != NULL) {
+        const BwStateChunk* mem2 = bw_state_find(&reader, "MEM2");
+        if (mem2 != NULL && mem2->size == cpu->exram_size) {
+            memcpy(cpu->exram, mem2->data, cpu->exram_size);
+        } else {
+            // A state without MEM2 (or from another MEM2 size) has no puppet pool in its heap tree: MEM2 is emptied and the
+            // puppets forget the pool (it is made again when one is next made).
+            if (mem2 != NULL)
+                fprintf(stderr, "[state] warning: MEM2 is %u bytes in the state, %u here: not loaded\n", mem2->size, cpu->exram_size);
+            memset(cpu->exram, 0, cpu->exram_size);
+            bluewake_puppet_mem2_forget();
+        }
+        dol_guest_memory_dirty_mark(0x90000000u, cpu->exram_size);
+    }
     chunk = bw_state_find(&reader, "ARAM");
     if (chunk != NULL && aram_buffer() != NULL && chunk->size == ARAM_SIZE)
         memcpy(aram_buffer(), chunk->data, ARAM_SIZE);
@@ -8678,6 +8712,27 @@ int main(int argc, char** argv) {
         cpu.ram_size = BLUEWAKE_LINKED_RAM_SIZE;
         fprintf(stderr, "[host] expanded guest RAM to 0x%08X for linked REL data\n",
                 cpu.ram_size);
+    }
+    // MEM2 (the Wii's extended RAM at 0x90000000, which the GameCube game never uses): a block the puppets' heaps live in
+    // (puppet.c, so a lobby of players with their own models does not have to fit the game's 24 MB). BLUEWAKE_MEM2_MB=0
+    // turns it off (then the puppets use the game's own heaps, as before); the default is 64.
+    if (cpu.exram == NULL) {
+        const char* mb_text = getenv("BLUEWAKE_MEM2_MB");
+        long mb = mb_text != NULL && mb_text[0] != 0 ? strtol(mb_text, NULL, 10) : 64;
+        if (mb < 0)
+            mb = 0;
+        if (mb > 256)
+            mb = 256;
+        if (mb > 0) {
+            // calloc of a block this size is zero pages the system commits when touched.
+            cpu.exram = (u8*)calloc((size_t)mb, 1024u * 1024u);
+            if (cpu.exram != NULL)
+                cpu.exram_size = (u32)mb * 1024u * 1024u;
+            else
+                fprintf(stderr, "[host] no memory for MEM2 (%ld MB): puppets use the game's heaps\n", mb);
+        }
+        if (cpu.exram != NULL)
+            fprintf(stderr, "[host] MEM2 (extended guest RAM) at 0x90000000: %u MB\n", cpu.exram_size >> 20);
     }
     dol_platform_set_guest_address_resolver(host_graphics_guest_resolve, &cpu);
 

@@ -3,13 +3,20 @@
 
 #include <string.h>
 
-#define DOL_MEM1_TRACKED_SIZE 0x02000000u
+#define DOL_MEM1_TRACKED_SIZE 0x04000000u // a 32 MB MEM1 array, or the 64 MB one of the larger module
+// MEM2 (the Wii's extended RAM, physical 0x10000000 up; the host gives the guest some for the puppets' heaps): tracked
+// too, up to 256 MB, so a texture there is cached by its dirty epoch like one in MEM1 and not hashed at every draw.
+#define DOL_MEM2_PHYSICAL_BASE 0x10000000u
+#define DOL_MEM2_TRACKED_SIZE 0x10000000u
 #define DOL_MEM1_DIRTY_PAGE_SHIFT 12u
 #define DOL_MEM1_DIRTY_PAGE_SIZE (1u << DOL_MEM1_DIRTY_PAGE_SHIFT)
 #define DOL_MEM1_DIRTY_PAGE_COUNT \
     (DOL_MEM1_TRACKED_SIZE / DOL_MEM1_DIRTY_PAGE_SIZE)
+#define DOL_MEM2_DIRTY_PAGE_COUNT \
+    (DOL_MEM2_TRACKED_SIZE / DOL_MEM1_DIRTY_PAGE_SIZE)
 
-static u64 g_page_epochs[DOL_MEM1_DIRTY_PAGE_COUNT];
+// MEM1's pages first, then MEM2's.
+static u64 g_page_epochs[DOL_MEM1_DIRTY_PAGE_COUNT + DOL_MEM2_DIRTY_PAGE_COUNT];
 static u64 g_next_epoch;
 
 static bool physical_range(u32 address, u32 size, u32* start, u32* end) {
@@ -17,11 +24,18 @@ static bool physical_range(u32 address, u32 size, u32* start, u32* end) {
         return false;
     const u32 physical = address & 0x3FFFFFFFu;
     const u64 physical_end = (u64)physical + size;
-    if (physical >= DOL_MEM1_TRACKED_SIZE ||
-        physical_end > DOL_MEM1_TRACKED_SIZE)
+    u32 base_page = 0u;
+    u32 base = 0u;
+    u32 limit = DOL_MEM1_TRACKED_SIZE;
+    if (physical >= DOL_MEM2_PHYSICAL_BASE) {
+        base_page = DOL_MEM1_DIRTY_PAGE_COUNT;
+        base = DOL_MEM2_PHYSICAL_BASE;
+        limit = DOL_MEM2_PHYSICAL_BASE + DOL_MEM2_TRACKED_SIZE;
+    }
+    if (physical >= limit || physical_end > limit)
         return false;
-    *start = physical >> DOL_MEM1_DIRTY_PAGE_SHIFT;
-    *end = (u32)(physical_end - 1u) >> DOL_MEM1_DIRTY_PAGE_SHIFT;
+    *start = base_page + ((physical - base) >> DOL_MEM1_DIRTY_PAGE_SHIFT);
+    *end = base_page + (((u32)(physical_end - base) - 1u) >> DOL_MEM1_DIRTY_PAGE_SHIFT);
     return true;
 }
 

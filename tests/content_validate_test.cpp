@@ -486,9 +486,8 @@ static int voice_files(const char* aaf_path, const char* aw_path) {
     Bank bank;
     std::string why;
     const bool ok = Build(aaf, aw, bank, &why);
-    int voices = 0;
-    for (const auto& v : bank.voice)
-        voices += v.empty() ? 0 : 1;
+    bank.DecodeAll();
+    const int voices = bank.Decoded();
     CHECK(ok && voices >= 40, "%s: bank built (%s), %d voices, %zu bytes", aaf_path, why.c_str(), voices, bank.Bytes());
     std::printf("%s: %d voices decoded, %zu bytes of PCM\n", aaf_path, voices, bank.Bytes());
     // Corrupted copies of the real files never crash the decoder, and the PCM stays capped.
@@ -501,8 +500,10 @@ static int voice_files(const char* aaf_path, const char* aw_path) {
         }
         Bank b2;
         Build(a, w, b2, nullptr);
+        b2.DecodeAll();
         Bank b3;
         Build(aaf, Bytes(w.begin(), w.begin() + std::ptrdiff_t(rng() % w.size())), b3, nullptr);
+        b3.DecodeAll();
         CHECK(b2.Bytes() <= kMaxBankBytes + kMaxWaveSamples * 2 && b3.Bytes() <= kMaxBankBytes + kMaxWaveSamples * 2, "bank memory stays capped");
     }
     return 0;
@@ -521,7 +522,8 @@ int main(int argc, char** argv) {
             std::printf("build failed: %s\n", why.c_str());
             return 1;
         }
-        const auto& pcm = bank.voice[static_cast<size_t>(std::atoi(argv[4]))];
+        const auto* voice = bank.Voice(std::atoi(argv[4]));
+        const std::vector<int16_t> pcm = voice != nullptr ? *voice : std::vector<int16_t>();
         std::ofstream(argv[5], std::ios::binary).write(reinterpret_cast<const char*>(pcm.data()), static_cast<std::streamsize>(pcm.size() * 2));
         std::printf("%zu samples\n", pcm.size());
         return 0;

@@ -5,8 +5,11 @@
 // alone. docs/fork/anchor-content-security.md lists the limits.
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -17,6 +20,7 @@ constexpr size_t kMaxWaves = 256;           // waves in the group
 constexpr size_t kMaxWaveBytes = 1u << 20;  // one wave's ADPCM
 constexpr size_t kMaxWaveSamples = 1u << 19;// one wave decoded (16 s at 32 kHz)
 constexpr size_t kMaxBankBytes = 6u << 20;  // all of a bank's PCM
+constexpr size_t kMaxDecodedTotal = 96u << 20; // the PCM of all banks together (16 players' banks fit with room to spare)
 constexpr int kVoiceIds = 90;               // Link's voice sounds 0x1800 + 0 .. 0x1800 + 89
 
 // One wave of the group (a byte range of voice_0.aw).
@@ -41,12 +45,42 @@ int WaveForVoice(int id);
 // The playback pitch of that voice relative to the wave's own rate (about 1.08 for most of Link's voices).
 float PitchForVoice(int id);
 
-struct Bank {
-    std::vector<std::vector<int16_t>> voice; // [kVoiceIds]: mono PCM at kOutputRate (already at the voice's pitch), empty when the wave could not be decoded
-    size_t Bytes() const;
+// A player's bank. Build() parses it and keeps only the compressed waves some voice of Link's uses (about a third of
+// voice_0.aw); a voice is decoded to PCM the first time it is asked for (Voice), so a bank costs what its player's puppet has
+// actually spoken (a few hundred KB) and not all 90 voices (up to 6 MB) at once. Every bank's decoded PCM counts against
+// kMaxDecodedTotal: past it a voice is refused (logged) and the local bank plays instead.
+class Bank {
+public:
+    Bank() = default;
+    ~Bank(); // gives its decoded PCM back to the total
+    Bank(const Bank&) = delete;
+    Bank& operator=(const Bank&) = delete;
+    // The mono PCM at kOutputRate (already at the voice's pitch) of Link voice `id`; null when this bank has no playable wave
+    // for it, it could not be decoded, or the memory caps are reached. Valid as long as the bank. Thread safe.
+    const std::vector<int16_t>* Voice(int id) const;
+    // Every voice decoded now (tests).
+    void DecodeAll() const;
+    int Playable() const { return playable_; } // voices that have an AFC wave
+    int Decoded() const;                       // voices decoded so far
+    size_t Bytes() const;                      // memory held: the compressed waves and the PCM decoded so far
+    size_t DecodedBytes() const { return decoded_bytes_.load(); }
+
+private:
+    friend bool Build(const std::vector<uint8_t>&, const std::vector<uint8_t>&, Bank&, std::string*);
+    std::vector<Wave> waves_;
+    std::vector<std::vector<uint8_t>> wave_data_; // by wave index; empty for a wave no voice uses
+    int playable_ = 0;
+    size_t raw_bytes_ = 0;
+    mutable std::mutex mutex_;
+    mutable std::unique_ptr<std::vector<int16_t>> pcm_[kVoiceIds];
+    mutable uint8_t state_[kVoiceIds] = {}; // 0 not tried, 1 decoded, 2 not decodable
+    mutable std::atomic<size_t> decoded_bytes_{0};
 };
 
-// Decodes the waves of the voices of a bank. False when the files do not parse or no voice could be decoded.
+// Parses the bank's wave table and keeps the waves its voices use. False when the files do not parse or no voice can be played.
 bool Build(const std::vector<uint8_t>& aaf, const std::vector<uint8_t>& aw, Bank& out, std::string* error);
+
+// The decoded PCM of all banks now, and the cap for it.
+size_t DecodedTotal();
 
 } // namespace voice_bank

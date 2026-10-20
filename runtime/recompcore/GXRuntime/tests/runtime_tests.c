@@ -2679,7 +2679,18 @@ static void test_guest_memory_dirty_epochs(void) {
     dol_guest_memory_dirty_mark(0x80001020u, 0x20u);
     assert(dol_guest_memory_dirty_epoch(0x00001000u, 0x2000u, &epoch));
     assert(epoch == 2u);
-    assert(!dol_guest_memory_dirty_epoch(0x82000000u, 1u, &epoch));
+    assert(!dol_guest_memory_dirty_epoch(0x84000000u, 1u, &epoch));
+    // MEM2, cached and uncached alias, tracked like MEM1; the gap between them is not.
+    assert(dol_guest_memory_dirty_epoch(0x90001000u, 0x20u, &epoch));
+    assert(epoch == 0u);
+    dol_guest_memory_dirty_mark(0x90001020u, 0x20u);
+    assert(dol_guest_memory_dirty_epoch(0xD0001000u, 0x2000u, &epoch));
+    assert(epoch == 3u);
+    assert(dol_guest_memory_dirty_epoch(0x90003000u, 0x1000u, &epoch));
+    assert(epoch == 0u);
+    assert(dol_guest_memory_dirty_epoch(0x80001000u, 0x2000u, &epoch));
+    assert(epoch == 2u);
+    assert(!dol_guest_memory_dirty_epoch(0x88000000u, 1u, &epoch));
     assert(!dol_guest_memory_dirty_epoch(0u, 0u, &epoch));
 }
 

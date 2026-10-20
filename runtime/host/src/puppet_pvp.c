@@ -1,5 +1,6 @@
 // Other players you can bump into, target and fight: see puppet_pvp.h.
 #include "puppet_pvp.h"
+#include "puppet_carry.h"
 
 #include "gxruntime/platform.h"
 
@@ -63,6 +64,7 @@ enum {
     HIT_RADIUS = 45,                         // the attack collider's, laid on Link's side facing the attacker
     HIT_PUSH = 12,                           // its vector's length (knockback speed)
     HIT_COOLDOWN_MS = 700,
+    EVENT_GRACE_MS = 1500,                   // and for this long after an event ends
     SAFE_MS = 3000,                          // no hits for this long after a scene starts
 
     // Guest functions (GZLE01 symbols.txt).
@@ -112,6 +114,8 @@ static uint32_t g_scene;        // the play scene the objects below belong to
 static uint32_t g_frame;        // draw frames
 static uint32_t g_menu;
 static double g_scene_ms;
+static double g_event_ms;
+static bool g_calm; // the last execute's answer: no bodies or actors are made until the world is calm
 static uint32_t g_block;        // guest memory: the bodies, the attack collider, scratch
 static bool g_broken;           // the layouts did not match Link's: nothing is done in this scene
 static uint32_t g_watch = 0;    // frames left to watch the effect of a hit applied
@@ -135,7 +139,10 @@ static double now_ms(void) {
 #endif
 }
 
-static bool guest_ptr(u32 p) { return p >= 0x80000000u && p < 0x81800000u && (p & 3u) == 0u; }
+extern u32 bluewake_puppet_mem2_end, bluewake_puppet_mem1_end; // puppet.c
+static bool guest_ptr(u32 p) {
+    return ((p >= 0x80000000u && p < bluewake_puppet_mem1_end) || (p >= 0x90000000u && p < bluewake_puppet_mem2_end)) && (p & 3u) == 0u;
+}
 
 static float rd_f(CPUState* cpu, u32 address) {
     const u32 bits = mem_read32(cpu, address);
@@ -304,6 +311,7 @@ static void ccs_purge(CPUState* cpu) {
 
 static void forget_scene(void) {
     g_scene = 0;
+    g_calm = false;
     g_block = 0;
     g_broken = false;
     g_watch = 0;
@@ -318,6 +326,7 @@ static void forget_scene(void) {
 }
 
 void bluewake_pvp_scene_end(CPUState* cpu) {
+    bluewake_carry_scene_end(cpu); // players held end (puppet_carry.c)
     ccs_purge(cpu);
     // The block itself is given back by the delete fiber; the actors go with the scene.
     lock();
@@ -418,11 +427,11 @@ static bool make_bodies(CPUState* cpu, u32 player, u32 block) {
 }
 
 bool bluewake_pvp_wants_fiber(void) {
-    if (g_broken || g_scene == 0u)
+    if (g_broken || g_scene == 0u || !g_calm)
         return false;
     lock();
     bool want = false;
-    const bool active = g_collision || g_mode != BLUEWAKE_PVP_OFF;
+    const bool active = g_collision || g_mode != BLUEWAKE_PVP_OFF || bluewake_carry_wants_actors();
     if (active && g_block == 0u)
         want = true;
     for (int i = 0; i < MAX_TARGETS && !want; ++i) {
@@ -445,7 +454,7 @@ void bluewake_pvp_fiber(GuestCoro* co, CPUState* cpu) {
         return;
     bool active;
     lock();
-    active = g_collision || g_mode != BLUEWAKE_PVP_OFF;
+    active = g_collision || g_mode != BLUEWAKE_PVP_OFF || bluewake_carry_wants_actors();
     unlock();
     if (active && g_block == 0u) {
         const u32 block = call(co, FN_NEW, BLOCK_SIZE, 0, 0, 0);
@@ -638,8 +647,27 @@ static void put_attack(CPUState* cpu, u32 player, const Incoming* in, int mode, 
     g_watch = 40u;
 }
 
+// Whether the puppets' bodies and attention points may be in the game's world now: no event runs (and none ended a
+// moment ago), no scene change is pending, and the scene has been up for a few seconds. During the Ballad of Gales
+// warp (an event with the cyclone catching Link and the ship) a body registered into the collision system stopped the
+// event from ever ending (2026-10-19); a cutscene must not see them either.
+static bool calm_now(CPUState* cpu) {
+    const double now = now_ms();
+    if (mem_read8(cpu, EVENT_MODE) != 0u || mem_read8(cpu, NEXT_STAGE_GO) != 0u)
+        g_event_ms = now;
+    const bool calm = now - g_event_ms >= EVENT_GRACE_MS && now - g_scene_ms >= SAFE_MS;
+    if (calm != g_calm)
+        fprintf(stderr, "[pvp] bodies and attention points %s (%s)\n", calm ? "back" : "held back",
+                calm ? "calm" : mem_read8(cpu, EVENT_MODE) != 0u ? "an event runs" : "a scene change");
+    g_calm = calm;
+    return calm;
+}
+
 static void execute(CPUState* cpu) {
-    if (g_scene == 0u || g_block == 0u || g_broken)
+    if (g_scene == 0u || g_broken)
+        return;
+    const bool calm = calm_now(cpu);
+    if (g_block == 0u)
         return;
     const u32 player = mem_read32(cpu, PLAYER);
     if (!guest_ptr(player))
@@ -660,23 +688,28 @@ static void execute(CPUState* cpu) {
             continue;
         const bool here = g_frame - t->noted <= 2u;
         t->tg_armed = false;
-        if (here)
+        if (here && calm && !bluewake_carry_no_body(t->id))
             put_body(cpu, t, collision, mode != BLUEWAKE_PVP_OFF && t->hit_ok);
         // The attention point of its Dummy actor, where Z-targeting looks.
         if (t->actor != 0u) {
             if (!guest_ptr(t->actor) || mem_read32(cpu, t->actor + AC_PID) != t->pid) {
                 t->actor = 0u; // the game removed it (the fiber asks for another)
                 t->pid = 0u;
+            } else if (!calm) {
+                mem_write32(cpu, t->actor + AC_ATTN_FLAGS, 0u); // no attention point under an event or a scene change
             } else {
+                const bool held = bluewake_carry_target(cpu, t->id, t->actor, here, t->pos); // the game holds it (puppet_carry.c)
                 const bool on = here && (collision || mode != BLUEWAKE_PVP_OFF);
                 const float y = t->pos[1];
-                wr_vec(cpu, t->actor + AC_CURRENT, t->pos[0], y, t->pos[2]);
-                wr_vec(cpu, t->actor + AC_OLD, t->pos[0], y, t->pos[2]);
-                wr_vec(cpu, t->actor + AC_HOME, t->pos[0], y, t->pos[2]);
+                if (!held) {
+                    wr_vec(cpu, t->actor + AC_CURRENT, t->pos[0], y, t->pos[2]);
+                    wr_vec(cpu, t->actor + AC_OLD, t->pos[0], y, t->pos[2]);
+                    wr_vec(cpu, t->actor + AC_HOME, t->pos[0], y, t->pos[2]);
+                }
                 wr_vec(cpu, t->actor + AC_EYE, t->pos[0], y + ATTN_HEIGHT, t->pos[2]);
                 wr_vec(cpu, t->actor + AC_ATTN_POS, t->pos[0], y + ATTN_HEIGHT, t->pos[2]);
                 wr_vec(cpu, t->actor + AC_SPEED, 0.0f, 0.0f, 0.0f);
-                mem_write32(cpu, t->actor + AC_ATTN_FLAGS, on ? ATTN_LOCKON_MISC : 0u);
+                mem_write32(cpu, t->actor + AC_ATTN_FLAGS, (on ? ATTN_LOCKON_MISC : 0u) | bluewake_carry_attention(cpu, t->id, t->actor, here));
             }
         }
     }
@@ -705,8 +738,10 @@ u32 bluewake_pvp_execute_hook(CPUState* cpu) {
         last_id = id;
         return 0u;
     }
-    if (id != 0u)
+    if (id != 0u) {
         execute(cpu);
+        bluewake_carry_execute(cpu, id); // the lifted player and the arcs of throws (puppet_carry.c)
+    }
     return 0u;
 }
 
