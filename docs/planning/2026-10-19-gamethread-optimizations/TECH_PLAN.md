@@ -274,13 +274,19 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 
 ### Ranked optimization investigations
 
+The profile was attached to the running `bluewake` process. `gGZLE01_recomp.so`
+entries execute in the loaded game module; `bluewake` entries execute in the
+BlueWake host executable. Source files are build inputs, but the functions
+listed here are runtime costs.
+
 | Rank | Code path | Metric found | Why it ranks here / required proof |
 |---|---|---:|---|
 | 1 | Generated translated chunks reached through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` 7.80%; `func_803256E0` 3.90% self time | Largest individual costs. Map each generated chunk to its guest range and establish a correctness oracle before proposing a native boundary. |
-| 2 | [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 3.29%, 1.88%, and 1.74% respectively | Existing fast paths are active enough to investigate. Record accept/decline counts, batch sizes, and input/output independence before considering work-pool parallelism. |
-| 3 | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h) and [`module_export.c`](../../../cmake/composite/module_export.c) | `chassis_dispatch` 2.70% | Shared boundary overhead may compound across guest edges. Measure dispatch/direct-call frequency and preserve edge-service and deadline semantics. |
-| 4 | RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 2.13% | Meaningful helper cost, but alias semantics are safety-critical. First record resolution/pruning behavior and retain the guest-address contract. |
-| 5 | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | Renderer-enabled runs: 30.60–31.11 FPS; startup diagnostics reported `gpu=0ms` | Current evidence points away from GPU wait. Recheck in Game Mode before selecting graphics work. |
+| 2 | BlueWake host edge/service and actor-search paths in [`main.c`](../../../runtime/host/src/main.c) | `host_chassis_requires_full` 1.15%; `host_actor_search_native` 1.12%; `bw_search_word` 0.72%; `host_chassis_edge_service_full` 0.57% | Direct host-side evidence. Measure call/decline reasons first; preserve interrupt, deadline, and guest-memory contracts. `bluewake_host_main` is 1.62% but is an umbrella, not a candidate itself. |
+| 3 | [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 3.29%, 1.88%, and 1.74% respectively | Existing runtime fast paths are active enough to investigate. Record accept/decline counts, batch sizes, and input/output independence before considering work-pool parallelism. |
+| 4 | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h) and [`module_export.c`](../../../cmake/composite/module_export.c) | `chassis_dispatch` 2.70% | Shared module boundary overhead may compound across guest edges. Measure dispatch/direct-call frequency and preserve edge-service and deadline semantics. |
+| 5 | RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 2.13% | Meaningful runtime helper cost, but alias semantics are safety-critical. First record resolution/pruning behavior and retain the guest-address contract. |
+| 6 | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | Renderer-enabled runs: 30.60–31.11 FPS; startup diagnostics reported `gpu=0ms` | Current evidence points away from GPU wait. Recheck in Game Mode before selecting graphics work. |
 
 Headless results were 34.05–34.45 FPS (maximum 1.2% spread, 98–99% busy).
 Renderer-enabled Desktop results were 30.60–31.11 FPS (maximum 1.6% spread,
