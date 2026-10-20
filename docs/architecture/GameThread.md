@@ -50,22 +50,22 @@ serialized through one authoritative [`CPUState`](GuestState.md#cpustate-layout)
 
 ```mermaid
 flowchart TD
-    Platform["Platform startup"]
-    Host["Host turn<br/>events and budget"]
-    Module["Game module<br/>translated execution"]
-    State["Guest state<br/>CPU and memory"]
-    Services["Compatibility services<br/>devices and deadlines"]
-    Graphics["Graphics stack<br/>GX work and presentation"]
+    Platform["Platform<br/>startup"]
+    Host["Host turn<br/>events and<br/>budget"]
+    Module["Game module<br/>translated<br/>execution"]
+    State["Guest state<br/>CPU and<br/>memory"]
+    Services["Compatibility<br/>services<br/>devices and deadlines"]
+    Graphics["Graphics stack<br/>GX work and<br/>presentation"]
 
     Platform --> Host
-    Host -->|"dispatch at guest PC"| Module
-    Module -->|"read and update"| State
-    Host <-->|"inspect and update"| State
-    Module -->|"MMIO and callbacks"| Services
-    Host <-->|"advance and deliver"| Services
-    Module -->|"GX commands"| Graphics
-    Module -->|"yield boundary"| Host
-    Host -->|"next turn"| Module
+    Host -->|"dispatch at<br/>guest PC"| Module
+    Module -->|"read and<br/>update"| State
+    Host <-->|"inspect and<br/>update"| State
+    Module -->|"MMIO and<br/>callbacks"| Services
+    Host <-->|"advance and<br/>deliver"| Services
+    Module -->|"GX<br/>commands"| Graphics
+    Module -->|"yield<br/>boundary"| Host
+    Host -->|"next<br/>turn"| Module
 ```
 
 The arrows describe ownership and control transfer, not independent pipelines.
@@ -82,14 +82,14 @@ and ends by reconciling elapsed cycles with devices and deliverable events.
 
 ```mermaid
 flowchart TD
-    Ready["Apply ready host work"]
-    Begin["Begin cycle-domain turn"]
-    Budget["Prepare cycle budget"]
-    Dispatch["Dispatch current guest PC"]
-    Run["Run translated blocks"]
-    Boundary{"Why did execution yield?"}
-    Account["Account guest cycles"]
-    Devices["Advance devices and deadlines"]
+    Ready["Apply ready<br/>host work"]
+    Begin["Begin<br/>cycle-domain turn"]
+    Budget["Prepare<br/>cycle budget"]
+    Dispatch["Dispatch current<br/>guest PC"]
+    Run["Run translated<br/>blocks"]
+    Boundary{"Why did<br/>execution yield?"}
+    Account["Account<br/>guest cycles"]
+    Devices["Advance devices<br/>and deadlines"]
     Deliver["Deliver eligible callbacks<br/>or interrupts"]
     Outcome{"Stop, exception,<br/>or continue?"}
 
@@ -127,12 +127,12 @@ watched addresses, host observations, or unknown mappings force a yield.
 ```mermaid
 flowchart TD
     PC["Guest PC"]
-    Resolve["Resolve translated chunk"]
-    Block["Execute native block"]
-    State["Update guest state"]
+    Resolve["Resolve<br/>translated chunk"]
+    Block["Execute<br/>native block"]
+    State["Update<br/>guest state"]
     Check{"Safe to continue<br/>inside module?"}
-    Next["Dispatch successor"]
-    Yield["Return to host"]
+    Next["Dispatch<br/>successor"]
+    Yield["Return<br/>to host"]
 
     PC --> Resolve --> Block --> State --> Check
     Check -->|"yes"| Next --> Block
@@ -169,18 +169,18 @@ parallel shared-state system.
 
 ```mermaid
 flowchart TD
-    Game["Game thread<br/>owns guest execution"]
-    Pool["Native work pool<br/>bounded value ranges"]
-    GX["GX/render worker<br/>graphics processing"]
-    Audio["Audio/backend threads<br/>native delivery"]
-    Join["Synchronous join<br/>before guest continues"]
+    Game["Game thread<br/>owns guest<br/>execution"]
+    Pool["Native work pool<br/>bounded value<br/>ranges"]
+    GX["GX/render worker<br/>graphics<br/>processing"]
+    Audio["Audio/backend<br/>threads<br/>native delivery"]
+    Join["Synchronous join<br/>before guest<br/>continues"]
 
-    Game -->|"stable inputs"| Pool
-    Pool -->|"disjoint outputs"| Join
+    Game -->|"stable<br/>inputs"| Pool
+    Pool -->|"disjoint<br/>outputs"| Join
     Join --> Game
-    Game -->|"queued GX work"| GX
-    GX -->|"completion when required"| Game
-    Game <-->|"buffers and device state"| Audio
+    Game -->|"queued<br/>GX work"| GX
+    GX -->|"completion<br/>when required"| Game
+    Game <-->|"buffers and<br/>device state"| Audio
 ```
 
 The optional native work pool in

@@ -167,15 +167,15 @@ noise, re-profile B, and complete the gameplay route. Missing activation,
 correctness evidence, or 30 FPS evidence leaves qualification incomplete.
 
 ```mermaid
-flowchart LR
-    Control["Immutable control"] --> Noise["A/A noise"]
-    Noise --> Profile["Headless, rendered,<br/>Game Mode profiles"]
-    Profile --> Rank["Rank exclusive cost<br/>and waits"]
-    Rank --> Candidate["One bounded candidate"]
-    Candidate --> Compare["Interleaved A/B"]
-    Compare --> Gates{"Faster, correct,<br/>stable 30 FPS?"}
-    Gates -->|Yes| Retain["Submit candidate"]
-    Gates -->|No| Record["Reject or iterate"]
+flowchart TD
+    Control["Immutable<br/>control"] --> Noise["A/A<br/>noise"]
+    Noise --> Profile["Headless, rendered,<br/>and Game Mode<br/>profiles"]
+    Profile --> Rank["Rank exclusive<br/>cost and waits"]
+    Rank --> Candidate["One bounded<br/>candidate"]
+    Candidate --> Compare["Interleaved<br/>A/B runs"]
+    Compare --> Gates{"Faster,<br/>correct, and<br/>stable 30 FPS?"}
+    Gates -->|"yes"| Retain["Submit<br/>candidate"]
+    Gates -->|"no"| Record["Reject or<br/>iterate"]
 ```
 
 ## Candidate surfaces
