@@ -9,7 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-typedef struct { u32 pc; u32 ram_size; u8* ram; } CPUState;
+typedef struct { u32 pc; u32 ram_size; u8* ram; u8* exram; u32 exram_size; } CPUState;
+static bool bluewake_puppet_mem2_in_use(void) { return false; } // no puppet pool in this test: no MEM2 chunk
 typedef struct { int unused; } StaticRecompModuleDesc;
 typedef struct { bool* profile_prolog_called; bool* rel_prolog_sda_pending; u32* rel_prolog_saved_r13; } HostStateLoop;
 typedef struct { u32 cpu_pod_size; } HostStateHeader;

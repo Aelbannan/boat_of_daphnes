@@ -1,4 +1,7 @@
 // Other online players drawn as Link models: see puppet.h.
+#ifndef _WIN32
+#include <time.h>
+#endif
 #include "puppet.h"
 #include "puppet_pvp.h"
 #include "puppet_carry.h"
@@ -1632,10 +1635,16 @@ static struct { u32 fn; unsigned n; double us; } g_prof_fn[64];
 static double g_prof_phase[8];
 static unsigned g_prof_lod[4];
 static double prof_now_us(void) {
+#ifdef _WIN32
     LARGE_INTEGER f, t;
     QueryPerformanceFrequency(&f);
     QueryPerformanceCounter(&t);
     return (double)t.QuadPart * 1.0e6 / (double)f.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1.0e6 + (double)ts.tv_nsec / 1.0e3;
+#endif
 }
 static bool prof_on(void) {
     if (g_prof < 0)
