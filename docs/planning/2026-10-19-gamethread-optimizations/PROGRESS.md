@@ -1,7 +1,7 @@
 # PROGRESS — Steam Deck game-thread optimization
 
 Status: M0 in progress; the reproducible control is blocked by #433. Preliminary
-Deck evidence uses an existing, source-unverified private AppImage.
+Deck evidence uses an existing, source-identified historical private AppImage.
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
@@ -25,9 +25,9 @@ states, raw logs, and `perf.data` remain on the Deck.
 
 | Task | Current evidence | Limitation |
 |---|---|---|
-| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; AC power; `powersave`; `perf` 6.15; active Plasma Wayland Desktop Mode; collection temperatures 29°C Deck sensor / 48°C APU. Historical AppImage source `3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`, SHA-256 `2fdd36b90d33f2d0068a03a46ff07629b2f5738929aefa7b96a89a68d2dd2b6b`; module SHA-256 `0775a84cc1e1042fff25df8fc05d506ce125d5a4da1c7d56065344e28e28c552`. | This is a source-identified historical diagnostic, not the pinned `2ab8118` control. Frame cap, refresh, TDP, texture/options receipt, and Game Mode receipt remain unrecorded. |
-| M0-T02 | Historical fixed-state A/A plus three five-scene headless sweeps. Mean unpaced throughput: Fortress sea 33.77, Forest Haven 36.46, Outset 40.94, Windfall 44.47, and Dragon Roost 58.10 game frames/s; every requested scene loaded. A separate wall-paced Desktop capture reported 27–29 game FPS, `busy=97%`, and `cause=game-thread`. | Runs 1 and 3 have identical checkpoints; run 2 diverges from retrace 24,300. Windfall has 6.13% and Dragon Roost 3.18% range/mean. Game Mode and repeated scene-matched rendered evidence remain pending. |
-| M0-T03 | Five zero-loss, post-settle 30-second headless profiles captured one per scene; more than 99.5% of samples in each belong to the main thread. The slow scenes repeatedly expose host edge/search helpers, while Outset is led by translated chunks. | Four scene profiles contain unresolved native instruction addresses. Resolve them and explain the checkpoint divergence before selecting a candidate. The wall-paced rendered capture remains process-wide. |
+| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; AC power; `powersave`; `perf` 6.15; Plasma Wayland Desktop Mode on an external 1920×1080/120 Hz display. Controlled rendered runs used Vulkan/Mailbox, a 960×720 window/framebuffer, scale 1, default GXCore, and isolated blank settings. Historical AppImage source `3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`, SHA-256 `2fdd36b90d33f2d0068a03a46ff07629b2f5738929aefa7b96a89a68d2dd2b6b`; module SHA-256 `0775a84cc1e1042fff25df8fc05d506ce125d5a4da1c7d56065344e28e28c552`. | Source-identified historical diagnostic, not pinned `2ab8118`. Exact TDP semantics, representative personal settings, and Game Mode receipt remain pending. |
+| M0-T02 | Three explicit-input five-scene headless sweeps loaded every scene, matched all 31 checkpoints, and stayed within 0.47–1.31% range/mean. Three wall-paced Desktop sweeps loaded Fortress sea, Forest Haven, and Outset, matched all 19 checkpoints, and measured 29.943–29.979 mean game FPS with 88.55–97.48% game-thread busy. | Game Mode repetitions and representative HD-texture/options evidence remain pending. Desktop runs used isolated defaults. |
+| M0-T03 | Five zero-loss, post-settle 30-second headless profiles captured one per scene; more than 99.5% of samples in each belong to the main thread and game-module symbols resolve. Recurring costs are translated chunks/dispatch, alias resolution, and existing native math/vector probes. | Map hot chunk offsets to guest ranges, collect available instruction/cycle evidence, and capture Game Mode thread/wait ownership before selecting one candidate. |
 | Historical diagnostic | The AppImage launches directly on Deck, loads `quick-23874.bwstate` with `missing=0` and `mismatched=0`, and executed beyond retrace 31,000. Raw JSON, logs, and `perf.data` stay private under `~/bluewake-profile/`. | An extract-and-run wrapper previously misidentified the child PID; direct AppImage profiling works. This does not make the artifact a release candidate. |
 
 ### M1: One bounded candidate (depends: M0)
@@ -64,7 +64,7 @@ not overlap.
 
 | ID | Actual | Outcome | Evidence |
 |---|---|---|---|
-| IMP-01 | Five-scene order repeated three times; range/mean 0.59–6.13%. Runs 1 and 3 match; run 2 diverges at retrace 24,300. | Partial | M0 execution record; determinism, Game Mode, and reproducible-control evidence pending |
+| IMP-01 | Five-scene explicit-input order repeated three times; all 31 checkpoints match and range/mean is 0.47–1.31%. Three rendered Desktop slow-scene runs also match all 19 checkpoints with 0.03–0.55% range/mean. | Partial | M0 execution record; Game Mode and reproducible-control evidence pending |
 | IMP-02 | Not selected | Planned | None |
 | IMP-03 | Not measured | Planned | None |
 | IMP-04 | Not measured | Planned | None |

@@ -253,9 +253,10 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 | Item | Measured value |
 |---|---|
 | Hardware / OS | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50 |
-| Power / CPU policy | AC power; `powersave`; 2.42 GHz observed at collection |
+| Power / CPU policy | AC power; `powersave`; 2.42 GHz observed during collection; reported power cap `15000000` |
 | Temperature | 29°C Deck sensor; 48°C APU |
-| Session | Plasma Wayland Desktop Mode; not Game Mode |
+| Session | Plasma Wayland Desktop Mode; external 1920×1080 display at 120 Hz; built-in panel disabled; not Game Mode |
+| Controlled rendered configuration | Vulkan/Mailbox; 960×720 host window and framebuffer; scale 1; default GXCore renderer; blank isolated settings, so no HD texture pack or personal options |
 | Artifact | Source [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5); AppImage `2fdd36…2dd2b6b`; module `0775a8…e28c552` |
 | Instrumentation | `perf` 6.15; process-attached cycle sampling works; system-wide `perf stat` is denied by `perf_event_paranoid=2` |
 | Worker pool | The benchmark runs were serial because `bench_tour.py` clears inherited `BLUEWAKE_*` settings. A separate two-worker probe also reported `parallel=0`: its largest vector array was 8 items, below the 768-item split threshold (`256 × 3` participants). |
@@ -264,11 +265,13 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 
 - Loaded the same private `quick-23874.bwstate`. The original single-scene A/A
   runs produced matching checkpoints.
-- Ran [`bench_tour.py`](../../../scripts/bench_tour.py) three times headless
-  and three times with the renderer in the active Desktop session. It discards
-  the first 300 retraces and measures the next 1,500. Both modes are unpaced,
-  deterministic simulation-throughput checks only; neither measures
-  player-visible FPS.
+- Ran three five-scene headless sweeps with the benchmark's explicit virtual-pad
+  pulse sequence. Every requested scene loaded, all 31 checkpoints matched
+  across all runs, and every scene stayed below the 3% same-build noise guide.
+- Ran three wall-paced rendered sweeps over the three slowest headless scenes in
+  the active Desktop session. Every requested scene loaded and all 19
+  checkpoints matched. These controlled runs used isolated default settings,
+  not the personal HD-texture/options configuration.
 - Attached `perf record -g -F 99` to one 30-second headless run. It captured
   2K user-space cycle samples with zero loss. `perf annotate` was used to
   inspect the leading symbols.
@@ -280,27 +283,40 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 - Ran one non-comparative, headless probe with `BLUEWAKE_NATIVE_WORKERS=2` and
   allowed normal shutdown so the native-math counters were printed. It is
   activation evidence only, not an A/B result.
-- Ran three headless five-scene sweeps from the known gameplay state. Each
-  requested warp loaded, each scene settled for 300 retraces, and the next
-  1,500 retraces supplied its throughput window. Runs 1 and 3 had identical
-  checkpoints; run 2 diverged at retrace 24,300 and remains unexplained.
-- Captured one post-settle 30-second `perf` profile per scene. More than 99.5%
-  of samples in every capture belonged to the main thread; all captures lost
-  zero samples.
+- Captured one post-settle 30-second `perf` profile per scene. Starting `perf`
+  after the eight-second settle retained the module mapping events, so symbols
+  resolved in every report. More than 99.5% of samples in every capture
+  belonged to the main thread; all captures lost zero samples.
 
 ### Five-scene workload survey
 
 These are unpaced computational-throughput results, not player-visible FPS.
-The order was stable in all three runs, but Windfall and Dragon Roost exceeded
-the 3% same-build noise guide and run 2 failed checkpoint equivalence.
+All scene windows stayed below the 3% same-build noise guide and checkpoints
+were identical. Earlier divergence came from omitting the explicit virtual-pad
+sequence, so those runs are excluded.
 
 | Scene | Mean game frames/s | Range / mean | Relative cost |
 |---|---:|---:|---|
-| Sea by Forsaken Fortress | 33.77 | 0.59% | Slowest |
-| Forest Haven | 36.46 | 1.97% | Second slowest |
-| Outset | 40.94 | 1.78% | Third slowest |
-| Windfall | 44.47 | 6.13% | Fourth; noisy |
-| Dragon Roost Cavern | 58.10 | 3.18% | Fastest; noisy |
+| Sea by Forsaken Fortress | 33.63 | 0.52% | Slowest |
+| Forest Haven | 36.35 | 0.47% | Second slowest |
+| Outset | 40.76 | 0.73% | Third slowest |
+| Windfall | 43.14 | 0.95% | Fourth |
+| Dragon Roost Cavern | 58.57 | 1.31% | Fastest / low-load control |
+
+### Rendered Desktop slow-scene survey
+
+These are wall-paced observations in the controlled Desktop configuration
+listed above. They establish repeatability and expose the active wait domain;
+they are not Game Mode or representative-HD-texture qualification.
+
+| Scene | Mean game FPS | Range / mean | Mean game-thread busy |
+|---|---:|---:|---:|
+| Sea by Forsaken Fortress | 29.979 | 0.55% | 97.48% |
+| Forest Haven | 29.943 | 0.25% | 96.39% |
+| Outset | 29.955 | 0.03% | 88.55% |
+
+Only transient startup/load samples fell below target after warmup. Their
+reported cause was `game-thread`, with zero recorded GPU-wait milliseconds.
 
 ### Candidate status after the scene sweep
 
@@ -311,13 +327,16 @@ optimization target is selected yet.
 
 | Candidate surface | Evidence across scenes | Decision |
 |---|---|---|
-| Host edge/service and actor search in [`main.c`](../../../runtime/host/src/main.c) | The concrete helpers recur in four scenes and rise in the slowest: `host_chassis_requires_full` reaches 1.22%, `host_actor_search_native` 1.08%, and `bw_search_word` 1.01% by the Fortress. | Keep under investigation; measure calls and decline reasons before proposing a change. `bluewake_host_main` is an umbrella, not a target. |
-| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | Outset is led by `func_802456E0` 6.70%, `func_803256E0` 3.55%, `func_802ED6E0` 3.11%, and `chassis_dispatch` 2.80%. Other scenes contain unresolved native instruction addresses. | Blocked on symbol resolution and guest-range mapping; do not assume Outset's chunks explain the other scenes. |
-| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | `bluewake_native_game_math_try` is 2.91% at Outset. The separate two-worker probe processed 85,096 vectors but saw a maximum array of 8 and `parallel=0`. | Not evidence for gameplay parallelization; first find a scene and batch size that activate the pool. |
-| Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | 2.27% at Outset and absent from the other scenes' top 15 resolved symbols. | Lower priority until repeated profiles show a broader cost. |
-| GX/Aurora path through [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | The earlier wall-paced Outset capture found renderer symbols, but the five-scene profiles are headless. | Requires scene-matched rendered profiles; the current frame log still identifies the game thread, not GPU wait, as the wall. |
+| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` leads four scenes at 5.41–6.29%; `func_803256E0` is 2.90–4.43%; `chassis_dispatch` is 3.01–3.83%. Additional scene-specific chunks reach 2–3%. | Highest recurring surface. Map sampled native offsets back to guest ranges before naming game logic or selecting a native replacement; chunk symbols are compilation buckets. |
+| Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` appears in every scene's leading symbols and reaches 4.13% in Forest Haven. | Second investigation. Annotate call sites and distinguish unavoidable aliases from fast-path misses before changing address resolution. |
+| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in several scenes. The separate worker probe processed 85,096 vectors but its largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Existing path cost is measurable, but current gameplay batches do not justify work-pool activation; find a genuinely large independent batch first. |
+| GX/Aurora path through [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | Repeated rendered slow scenes remain game-thread-bound at 96–97% busy with no recorded GPU wait. Headless profiles intentionally exclude renderer ownership. | Lower priority for this game-thread milestone; retain scene-matched Game Mode profiling before ruling out presentation-specific costs. |
+| Host-specific helpers in [`main.c`](../../../runtime/host/src/main.c) | Corrected symbol-complete reports do not show actor search or another concrete host helper as a dominant recurring cost. | Do not select from the earlier unresolved reports. Reconsider only if Game Mode or annotated call paths expose a specific host cost. |
 
-The unpaced A/A runs remain valid only as deterministic workload checks:
-headless throughput was 34.05–34.45 game frames/s and renderer-enabled
-throughput was 30.60–31.11. They do not state or imply real-time 30 FPS. The
-wall-paced capture is consistent with [#215](https://github.com/chrissotraidis/bluewake/issues/215): the active limit is the game thread, not GPU wait.
+The current ranking is an investigation order, not M0 candidate selection.
+Current-source control construction remains blocked by
+[#433](https://github.com/chrissotraidis/bluewake/issues/433), and the active
+Desktop session cannot substitute for the required Game Mode repetitions. The
+wall-paced Desktop evidence is nevertheless consistent with
+[#215](https://github.com/chrissotraidis/bluewake/issues/215): the observed
+limit is the game thread, not GPU wait.
