@@ -252,6 +252,25 @@ participants. The workers receive `[0, 1024)`, `[1024, 2049)`, and
 `[2049, 3074)`; the game thread receives `[3074, 4099)`. The split can differ
 by one item, but every index belongs to exactly one participant.
 
+```mermaid
+flowchart LR
+    Job["4,099 items<br/>four participants"]
+    W0["Worker 0<br/>0–1,023<br/>1,024 items"]
+    W1["Worker 1<br/>1,024–2,048<br/>1,025 items"]
+    W2["Worker 2<br/>2,049–3,073<br/>1,025 items"]
+    Game["Game thread<br/>3,074–4,098<br/>1,025 items"]
+    Join["Join<br/>all 4,099 complete"]
+
+    Job --> W0 --> Join
+    Job --> W1 --> Join
+    Job --> W2 --> Join
+    Job --> Game --> Join
+```
+
+The prose uses half-open ranges because that is the callback interface. The
+diagram shows the equivalent inclusive item numbers so each participant's
+ownership is visible without overlapping endpoints.
+
 The safety boundary is stricter than the partition arithmetic. A callback must
 read stable inputs, write only its assigned output range, and avoid guest CPU,
 device, or mutable global state. The single shared job descriptor also assumes
