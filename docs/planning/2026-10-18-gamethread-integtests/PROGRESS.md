@@ -33,7 +33,7 @@ when completing a task.
 ## Delivery
 
 - Review this plan (#397) with foundation #399.
-- Consolidate #406–#411 into one follow-up test PR, used when needed by the
+- [#424](https://github.com/chrissotraidis/bluewake/pull/424) consolidates #406–#411, used when needed by the
   first optimization; preserve their source commits and later oracle fixes.
 - Defer #412–#417 and #421; they are not a required merge chain.
 - Keep #396 and #400 independent.

@@ -44,11 +44,11 @@ The retained identifiers refer to the foundation portions of the earlier plan.
 ## Review sequence
 
 1. Review this scoped plan with [#399](https://github.com/chrissotraidis/bluewake/pull/399).
-2. Review the consolidated follow-up coverage only as a concrete optimization
+2. Review [#424's consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424) only as a concrete optimization
    needs it: boundaries/oracle, creation failure, DSO lifecycle, diagnostics and sanitizers.
 3. Submit the optimization separately, measured with the
-   [benchmark tour](../../../BENCHMARK_TOUR.md) and the
-   [performance strategy](../../../PERFORMANCE.md), with gameplay checks.
+   [benchmark tour](../../BENCHMARK_TOUR.md) and the
+   [performance strategy](../../PERFORMANCE.md), with gameplay checks.
 
 [#396](https://github.com/chrissotraidis/bluewake/pull/396) and
 [#400](https://github.com/chrissotraidis/bluewake/pull/400) remain independent.

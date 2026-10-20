@@ -58,7 +58,7 @@ replace Windows CI, a private oracle, gameplay verification or Deck measurements
 
 ## Deferred work
 
-The follow-up combines #406–#411's test coverage into one review unit. It is
+[#424](https://github.com/chrissotraidis/bluewake/pull/424) combines #406–#411's test coverage into one review unit. It is
 not a mandatory prerequisite for every optimization. Broader qualification
 tools (#412–#417) and #421 remain deferred on preserved branches.
 A performance change must show benchmark-tour improvement and unchanged
