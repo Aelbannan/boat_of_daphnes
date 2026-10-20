@@ -9,6 +9,7 @@
 - [Translated dispatch](#translated-dispatch)
 - [State, services, and graphics](#state-services-and-graphics)
 - [Concurrency boundaries](#concurrency-boundaries)
+  - [Native work-pool internals](#native-work-pool-internals)
 - [Performance model](#performance-model)
 - [Testing and evidence](#testing-and-evidence)
 - [Source map](#source-map)
@@ -197,6 +198,84 @@ shared memory, scheduler order, devices, callbacks, and each other's effects.
 Parallelizing such work requires a proven stable-input/disjoint-output contract,
 not merely the availability of unused CPU cores.
 
+### Native work-pool internals
+
+The native work pool is a small range executor compiled into the game module.
+It lets one eligible calculation use persistent native workers while the game
+thread remains the sole submitter and owner of guest execution. It does not
+schedule guest threads, interpret PowerPC code, or automatically parallelize
+translated routines.
+
+Its public contract is intentionally small:
+
+| Interface | Contract |
+|---|---|
+| [`BluewakeRangeWork`](../../cmake/composite/native_work_pool.h) | Callback over the half-open range `[first, end)` using caller-owned context |
+| [`bluewake_parallel_range`](../../cmake/composite/native_work_pool.c) | Select the serial or parallel path and return only after the complete range finishes |
+| [`bluewake_parallel_batches`](../../cmake/composite/native_work_pool.c) | Report how many submissions used workers; serial calls do not increment it |
+
+```mermaid
+flowchart TD
+    Call["Game thread calls<br/>parallel range"]
+    Init{"Pool already<br/>initialized?"}
+    Create["Read worker setting<br/>create up to eight"]
+    Gate{"Workers available<br/>and range large enough?"}
+    Serial["Caller executes<br/>the whole range"]
+    Publish["Publish one job<br/>under the mutex"]
+    Wake["Wake persistent<br/>workers"]
+    Workers["Workers execute<br/>disjoint ranges"]
+    Caller["Caller executes<br/>the final range"]
+    Join["Wait until every<br/>worker finishes"]
+    Return["Return to guest<br/>execution"]
+
+    Call --> Init
+    Init -->|"no"| Create --> Gate
+    Init -->|"yes"| Gate
+    Gate -->|"no"| Serial --> Return
+    Gate -->|"yes"| Publish --> Wake
+    Wake --> Workers --> Join
+    Wake --> Caller --> Join
+    Join --> Return
+```
+
+| Stage | Mechanics | Result |
+|---|---|---|
+| Initialize | The first submission uses `pthread_once`, reads `BLUEWAKE_NATIVE_WORKERS`, caps a valid request at eight, and retains however many threads were created successfully | One process-lifetime pool, or the serial fallback when no worker is available |
+| Select path | A submission stays serial when there are no workers or `count / (workers + 1)` is below `minimum_grain` | Small jobs avoid wake-up and synchronization overhead |
+| Publish | Under the mutex, the caller stores the count, callback, and context; sets the remaining-worker count; advances the generation and parallel-batch counters; then broadcasts the ready condition | Each persistent worker observes the same immutable job descriptor |
+| Partition | With `P = workers + 1`, participant `i` receives `[count * i / P, count * (i + 1) / P)`; the calling thread takes the final partition | Integer boundaries cover the range once without overlap |
+| Join | Workers decrement `remaining` after their callbacks; the caller waits on the finished condition after completing its own partition | All range results are available before the function returns |
+| Unload | The module destructor sets the stop flag, wakes the pool, and joins every created worker | No worker continues executing module code after unload |
+
+For example, a 4,099-item submission with three workers has four
+participants. The workers receive `[0, 1024)`, `[1024, 2049)`, and
+`[2049, 3074)`; the game thread receives `[3074, 4099)`. The split can differ
+by one item, but every index belongs to exactly one participant.
+
+The safety boundary is stricter than the partition arithmetic. A callback must
+read stable inputs, write only its assigned output range, and avoid guest CPU,
+device, or mutable global state. The single shared job descriptor also assumes
+one submitting game thread; this is not a concurrent multi-producer queue.
+Workers set round-to-nearest mode at startup, but each candidate must still
+prove that its arithmetic and publication behavior match the translated
+reference.
+
+On Windows the same interface currently executes the callback serially and the
+parallel-batch count remains zero. POSIX builds provide the persistent worker
+backend. The production vector path demonstrates the intended use: compute
+independent values in parallel, join, and only then apply final guest-visible
+CPU effects on the game thread.
+
+The focused component test runs without a disc, translated module, or renderer.
+It checks empty and serial ranges, uneven partitions, repeated submissions,
+configuration parsing, worker-count clamping, immediate result publication,
+and untouched boundaries. See the
+[`native_work_pool_test.c`](../../tests/native_work_pool_test.c) implementation,
+its [CTest registration](../../tests/native_work_pool/CMakeLists.txt), and the
+[integration-test plan](../planning/2026-10-18-gamethread-integtests/TECH_PLAN.md#test-contracts).
+Draft [PR #424](https://github.com/chrissotraidis/bluewake/pull/424) extends that
+foundation with creation-failure and unload-lifecycle coverage.
+
 ## Performance model
 
 The game reaches its 30 FPS logic target only when the complete critical path
@@ -233,7 +312,7 @@ Different layers establish different parts of the contract:
 |---|---|
 | Dispatch, scheduler, cycle, and service component tests | Synthetic boundary behavior without private game data |
 | Native guard/source tests | Eligibility, decline, and bounded guest-state effects |
-| Native work-pool tests | Partitioning, publication, configuration, failure, and lifecycle behavior |
+| Native work-pool tests | Current foundation: partitioning, publication, configuration, and repeated reuse; draft PR #424 adds creation-failure and unload-lifecycle coverage |
 | Private translated differential oracle | Candidate results agree with the locally generated translated reference |
 | Benchmark checkpoints | Selected guest state agrees across a repeatable route where exactness is expected |
 | Hardware profile and gameplay | The candidate activates, improves the target device, and preserves player-visible behavior |
