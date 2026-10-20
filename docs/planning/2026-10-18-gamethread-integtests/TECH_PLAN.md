@@ -51,6 +51,71 @@ on `main` until this PR merges.
 | `linux/CMakeLists.txt` and host CMake | Register the applicable source-only suite |
 | `.github/workflows/linux-host.yml` | Build the test executables before selecting their CTest entries |
 
+### Native work-pool test
+
+[`tests/native_work_pool_test.c`](../../../tests/native_work_pool_test.c)
+checks that the production worker pool divides, executes, and finishes
+synthetic work correctly. It needs no game, renderer, or disc. This validates
+the machinery that future parallel game calculations depend on.
+
+```mermaid
+flowchart TD
+    Setup["Prepare array:<br/>untouched markers and zero visit counts"]
+    Submit["Submit a range to the production pool"]
+    Caller["Calling thread processes its range"]
+    Workers["Worker threads process their ranges"]
+    Join["Pool returns after all ranges finish"]
+    Check{"Results and boundaries correct?"}
+    Pass["Continue to next case"]
+    Fail["Print mismatch and fail test"]
+
+    Setup --> Submit
+    Submit --> Caller --> Join
+    Submit --> Workers --> Join
+    Join --> Check
+    Check -->|"Yes"| Pass
+    Check -->|"No"| Fail
+```
+
+The synthetic callback is equivalent to:
+
+```c
+visits[index]++;              // Track how often this item ran.
+output[index] = index ^ salt; // Produce an easily checked result.
+```
+
+The POSIX visitation counter is atomic. `salt` changes between submissions to
+help expose stale job data.
+
+| Contract | Verification | Detects |
+|---|---|---|
+| Every item runs exactly once | Each submitted element has one visit | Missing work or overlapping partitions |
+| Results are complete on return | Inspect outputs immediately after the pool call | Early return or incomplete publication |
+| Unsubmitted entries remain untouched | Check marker values outside the requested range | Incorrect boundaries or overruns |
+| Expected threads participate | On POSIX, verify thread identities, exact partitions and caller participation | Silent serial execution or incorrect assignment |
+| Successive jobs stay independent | Run 1,000 submissions with changing counts and values | Stale context, missed wakeups or previous-job results |
+| Configuration selects the expected path | Check effective workers and parallel-batch counters | Ignored settings or unexpected fallback |
+
+| Workload | Purpose |
+|---|---|
+| 0 items | Safe empty submission |
+| 17 items, minimum grain 256 | Small-job serial fallback |
+| 4,099 items | Correct uneven partitioning |
+| 1,000 changing submissions | Repeated reuse of the pool and context |
+
+CTest launches fresh processes because worker configuration initializes once
+per process. Configurations cover invalid and zero settings, 1/2/3 workers, an
+oversized request capped at eight, and simulated total and partial
+worker-creation failures. Windows exercises its serial backend.
+
+A pass establishes these synthetic execution contracts. It does **not**
+establish gameplay equivalence, a Steam Deck speedup, or safe library unload;
+those require the separate oracle, hardware/performance, and lifecycle tests.
+
+Sources: [test implementation](../../../tests/native_work_pool_test.c),
+[CTest configuration](../../../tests/native_work_pool/CMakeLists.txt), and
+[production pool](../../../cmake/composite/native_work_pool.c).
+
 The private native-math oracle stays `EXCLUDE_FROM_ALL` and is not registered
 as a public CTest. Windows keeps its existing serial implementation; this
 foundation does not add a Windows worker backend.
