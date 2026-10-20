@@ -35,6 +35,42 @@ Keep the control immutable. Build candidates from the same source revision,
 compiler, PGO inputs, options, and AppImage environment; change only the
 candidate. Never publish the personal module, state, card, or raw private log.
 
+### Optional: SSH setup and limits
+
+SSH can drive the headless benchmarks, profiles, comparisons, and evidence
+collection. On the Deck, enter Desktop Mode, open Konsole, set a password if
+needed, start the server, and obtain its LAN address:
+
+```bash
+passwd
+sudo systemctl enable --now sshd
+hostname -I
+```
+
+From the development machine, connect as `deck` and copy the private test bundle
+only between machines you control:
+
+```bash
+ssh deck@DECK_IP
+rsync -av ./deck-test/ deck@DECK_IP:~/bluewake-test/
+```
+
+Prefer SSH keys over leaving password authentication exposed. To stop and
+disable the service after testing, run `sudo systemctl disable --now sshd` on
+the Deck.
+
+| Task | From SSH? | Boundary |
+|---|---|---|
+| Copy AppImages/scripts and collect redacted evidence | Yes | Keep the personal AppImage, state, card, module, and raw logs private |
+| Headless `bench_tour.py`, `profile_deck.sh`, `perf report`, hashes, and comparisons | Yes | No display session is required |
+| Rendered Desktop Mode benchmark/profile | Partly | A local graphical session must already be active; SSH needs its valid `DISPLAY` and `XAUTHORITY` |
+| Game Mode launch and gameplay checks | No | Start and play the Steam entry on the Deck |
+| Attach `perf` to an already-running Game Mode process and retrieve logs | Yes | Launch locally first, then attach by the verified process ID over SSH |
+
+Commands in the following sections run in an SSH shell unless they explicitly
+require Desktop Mode or Game Mode. Do not use X11 forwarding as a substitute
+for measuring the Deck's own rendered session.
+
 ### 1. Build and identify the control
 
 On the development machine:
