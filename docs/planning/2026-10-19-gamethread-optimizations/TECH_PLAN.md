@@ -89,10 +89,10 @@ sha256sum build/deck-control/BlueWake-x86_64.AppImage \
 
 Record the commit, dependency-lock hash, compiler, builder command, AppImage and
 module hashes, PGO/training status, and build summary. Copy the AppImage plus
-`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck. The
-container default is Clang 18. The optional Clang 22 path is currently blocked
-by [#433](https://github.com/chrissotraidis/bluewake/issues/433) and is not a
-control until that issue is resolved.
+`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck. Both
+the default Clang 18 and optional Clang 22 `x86-64-v3` container paths are
+currently blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433);
+neither is a valid control until that issue is resolved.
 
 ### Deck test bundle
 
