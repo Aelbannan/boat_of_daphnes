@@ -1,70 +1,60 @@
-# PROGRESS — Shorten the Steam Deck game update
+# PROGRESS — Steam Deck game-thread optimization
 
-Status: Initial desktop diagnostic batch implemented; Deck baseline and qualification pending.
-
-Review route: [#397 combined plan/foundation](https://github.com/chrissotraidis/bluewake/pull/397) → [#424 consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424)
-as needed → one benchmarked optimization at a time. #406–#411 are superseded;
-#412–#417 are deferred. The research milestones below are not a required merge chain.
-
-Desktop investigation supports M0-T02/M2-T01 without satisfying their Deck gates.
-See the [watched-address experiment](EDGE_WATCH_EXPERIMENT.md) for measurements,
-instrumentation validation and the decision to defer a one-entry cache. No
-optimization is retained and no speedup is claimed.
+Status: Planned; previous #421 measurements and conclusions discarded
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
 ## Milestones
 
-### M0: Freeze baseline and contracts
+### M0: Fresh Steam Deck baseline
 
-Architecture: [host execution](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Host.md#main-loop-execution), [measurement](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/performance/Overview.md#performance-workflow).
+Architecture: [performance workflow](../../performance/Overview.md#performance-workflow).
 
-- [ ] M0-T01: Record the actual baseline revision and select only the prerequisite tests needed by the candidate; recheck open PRs and runner interfaces. (FR-01, FR-04)
-- [ ] M0-T02: Collect Deck A/A baseline, profiles, wait time and actual kernel activation/batch distributions. (FR-01, FR-05)
-- [ ] M0-T03: Freeze scenes, thresholds, [run matrix](TECH_PLAN.md#run-matrix--proposed-freeze-at-m0), calculation rules and report schema; rank candidates. (FR-01, FR-02, FR-03, FR-05)
+- [ ] M0-T01: Freeze source/build identity, Deck environment, private scene inputs, settings, metrics, and retention policy. (FR-01, FR-04)
+- [ ] M0-T02: Run same-build A/A headless, rendered, and Game Mode measurements; record noise and reject incomparable runs. (FR-01)
+- [ ] M0-T03: Capture flat/per-thread profiles and annotations; rank code candidates with estimated upper bounds and activation evidence. (FR-02)
 
-### M1: Independent calculation stream (depends: M0)
+### M1: One bounded candidate (depends: M0)
 
-Parallel with M2/M3; owns `native_math.c`/`native_skin.c` and any new value-only helper. Uses M0 contract; integrates at M4. [Ownership](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/GuestState.md#ownership-and-address-model).
+Owns only the code surface selected by M0; candidate-specific test preparation
+may proceed separately after its semantic interface is frozen.
 
-- [ ] M1-T01: Select measured kernel and estimate upper-bound benefit; record go/no-go. (FR-01, FR-02)
-- [ ] M1-T02: Establish stable inputs and disjoint outputs; separate prepare/calculate/apply, preserving caller-owned effects, arithmetic and serial fallback. (FR-02, FR-04)
-- [ ] M1-T03: Measure inclusive job cost and worker participation; retain only profitable batch sizes or record no-go. (FR-02, FR-05)
+- [ ] M1-T01: Define preserved state, arithmetic, deadlines, ordering, fallback, and lifecycle behavior. (FR-03, FR-05)
+- [ ] M1-T02: Implement one opt-in candidate and positive activation reporting; keep timing instrumentation out of measured binaries. (FR-03)
+- [ ] M1-T03: Add focused source/guard and differential-oracle coverage, including decline/fallback cases. (FR-03, FR-05)
 
-### M2: Serial overhead stream (depends: M0)
+### M2: Matched performance comparison (depends: M1)
 
-Parallel with M1/M3; owns selected dispatch/gather changes; integrates at M4. [Deadlines](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Services.md#guest-time-and-deadlines).
+Parallel with M3's final test execution only where the Deck and test resources do
+not overlap.
 
-- [ ] M2-T01: Identify remaining redundant crossings/checks; distinguish existing batching from new opportunity. (FR-01, FR-03)
-- [ ] M2-T02: Implement one bounded change preserving deadlines and observer ordering, or record measured no-go. (FR-03, FR-04)
-- [ ] M2-T03: Compare isolated candidate; document larger native/caching follow-ups only where evidence supports them. (FR-03, FR-05)
+- [ ] M2-T01: Produce matched A/B builds and receipts; verify hashes and candidate activation. (FR-01, FR-03)
+- [ ] M2-T02: Run five interleaved headless/rendered pairs plus the Game Mode scene; compare cost, throughput, tails, waits, clocks, and noise. (FR-04)
+- [ ] M2-T03: Re-profile the candidate and explain where saved time went; record stable-30 result or remaining gap. (FR-02, FR-04)
 
-### M3: Correctness and evidence stream (depends: M0)
+### M3: Correctness and platform qualification (depends: M1)
 
-Parallel test development with M1/M2; owns test fixtures and qualification scripts. Final execution requires their candidate revisions. [Lifecycle](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Services.md#lifecycle-and-observable-state).
+- [ ] M3-T01: Run applicable #424 pool/lifecycle coverage, candidate tests, private oracle, and Linux/Windows CI. (FR-05)
+- [ ] M3-T02: Play the rendered Deck route with cutscene/audio, sailing/input, save/reload, and clean shutdown. (FR-05)
+- [ ] M3-T03: Check the low-load control and record regressions, skipped lanes, and incomplete evidence explicitly. (FR-04, FR-05)
 
-- [ ] M3-T01: Test calculation rules: stable inputs, disjoint outputs, complete publication, arithmetic order, budgets and unchanged declines. (FR-02, FR-04)
-- [ ] M3-T02: Verify positive worker activation, failure/unload behavior and required sanitizer/Windows lanes. (FR-02, FR-04)
-- [ ] M3-T03: Report actual updates, hashes and pressure stages; distinguish fail/skipped/incomplete/inconclusive/retain outcomes. (FR-01, FR-05)
+### M4: Decision and submission (depends: M2, M3)
 
-### M4: Integrate and qualify (depends: M1, M2, M3)
-
-[Graphics barriers](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Graphics.md#synchronization-and-completion); one benchmark per Deck at a time.
-
-- [ ] M4-T01: Integrate retained changes; run complete oracle/source tests against final hashes. (FR-02, FR-03, FR-04)
-- [ ] M4-T02: Execute frozen A/A and A/B matrix in separate unpaced/rendered modes; run serial/1/2/3-worker pressure checks and ≥30-minute rendered soak. (FR-05)
-- [ ] M4-T03: Complete gameplay/audio/cutscene/save checks; record impacts, goal attainment and enablement decision. (FR-04, FR-05)
+- [ ] M4-T01: Reconcile performance and correctness evidence against both success gates. (FR-04, FR-05)
+- [ ] M4-T02: Retain, revise, or reject the candidate; document any remaining bottleneck without carrying unsupported conclusions forward. (FR-02, FR-04)
+- [ ] M4-T03: Submit one scoped upstream PR with commands, redacted evidence, limitations, and rollback/default policy. (FR-03, FR-05)
 
 ## Impact evidence
 
 | ID | Actual | Outcome | Evidence |
 |---|---|---|---|
 | IMP-01 | Not measured | Planned | None |
-| IMP-02 | Not measured | Planned | None |
+| IMP-02 | Not selected | Planned | None |
 | IMP-03 | Not measured | Planned | None |
-| IMP-04 | Not tested | Planned | None |
-| IMP-05 | Not measured | Planned | None |
+| IMP-04 | Not measured | Planned | None |
+| IMP-05 | Not tested | Planned | None |
 
 ## Evidence ledger
 
-No implementation task is complete. Source inspection and planning validation do not establish game correctness or speed. Add commit, command, environment/input hashes, raw report path and result when each task runs. Keep private game inputs and copied saves local.
+No tasks are complete. Planning/source inspection is not performance,
+correctness, or hardware evidence.

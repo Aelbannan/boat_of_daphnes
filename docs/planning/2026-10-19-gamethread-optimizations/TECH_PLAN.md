@@ -1,215 +1,214 @@
-# TECH_PLAN — Shorten the Steam Deck game update
+# TECH_PLAN — Steam Deck game-thread optimization
 
-Status: Initial diagnostic batch implemented; no optimization retained · [Requirements](PRD.md) · [Tracker](PROGRESS.md)
+Status: Planning only
 
-## Inspected facts and provenance
+Source: upstream `main` at `2ab8118fc09fa08569100201a871616d18a1b771`
 
-Inspected BlueWake `main`: `095f7014cb2db2fb5640641133040593a7775a78`. Read AGENTS, GOAL_LOOP, architecture, performance/profiling guides, pool/math/skinning code and guard tests. Checked open related PRs and the upstream `gamethread` branch search (no matches); fork branches are not exhaustively inventoried. Recheck overlap before coding.
+[PRD](PRD.md) · [Tracker](PROGRESS.md)
 
-- [Existing vector arrays](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/native_math.c) already use synchronous fork/join. The caller participates. The [pool contract](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/native_work_pool.h) forbids callbacks accessing guest CPU/device/global state; [implementation](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/native_work_pool.c) keeps small jobs serial, supports up to eight POSIX background workers and retains Windows serial execution.
-- [Existing skinning](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/native_skin.c) is serial and reproduces guest arithmetic/state. Its 3.1% historical donor measurement is explicitly not a BlueWake benchmark.
-- [Dispatch](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/dispatch_loop.h) already inlines important control flow; [gather-pipe batching](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/gather_pipe_batch.h) already avoids a host call per word. Tune remaining costs only after profiling.
-- [PERFORMANCE](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/PERFORMANCE.md) records a Deck experiment reducing GX worker activity without raising FPS: optimizing another thread need not shorten the bottleneck.
-- The earlier #417 snapshot informed optional qualification tooling, not a merged prerequisite. The current review route is [#397](https://github.com/chrissotraidis/bluewake/pull/397), which combines the plan and foundation, then [#424](https://github.com/chrissotraidis/bluewake/pull/424)'s consolidated tests only when needed. #399 is superseded; #412–#417 remain deferred. The broader research streams below do not gate the first measured optimization.
+## Inspected facts
 
-## Proposed changes
+- [`bench_tour.py`](../../../scripts/bench_tour.py) controls fixed scenes and
+  emits speed, busy time, dip causes, and guest checkpoints in `summary.json`.
+- [`profile_deck.sh`](../../../scripts/linux/profile_deck.sh) launches one state,
+  samples the Linux process with `perf`, and emits `perf.data`, `report.txt`,
+  `run.log`, and a session-log copy. Headless and rendered runs answer different
+  questions; neither invokes the benchmark tour.
+- [`native_work_pool.c`](../../../cmake/composite/native_work_pool.c) provides
+  synchronous range work on POSIX; Windows remains serial. #424 adds broader
+  pool/lifecycle coverage but is not evidence that any game candidate is faster.
+- No old #421 result is retained. Baseline, noise, hotspots, and activation are
+  **unknown/not measured** for this plan.
 
-The changes below cover three connected steps. First, improve measurement so we can see which parts of a game update consume time and which are waiting. Then shorten the expensive work: share independent calculations across CPU cores, and reduce repeated checks or host calls in work that must stay sequential. Skinning is one candidate to measure, not a confirmed hotspot.
+## Planned changes
 
-The test and qualification changes support both approaches: they check that the optimized paths actually execute, preserve guest-visible behavior, and improve update time on the Deck. The table maps each step to its code, requirements and architecture.
-
-| Status | Surface | Practical change / requirement | Architecture |
+| Status | Surface | Practical change | Requirement |
 |---|---|---|---|
-| Extend existing | `scripts/linux/profile_deck.sh`, `scripts/bench_tour.py`; foundation qualification reports | Capture matched workloads, exclusive costs, wait time and batch distributions; FR-01, FR-05 | [Measurement](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/performance/Overview.md#tool-roles-and-platform-coverage) |
-| Modify if selected | `cmake/composite/native_math.c`, `native_skin.c`; proposed value-only helper | Tune vector grain or extract independent envelope calculation; FR-02, FR-04 | [State ownership](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/GuestState.md#ownership-and-address-model) |
-| Modify if selected | `cmake/composite/dispatch_loop.h`, `gather_pipe_batch.h` | One measured reduction in redundant checks/crossings; FR-03, FR-04 | [Host loop](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Host.md#main-loop-execution) |
-| Extend existing | `tests/native_math_guard_test.c`, foundation `tests/native_math_test.c`; proposed `tests/native_skin_test.c` if needed | Candidate-specific exactness, decline and activation checks; FR-02, FR-04 | [Guest state](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/GuestState.md) |
-| Extend foundation | `scripts/qualify_gamethread.py`, `scripts/gamethread_qualification/` | Record candidate identity, update metrics, pressure matrix and outcomes; FR-01, FR-05 | [Lifecycle](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Services.md#lifecycle-and-observable-state) |
+| Modify | Steam Deck measurement procedure and evidence record | Freeze inputs, measure A/A noise, profile, and rank current costs | FR-01, FR-02 |
+| Proposed | One M0-selected game-thread code path | Implement one bounded, opt-in candidate with activation evidence | FR-03 |
+| Modify | Benchmark and profiling evidence | Compare matched builds against cost-reduction and stable-30 gates | FR-04 |
+| Modify | Candidate-specific tests and qualification record | Prove behavior, fallback, lifecycle, and platform compatibility | FR-05 |
 
-Foundation paths exist on the inspected stack, not inspected main. Resolve their merged interfaces at M0. Renderer/runtime changes belong in RecompCore `bluewake-next`, followed by BlueWake pin/patch updates per [AGENTS](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/AGENTS.md); this plan does not authorize publishing there.
+## Steam Deck procedure
 
-## Rules for safely parallelizing calculations
+Keep the control immutable. Build candidates from the same source revision,
+compiler, PGO inputs, options, and AppImage environment; change only the
+candidate. Never publish the personal module, state, card, or raw private log.
 
-The contract specifies what must be true for a calculation to be split safely. The refactoring establishes those conditions; the existing thread pool distributes the independent pieces across cores. This applies to the vector/skinning changes in the table above. Dispatch and graphics changes must preserve their own deadline and observation rules.
+### 1. Build and identify the control
 
-| Potential dependency | What the contract requires | How that enables parallel execution |
-|---|---|---|
-| Calculations read changing game state. | Inputs stay stable until all ranges finish. | Workers can read concurrently without seeing different versions. |
-| Calculations overwrite another range's inputs or results. | Validate overlaps; assign separate outputs to each range. | Workers can write without coordinating every write. |
-| Arithmetic helpers modify guest registers or flags. | Workers calculate values; the game thread applies CPU-state effects. | Workers avoid racing over the emulated CPU. |
-| Game code consumes unfinished results. | The range call returns only after every participant finishes. | Subsequent game code sees complete results. |
-| Splitting a sum changes floating-point results. | Split between independent envelopes; preserve each envelope's arithmetic order. | Scheduling changes while numerical results remain equivalent. |
-
-These are implementation obligations, not properties automatically supplied by adding threads. If they cannot be established, retain the serial path. Existing vector arrays already follow this pattern; skinning would need the proposed refactoring and validation.
-
-Illustrative partition: actual pool partitioning may differ.
-
-```mermaid
-flowchart TD
-    Prepare["Game thread: validate inputs and prepare batch"]
-    Split{"Large enough to benefit?"}
-    Serial["Game thread: calculate entire batch"]
-    Caller["Game thread: vectors 0–299"]
-    WorkerA["Worker A: vectors 300–599"]
-    WorkerB["Worker B: vectors 600–899"]
-    Join["All ranges complete"]
-    Commit["Game thread: finalize guest state and continue"]
-    Prepare --> Split
-    Split -->|"No"| Serial --> Commit
-    Split -->|"Yes"| Caller --> Join
-    Split -->|"Yes"| WorkerA --> Join
-    Split -->|"Yes"| WorkerB --> Join
-    Join --> Commit
-```
-
-Existing call in `mult_vec_array`:
-
-```c
-bluewake_parallel_range(count,256,vector_range,&batch);
-```
-
-Proposed skinning shape; names below are proposed, not compiled APIs:
-
-```c
-/* Before any guest mutation: resolve stable inputs, capture FP mode,
-   validate budgets/overlaps, allocate bounded scratch if needed. */
-if (!prepare_skin_job(cpu, &job)) return 0; /* unchanged decline */
-bluewake_parallel_range(job.envelope_count, job.grain,
-                       skin_envelope_range, &job); /* joins here */
-commit_skin_job(cpu, &job); /* original effects, no new failure point */
-```
-
-The snippet implements three boundaries: **prepare inputs → calculate independent ranges → apply guest effects**. For skinning, preserve these additional details:
-
-- **Arithmetic:** joint reduction order, rounding/paired-single behavior and zero-count do-while semantics.
-- **Workers:** value-only FP helpers and disjoint scratch outputs; no live CPUState access.
-- **Caller:** original flags, stack writes, registers, reservations and cycle accounting.
-- **Fallback:** validate budgets, overlaps and allocations before guest mutation; small or ineligible jobs stay serial.
-- **Lifetime:** callbacks finish before shutdown/unload releases their code or data.
-
-Existing math's validated direct writes need not be converted to scratch unnecessarily.
-
-## Why whole actors stay sequential
-
-Illustrative dependency risk, not a claim about specific actor functions:
-
-```mermaid
-flowchart TD
-    Enemy["Enemy update"]
-    Player["Player update"]
-    Shared["Shared game state"]
-    EnemyResult["Enemy observes player position"]
-    PlayerResult["Player observes enemy collision"]
-    Enemy -->|"Reads and writes"| Shared
-    Player -->|"Reads and writes"| Shared
-    Shared --> EnemyResult
-    Shared --> PlayerResult
-    EnemyResult -. "Can depend on update order" .-> PlayerResult
-```
-
-Later subsystem jobs require stable snapshots and ordered application of effects. Graphics preparation additionally needs ownership/invalidation and the [existing observation barriers](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Graphics.md#synchronization-and-completion). M0 ranks caching/offload opportunities; implementation needs a bounded follow-up if it crosses those interfaces.
-
-## Verification and measurement
-
-| Layer | Method | Required evidence |
-|---|---|---|
-| Source-only | Existing pool CTest/guard tests, candidate fixtures, ASan/UBSan and supported TSan lane | Exact-once writes, boundaries, overlap declines, partial creation and unload tests |
-| Private integration | Foundation translated-reference / serial-native / candidate oracle | Independent RAM, complete function/category coverage, correct registers/memory/cycles and positive activation |
-| Deck A/B | Same merged revision/build inputs except candidate; controls below | Raw logs, executable/module hashes, settings, thermal/clock/power state and comparison report |
-| Gameplay | Rendered route, cutscene/audio, sailing/input, copied-card save/reload, soak | Completed route, no introduced errors, matching promised state; manual observations recorded separately |
-| Portability | Shared-code builds and required Windows host CI | Windows remains serial unless separately implemented and qualified |
-
-### Run matrix — proposed; freeze at M0
-
-A = candidate off. B = candidate on. Kernel checks also include forced-serial native.
-
-| Dimension | Configuration |
-|---|---|
-| Scenes | Outset + one measured slow gameplay scene + one low-load control |
-| Warmup / sample | 60 s / 120 s per measured run |
-| Noise check | Three A/A pairs per scene: same build against itself |
-| Comparison | Five interleaved A/B pairs per scene |
-| Background workers | Serial, 1, 2, 3; fresh process for each setting |
-| CPU pressure | Reuse foundation bounded-pressure stages |
-| Rendered soak | At least one run lasting ≥30 minutes |
-
-### Controls and measurements
-
-**Keep fixed within each comparison:**
-
-- Compiler, PGO, textures, render settings and pacing.
-- Scene, route and starting state; retain state/card hashes locally.
-- PRD retention thresholds, frozen before candidate measurements.
-
-**Collect separately:**
-
-| Run mode | Question | Primary evidence |
-|---|---|---|
-| Unpaced | How much execution headroom did we gain? | Actual-update duration; p50/p95/p99 |
-| Normal rendered 30 Hz | Does gameplay sustain its target rate? | Logic rate, stalls and behavior checks |
-| Worker / pressure matrix | Does offloading remain useful under contention? | Effective workers, worker-owned work, update time and waits |
-
-Count actual game updates. Dispatch turns and VI counts are not substitutes.
-
-### Decision flow
-
-```mermaid
-flowchart TD
-    Run["Run frozen comparison"]
-    Correct{"Correctness checks pass?"}
-    Fail["Fail: reject candidate"]
-    Evidence{"Required inputs, metrics and activation present?"}
-    Incomplete["Incomplete: collect missing evidence"]
-    Stable{"Comparison exceeds measured noise?"}
-    Inconclusive["Inconclusive: repeat or improve measurement"]
-    Policy{"Meets frozen benefit and regression limits?"}
-    Retain["Retain: continue qualification"]
-    NoGo["No-go: record result and keep baseline"]
-    Run --> Correct
-    Correct -->|"No"| Fail
-    Correct -->|"Yes"| Evidence
-    Evidence -->|"No"| Incomplete
-    Evidence -->|"Yes"| Stable
-    Stable -->|"No"| Inconclusive
-    Stable -->|"Yes"| Policy
-    Policy -->|"Yes"| Retain
-    Policy -->|"No"| NoGo
-```
-
-- **Fail:** any correctness error.
-- **Skipped:** an unsupported optional lane, explicitly identified.
-- **Incomplete:** required inputs, metrics or eligible-path activation missing.
-- **Inconclusive:** A/B results cannot be distinguished from noise.
-- **Retain:** measured benefit passes policy; full gameplay/hardware qualification still required.
-
-Commands verified against inspected entry points; examples for later execution, not checks run here:
+On the development machine:
 
 ```bash
-cmake -S tests/native_work_pool -B build/native-work-pool
-cmake --build build/native-work-pool --parallel
-ctest --test-dir build/native-work-pool --output-on-failure
-python3 scripts/qualify_gamethread.py matrix
-scripts/linux/profile_deck.sh --help
+git switch --detach 2ab8118fc09fa08569100201a871616d18a1b771
+python3 scripts/linux/build.py /path/to/GZLE01.iso \
+  --out build/deck-control --ci-container --clang22 --appimage
+sha256sum build/deck-control/BlueWake-x86_64.AppImage \
+  build/deck-control/composite/gGZLE01_recomp.so
 ```
+
+Record the commit, dependency-lock hash, compiler, builder command, AppImage and
+module hashes, PGO/training status, and build summary. Copy the AppImage plus
+`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck.
+
+### 2. Freeze the Deck environment and private workload
+
+Record Steam Deck revision, SteamOS/kernel, Game Mode or Desktop Mode, refresh
+rate, frame cap, TDP/clock limits, power source, renderer, resolution, textures,
+Smooth Motion, and state hash. Use one heavy state (initially Outset), another
+measured slow scene, and a low-load control. Fix cooling/power conditions and
+discard warmup before comparing runs.
+
+### 3. Establish same-build noise
+
+From the Deck, run the control at least three times per mode:
+
+```bash
+python3 scripts/bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
+  --state /home/deck/.local/share/BlueWake/quick-N.bwstate --mode headless
+mv summary.json evidence/control-headless-1.json
+
+python3 scripts/bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
+  --state /home/deck/.local/share/BlueWake/quick-N.bwstate --mode rendered
+mv summary.json evidence/control-rendered-1.json
+
+python3 scripts/bench_tour.py compare \
+  evidence/control-headless-1.json evidence/control-headless-2.json
+```
+
+Repeat with identical settings. If same-build speed varies by more than 3%, or
+checkpoints differ, fix the workload before profiling candidates.
+
+### 4. Capture CPU profiles
+
+Headless/unpaced isolates execution throughput; rendered/Desktop Mode exposes
+GX, GPU, and presentation waits:
+
+```bash
+scripts/linux/profile_deck.sh --seconds 30 \
+  --appimage ./BlueWake-x86_64.AppImage \
+  --state /home/deck/.local/share/BlueWake/quick-N.bwstate \
+  --out evidence/profile-headless
+
+scripts/linux/profile_deck.sh --rendered --seconds 30 \
+  --appimage ./BlueWake-x86_64.AppImage \
+  --state /home/deck/.local/share/BlueWake/quick-N.bwstate \
+  --out evidence/profile-rendered
+```
+
+For the primary Game Mode capture, launch the same AppImage/state through Steam,
+then attach over SSH rather than launching a second process:
+
+```bash
+PID=$(pgrep -n -f 'mount_.*bluewake')
+perf record -g -F 99 -p "$PID" -o evidence/game-mode.data -- sleep 30
+perf report -i evidence/game-mode.data --stdio --no-children \
+  > evidence/game-mode-flat.txt
+perf report -i evidence/game-mode.data --stdio --sort=tid,symbol \
+  > evidence/game-mode-threads.txt
+```
+
+Reject a capture with the wrong PID/scene, lost samples, thermal/power changes,
+missing symbols, or insufficient post-warmup duration.
+
+### 5. Rank and investigate candidates
+
+Correlate flat self-time, per-thread ownership, session `busy`/wait fields, and
+cycles/instructions per retrace. Use `perf annotate` on each leading symbol.
+Generated `func_<address>` symbols are chunks, not original game functions;
+map ranges before naming game logic.
+
+### 6. Compare a candidate
+
+Build A and B from the same revision and inputs. Run five interleaved pairs
+(`A/B/B/A/...`) in headless and rendered modes, then repeat the Game Mode scene.
+Use `bench_tour.py compare`, verify candidate activation, compare medians and
+noise, re-profile B, and complete the gameplay route. Missing activation,
+correctness evidence, or 30 FPS evidence leaves qualification incomplete.
+
+```mermaid
+flowchart LR
+    Control["Immutable control"] --> Noise["A/A noise"]
+    Noise --> Profile["Headless, rendered,<br/>Game Mode profiles"]
+    Profile --> Rank["Rank exclusive cost<br/>and waits"]
+    Rank --> Candidate["One bounded candidate"]
+    Candidate --> Compare["Interleaved A/B"]
+    Compare --> Gates{"Faster, correct,<br/>stable 30 FPS?"}
+    Gates -->|Yes| Retain["Submit candidate"]
+    Gates -->|No| Record["Reject or iterate"]
+```
+
+## Candidate surfaces
+
+Selection is measurement-driven; the rows are investigation boundaries, not
+preapproved changes.
+
+| Candidate | Referenced code | Why it may matter | Selection evidence |
+|---|---|---|---|
+| Dispatch/direct-call bookkeeping | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h), [`direct_calls.h`](../../../cmake/composite/direct_calls.h), [`host_direct_can_skip_with`](../../../runtime/host/src/main.c) | Runs at translated/host boundaries | High exclusive cost and call frequency after current defaults |
+| Hot translated chunk or larger native span | [`module_export.c`](../../../cmake/composite/module_export.c), patterns in [`native_search.c`](../../../cmake/composite/native_search.c) and [`native_j3d.c`](../../../cmake/composite/native_j3d.c) | Removes repeated translated bookkeeping from measured game work | Mapped hot chunk, verified original range, safe native boundary, upper-bound benefit |
+| Independent numeric batch | [`native_math.c`](../../../cmake/composite/native_math.c), [`native_skin.c`](../../../cmake/composite/native_skin.c), [`native_work_pool.c`](../../../cmake/composite/native_work_pool.c) | Can use otherwise idle CPU cores when inputs/outputs are independent | Inclusive kernel cost, profitable batch sizes, positive worker activation |
+| Guest-state/access helpers | [`guest_cpu.c`](../../../cmake/composite/guest_cpu.c), [`inline_gpr.h`](../../../cmake/composite/inline_gpr.h), [`inline_fp.h`](../../../cmake/composite/inline_fp.h) | Generated execution may spend time synchronizing or interpreting values | Annotated self-time; no assumption that inlining or caching helps |
+| GX command preparation on the game thread | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h), [`gather_pipe_batch.h`](../../../cmake/composite/gather_pipe_batch.h) | Game-thread command production can remain costly even with an idle GPU | Game-thread/GX symbols and waits, not GPU utilization alone |
+
+Proposed candidate instrumentation must be compile-time or explicitly opt-in,
+must report path activation, and must not be part of the timed A/B binaries.
+
+## Metrics and verification
+
+| Metric | Unit / source | Decision use |
+|---|---|---|
+| Game rate | game FPS and retraces/s from benchmark/session logs | Stable-30 gate and throughput benefit |
+| Game-thread cost | busy %, wall time per fixed retrace window | Primary critical-path reduction |
+| CPU work | cycles and instructions per retrace; IPC | Distinguish less work from clock/noise effects |
+| Hotspot ownership | flat self-time %, annotated instructions, TID | Select and explain candidate |
+| Waiting | GX/present/GPU wait ms; worker busy % | Reject wrong-domain optimization |
+| Distribution | median plus p95/p99 update time where available | Detect tail regressions hidden by averages |
+| Activation | calls, accepted/declined jobs, batches, items | Prove the candidate ran |
+| Correctness | checkpoints, differential oracle, source tests | Reject skipped or changed game work |
+| Environment | clocks, temperature, power/TDP, hashes | Identify incomparable runs |
+
+Verification layers: #424's synthetic pool/lifecycle tests where applicable;
+candidate guard/source tests; private translated-reference versus candidate
+oracle; Linux/Windows CI; then Deck benchmark, Game Mode play, audio/cutscene,
+input, save/reload, and shutdown. A compile or synthetic pass is not hardware
+qualification.
 
 ## Impact register
 
-| ID | FR | Entity / baseline | Expected change / measure | Risk | Owner |
-|---|---|---|---|---|---|
-| IMP-01 | FR-01 | Update attribution: unknown | Ranked exclusive time and waits; same-scene profile/logs | Sampling confuses busy and blocked time | M0 |
-| IMP-02 | FR-02 | Kernel cost/activation: unknown | Lower inclusive job time including scheduling/copy/join; batch histogram | Tiny jobs, bandwidth or FP differences | M1 |
-| IMP-03 | FR-03 | Serial overhead: unknown | Fewer measured crossings/checks; lower update time | Skipped observable boundary | M2 |
-| IMP-04 | FR-04 | Candidate integrity: untested | Zero required mismatches; oracle and lifecycle evidence | Incomplete coverage | M3 |
-| IMP-05 | FR-05 | Merged Deck rate: unknown | Stable 30 Hz; PRD thresholds and pressure/soak evidence | Renderer contention, thermal noise | M4 |
+| ID | Requirement | Entity / flow | Baseline | Target / measurement | Risk | Owner |
+|---|---|---|---|---|---|---|
+| IMP-01 | FR-01/02 | Deck measurement | Unknown | Comparable A/A evidence and ranked self-time | Thermal/process mismatch | M0 |
+| IMP-02 | FR-03 | Selected code path | Not selected | Positive activation and bounded semantic contract | Wrong hotspot or unsafe boundary | M1 |
+| IMP-03 | FR-04 | Game thread | Unknown | Cost reduction beyond noise | Shift work elsewhere | M2 |
+| IMP-04 | FR-04 | Rendered Game Mode | Unknown | Median ≥29.5 FPS without sustained game-thread dips | Scene remains CPU-bound | M2 |
+| IMP-05 | FR-05 | Guest/platform behavior | Untested | Required checks pass | Incomplete oracle or platform regression | M3 |
 
 ## Implementation order
 
-| Milestone | Depends | Can run with | Ownership, deliverable and gate |
+| Milestone | Depends | Can run with | Deliverable / integration gate |
 |---|---|---|---|
-| M0 | — | — | Freeze baseline, chosen candidates, interfaces, thresholds and report schema |
-| M1 | M0 | M2, M3 | Own math/skin implementation; independent range kernel or measured no-go |
-| M2 | M0 | M1, M3 | Own dispatch/gather surfaces; isolated serial-overhead change or measured no-go |
-| M3 | M0 | M1, M2 | Own fixtures/qualification scripts; integrate M0 contract, then verify final candidate revisions |
-| M4 | M1, M2, M3 | — | Combine retained changes; Deck performance, behavior, pressure and soak qualification |
+| M0 | — | — | Frozen control, Deck A/A noise, profiles, metrics, and ranked candidate |
+| M1 | M0 | — | One candidate plus focused activation/correctness tests; code ownership follows selected row |
+| M2 | M1 | M3 test preparation | Matched A/B builds and interleaved Deck evidence |
+| M3 | M1 | M2 | Differential, CI, lifecycle, and gameplay qualification on final candidate |
+| M4 | M2, M3 | — | Go/no-go record and one scoped upstream PR |
 
-Critical path: M0 → longest of M1/M2/M3 → M4. No duration estimate is supported. M3 final execution waits for candidate commits despite parallel test development. Shared pool headers/counters stay frozen; coordinate any required interface edit before dependent work resumes. Only one hardware benchmark runs per Deck at once. If M0 selects overlapping implementation files, serialize those edits. A no-go closes an experimental stream with evidence, not an invented optimization.
+Critical path: M0 → M1 → M2/M3 → M4. Candidate selection is serial because it
+determines code ownership and the necessary oracle. Only test preparation can
+run alongside A/B measurement, and only one benchmark runs on the Deck at once.
+
+## Decisions / gaps
+
+- Stable 30 FPS and measurable game-thread reduction are both required.
+- Exact baseline, slow-scene set beyond Outset, candidate, and attainable gain
+  are unresolved until M0. Use **unknown/not measured**, not old #421 data.
+- `perf stat` collection per fixed retrace window may need a small wrapper;
+  validate its synchronization before accepting cycles/instructions per retrace.
+
+## References
+
+- [Issue #215](https://github.com/chrissotraidis/bluewake/issues/215) — motivation and Deck context, not the fresh baseline.
+- [Steam Deck profiling guide](../../PROFILING.md) — current Linux procedure and interpretation.
+- [Performance overview](../../performance/Overview.md) — profiling, benchmarking, and tuning contracts.
+- [Test architecture](../../architecture/Testing.md) — evidence levels and private/hardware boundaries.

@@ -1,115 +1,79 @@
-# PRD — Shorten the Steam Deck game update
+# PRD — Steam Deck game-thread optimization
 
-Status: Initial diagnostic batch implemented; Deck qualification pending · Created: 2026-10-19
+Status: Planning only
+
+Source: upstream `main` at `2ab8118fc09fa08569100201a871616d18a1b771`
+
+Scope: profile, select, implement, and qualify one measured game-thread optimization; excluded: renderer-only tuning, 60 Hz simulation, and speculative actor parallelism
 
 [Technical plan](TECH_PLAN.md) · [Progress](PROGRESS.md)
 
-## Motivation and outcome
+## Motivation
 
-Steam Deck players encounter slow simulation while GPU capacity remains available. The user confirmed the goal: preserve gameplay and reduce game-update time enough for stable **30 Hz logic**, with a 33.3 ms update budget. Higher presentation rates and Smooth Motion are separate from logic rate.
+Steam Deck players can remain below the game's 30 FPS target while the GPU has
+headroom and the game thread is saturated ([#215](https://github.com/chrissotraidis/bluewake/issues/215)).
+The confirmed goal is both to reduce measured game-thread cost and to reach a
+stable 30 FPS in repeatable demanding Deck scenes without changing gameplay.
 
-[Issue #215](https://github.com/chrissotraidis/bluewake/issues/215) originally reported about 20 FPS; a [later game-mode report](https://github.com/chrissotraidis/bluewake/issues/215#issuecomment-6223657482) reported 22–27 FPS on `78da642`. These are historical observations, not this plan's baseline. The desktop 5800X3D result is useful context, not evidence of the Deck's exact hotspot.
-
-## Scope and prerequisite
-
-Measure the critical path; parallelize profitable independent calculations; reduce serial translated/runtime overhead; investigate repeated graphics preparation and waits. Implement one measured hypothesis per change.
-
-There is no mandatory #397–#417 merge chain. [#397](https://github.com/chrissotraidis/bluewake/pull/397)
-contains the plan and test foundation; [#424](https://github.com/chrissotraidis/bluewake/pull/424)
-consolidates #406–#411's focused follow-up coverage. #412–#417's qualification
-tooling remains deferred. Select only the tests needed by each measured change;
-establish the actual baseline revision rather than assuming these PRs merged.
-Keep exploratory work on the fork and submit one optimization at a time with
-benchmark-tour before/after measurements and gameplay checks. The broader
-milestones below are research directions, not prerequisites for that first PR.
-
-Excluded: 60 Hz simulation, arbitrary concurrent actor updates, GPU compute migration, a new scheduler framework, and automatic feature enablement before hardware qualification.
-
-## Initial diagnostic batch
-
-This PR adds opt-in watched-address lookup counters and a static table-analysis
-script, then records the desktop profiles used to select the next investigation.
-Normal builds compile out the counters. The evidence rejects prioritizing a
-one-entry cache and identifies no retained optimization or speedup yet.
-
-See [watched-address results](EDGE_WATCH_EXPERIMENT.md) and the
-[translated-chunk investigation](TRANSLATED_CHUNK_INVESTIGATION.md). Deck A/A,
-benchmark-tour and gameplay gates remain open.
-
-## Current bottleneck, conceptually
-
-Boxes show dependencies, not measured durations. Work is interleaved in practice; this is not an exact frame trace.
-
-```mermaid
-flowchart TD
-    Start["Start game update"]
-    Logic["Game thread: translated game logic"]
-    Math["Game thread: matrix and animation calculations"]
-    Commands["Game thread: produce graphics commands"]
-    Finish["Game update complete"]
-    Renderer["Graphics worker: process queued commands"]
-    GPU["GPU: render"]
-    Start --> Logic --> Math --> Commands --> Finish
-    Commands --> Renderer --> GPU
-    Renderer -. "Wait where completion is required" .-> Finish
-```
-
-See [host execution](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Host.md#main-loop-execution) and [graphics completion](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Graphics.md#synchronization-and-completion). Idle GPU capacity cannot execute the serial work ahead of it automatically.
+Earlier #421 measurements and candidate conclusions are discarded. Issue reports
+explain why the work matters but are not the new baseline. All decisions start
+from fresh Steam Deck evidence produced from one recorded revision.
 
 ## Requirements
 
-### FR-01 — Identify the limiting work
+### FR-01 — Reproducible Steam Deck baseline
 
-Attribute game-update time to computation, translated/runtime bookkeeping, graphics preparation and blocking. Record activation and batch sizes; enabled settings alone do not prove execution. Use the [performance workflow](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/performance/Overview.md#performance-workflow).
+Architecture: [performance workflow](../../performance/Overview.md#performance-workflow).
 
-Acceptance: a reproducible Deck baseline, ranked candidates, and a go/no-go decision for each proposed optimization.
+- Measure the same private state, scene, settings, build inputs, pacing, power
+  condition, and warmup across repeated runs.
+- Produce raw session logs, benchmark summaries, `perf` data/reports, hashes,
+  and environment metadata. Missing or mismatched inputs make a run incomplete.
 
-### FR-02 — Share independent calculations across cores
+### FR-02 — Profile before selecting code
 
-Keep one authoritative owner of [guest state](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/GuestState.md#ownership-and-address-model). Workers receive stable inputs, own nonconflicting outputs, and complete before results are consumed. Only the game thread applies guest CPU/device effects; arithmetic order remains equivalent. Small or unsafe jobs stay serial. These rules enable splitting the calculation; the pool schedules it. See [parallelization rules](TECH_PLAN.md#rules-for-safely-parallelizing-calculations).
+Architecture: [performance domains](../../performance/Overview.md#performance-domains).
 
-Acceptance: translated reference, serial native and parallel candidate agree on the promised guest-visible effects; eligible tests prove worker participation. Skinning remains a measured candidate, not a predetermined implementation.
+- Separate translated game work, host/dispatch bookkeeping, guest-state access,
+  services, GX work, blocking, and presentation.
+- Rank exclusive self-time and cycles/instructions per retrace. A hot symbol is
+  a candidate, not proof that changing it improves the product.
 
-### FR-03 — Reduce serial and repeated work
+### FR-03 — Implement one bounded candidate
 
-Optimize measured runtime overhead or repeated preparation without changing [guest deadlines](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Services.md#guest-time-and-deadlines) or graphics observation order. Consider larger native routines, batching and caching where evidence supports them. Existing optimizations must not be presented as missing features.
+Architecture: [game-module dispatch](../../architecture/GameModule.md#translated-code-dispatch).
 
-Acceptance: isolated A/B evidence shows a shorter game-update critical path; otherwise retain the baseline and record the rejected hypothesis.
+- Select only a path activated in the measured scene with a defensible upper
+  bound. Preserve guest state, deadlines, arithmetic, ordering, and fallback.
+- Keep gameplay/timing changes off by default until affected-platform evidence
+  supports enablement. Runtime-owned work follows the RecompCore PR/pin process.
 
-### FR-04 — Preserve behavior and lifecycle
+### FR-04 — Demonstrate both performance outcomes
 
-Retain arithmetic order where exactness is promised, memory effects, registers, cycles, callbacks and rendering barriers. Preserve save/reload, shutdown and failure behavior. Declines leave guest state unchanged. See [guest state](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/GuestState.md) and [service lifecycle](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Services.md#lifecycle-and-observable-state).
+- Reduce game-thread cost beyond same-build noise in the selected workload.
+- Reach stable 30 FPS in the target rendered Deck scene, or report the remaining
+  gap and reject any claim that the goal is complete.
 
-Acceptance: existing foundation checks plus candidate-specific tests pass; gameplay, audio, cutscene, input and save checks remain mandatory.
+### FR-05 — Preserve correctness and portability
 
-### FR-05 — Demonstrate product benefit on Deck
+Architecture: [test evidence levels](../../architecture/Testing.md#evidence-levels).
 
-Measure milliseconds per actual game update, sustained logic rate, p50/p95/p99, worker activation and waits. Compare serial and 1/2/3 background workers under normal and bounded CPU pressure; maximum utilization is not the objective.
+- Candidate-specific source tests and differential/oracle checks must pass with
+  positive path activation; serial fallback is not candidate evidence.
+- Run applicable Linux/Windows CI and Deck gameplay checks. Private discs,
+  modules, states, cards, and raw personal logs remain local.
 
-Acceptance: reproducible improvement beyond same-build noise, no material regression in control scenes, and a rendered Deck qualification report. New behavior stays opt-in until qualified.
+## Success and constraints
 
-## Success and evidence policy
-
-| Metric | Baseline | Target / decision |
-|---|---|---|
-| Logic throughput | Not measured on merged baseline | Sustain approximately 30 updates/s in frozen gameplay scenes |
-| Active update duration | Unknown | p95 ≤33.3 ms; report p99 and stalls separately |
-| Candidate benefit | Unknown | Proposed retention policy: ≥5% median update-time reduction in target scene, exceeding measured noise |
-| Control-scene regression | Unknown | Proposed limit: ≤2%; noisy comparisons are inconclusive |
-| Correctness | Assumed foundation; candidate untested | All required exactness and behavior gates pass |
-
-Freeze thresholds, scenes and the [run matrix](TECH_PLAN.md#run-matrix--proposed-freeze-at-m0) at M0. Keep unpaced headroom and normal rendered 30 Hz results separate. Report partial progress if the 30 Hz goal is not reached.
-
-| Outcome | Meaning |
-|---|---|
-| Fail | Correctness error; reject candidate |
-| Incomplete | Required inputs, metrics or eligible-path activation missing |
-| Inconclusive | Results cannot be distinguished from noise |
-| Skipped | Explicitly unsupported optional lane |
-| Retain | Benefit/regression policy met; full qualification still required |
+| Metric | Baseline | Target | Validation |
+|---|---|---|---|
+| Rendered game rate | Unknown; remeasure | Median ≥29.5 FPS with no sustained game-thread dip after warmup | Five interleaved A/B runs in the same Deck Game Mode scene |
+| Game-thread cost | Unknown; remeasure | Improvement exceeds the larger of 3% or measured A/A noise | Unpaced throughput, busy share, cycles and instructions per retrace |
+| Correctness | Untested for candidate | Required oracle/checkpoint and gameplay checks pass | Source tests, private oracle, benchmark checkpoints, rendered play |
+| Regression | Unknown | No material low-load, GX-wait, audio, input, save, or shutdown regression | Control scene, session diagnostics, manual route, lifecycle tests |
 
 ## Clarifications
 
-- Motivation confirmed: stable 30 Hz logic while preserving gameplay.
-- Preserve the three original explanatory diagrams; TECH_PLAN also includes the qualification decision flow.
-- Which routine deserves implementation is an evidence decision at M0, not an assumed hotspot.
+- Confirmed by the user on 2026-10-20: both stable 30 FPS and measurable
+  game-thread reduction are required.
+- Candidate and numerical baseline remain open until M0 captures fresh Deck data.

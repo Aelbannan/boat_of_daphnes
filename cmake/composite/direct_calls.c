@@ -2,27 +2,6 @@
 #include "direct_calls.h"
 
 #include <stdio.h>
-#if defined(BLUEWAKE_EDGE_WATCH_PROFILE)
-#include <stdlib.h>
-
-/* This diagnostic follows the existing single game-thread ownership of the
- * watch table. These counts are not atomic and must not be used from workers.
- * Adjacent repeats describe a one-entry cache opportunity, not its speedup.
- * Raw addresses deliberately distinguish main-code mirrors and REL ranges. */
-static unsigned long long watch_calls, watch_repeats, watch_probes, watch_unwatched;
-static u32 watch_previous;
-void bw_edge_watch_profile(u32 address, u32 probes, bool unwatched) {
-    if (watch_calls && address == watch_previous) ++watch_repeats;
-    watch_previous = address;
-    ++watch_calls;
-    watch_probes += probes;
-    watch_unwatched += unwatched;
-}
-static void edge_watch_profile_report(void) {
-    fprintf(stderr, "[edge-watch-profile] calls=%llu adjacent_repeats=%llu probes=%llu unwatched=%llu\n",
-            watch_calls, watch_repeats, watch_probes, watch_unwatched);
-}
-#endif
 
 #if defined(_WIN32)
 #define BW_DIRECT_EXPORT __declspec(dllexport)
@@ -63,9 +42,6 @@ _Static_assert(sizeof bw_edge_watch_list / sizeof bw_edge_watch_list[0] < BW_EDG
 static void edge_watch_build(void) {
     if (bw_edge_watch_ready)
         return;
-#if defined(BLUEWAKE_EDGE_WATCH_PROFILE)
-    atexit(edge_watch_profile_report);
-#endif
     for (u32 i = 0; i < sizeof bw_edge_watch_list / sizeof bw_edge_watch_list[0]; ++i) {
         const u32 canonical = bw_edge_watch_list[i] & ~0x40000000u;
         u32 slot = (canonical * 0x9E3779B1u) >> 20;
