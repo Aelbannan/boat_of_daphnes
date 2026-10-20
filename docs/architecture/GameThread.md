@@ -271,6 +271,36 @@ The prose uses half-open ranges because that is the callback interface. The
 diagram shows the equivalent inclusive item numbers so each participant's
 ownership is visible without overlapping endpoints.
 
+In the current production caller, one item is one 12-byte vector containing
+three big-endian floats: `(x, y, z)`. Every participant reads the same immutable
+3-by-4 transformation matrix, transforms the vectors in its assigned range,
+and writes one 12-byte result per input. Depending on the game caller, those
+vectors can represent positions or directions; the pool only sees numbered
+elements and byte ranges.
+
+Using the same illustrative 4,099-item batch:
+
+| Participant | Example item | Input location | Work performed |
+|---|---:|---:|---|
+| Worker 0 | Vector 0 `(x0, y0, z0)` | `input + 0` | Read item 0, apply the shared matrix, and write result 0 |
+| Worker 1 | Vector 1,024 | `input + 12,288` | Process the first item in worker 1's range |
+| Worker 2 | Vector 2,049 | `input + 24,588` | Process the first item in worker 2's range |
+| Game thread | Vector 3,074 | `input + 36,888` | Process the first item in the caller's range |
+| Game thread | Vector 4,098 | `input + 49,176` | Process the final item in the batch |
+
+The output offsets follow the same `12 * index` calculation. Thus worker 1 can
+write vector 1,024 while worker 2 writes vector 2,049 without sharing an output
+element. The complete batch occupies 49,188 input bytes and 49,188 output
+bytes. The 4,099 count is a partitioning example, not a claim that every game
+submission contains that many vectors. See the production
+[`vector_range`](../../cmake/composite/native_math.c#L197-L214) callback and its
+[`bluewake_parallel_range`](../../cmake/composite/native_math.c#L241) call.
+
+The component test uses simpler synthetic items: each index has a visitation
+counter and an output value derived from `index ^ salt`. Those items verify
+range ownership and publication without requiring game data; they are not the
+vectors processed during gameplay.
+
 The safety boundary is stricter than the partition arithmetic. A callback must
 read stable inputs, write only its assigned output range, and avoid guest CPU,
 device, or mutable global state. The single shared job descriptor also assumes
