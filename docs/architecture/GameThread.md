@@ -296,24 +296,14 @@ submission contains that many vectors. See the production
 [`vector_range`](../../cmake/composite/native_math.c#L197-L214) callback and its
 [`bluewake_parallel_range`](../../cmake/composite/native_math.c#L241) call.
 
-The component test uses simpler synthetic items: each index has a visitation
-counter and an output value derived from `index ^ salt`. Those items verify
-range ownership and publication without requiring game data; they are not the
-vectors processed during gameplay.
+The component test substitutes simple indexed values for game vectors. This
+checks that every item runs once and all results are ready at the join.
 
-The safety boundary is stricter than the partition arithmetic. A callback must
-read stable inputs, write only its assigned output range, and avoid guest CPU,
-device, or mutable global state. The single shared job descriptor also assumes
-one submitting game thread; this is not a concurrent multi-producer queue.
-Workers set round-to-nearest mode at startup, but each candidate must still
-prove that its arithmetic and publication behavior match the translated
-reference.
+Safe pool work reads shared, stable input and writes separate output ranges.
+Guest state remains on the game thread and is updated after the join.
 
-On Windows the same interface currently executes the callback serially and the
-parallel-batch count remains zero. POSIX builds provide the persistent worker
-backend. The production vector path demonstrates the intended use: compute
-independent values in parallel, join, and only then apply final guest-visible
-CPU effects on the game thread.
+POSIX builds can use persistent workers; Windows currently uses the same API
+serially.
 
 The focused component test runs without a disc, translated module, or renderer.
 It checks empty and serial ranges, uneven partitions, repeated submissions,
