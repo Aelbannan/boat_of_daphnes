@@ -13,7 +13,7 @@ Architecture: [Overview](architecture/Overview.md) · [Host](architecture/Host.m
 
 ## Scope and review order
 
-[#399](https://github.com/chrissotraidis/bluewake/pull/399) supplies the pool/build
+[#397](https://github.com/chrissotraidis/bluewake/pull/397) supplies the combined plan and pool/build
 foundation. [#424](https://github.com/chrissotraidis/bluewake/pull/424) consolidates the remaining focused coverage from
 #406–#411. It adds no game optimization, worker-default change or new offload.
 Use it when a concrete optimization needs these contracts, not as a blanket gate.
@@ -124,4 +124,4 @@ is claimed by this consolidation. Performance changes still follow the
 The original commits/branches remain available. #412–#417 qualification tools
 and [#421](https://github.com/chrissotraidis/bluewake/pull/421)'s broader plan are
 deferred, not dependencies. [#397](https://github.com/chrissotraidis/bluewake/pull/397)
-now covers #399's foundation only; #396 and #400 remain independent.
+now contains that foundation; #399 is superseded, and #396/#400 remain independent.
