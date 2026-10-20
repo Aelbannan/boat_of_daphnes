@@ -1,6 +1,6 @@
 # TECH_PLAN — Shorten the Steam Deck game update
 
-Status: Deferred upstream; exploratory fork roadmap · [Requirements](PRD.md) · [Tracker](PROGRESS.md)
+Status: Initial diagnostic batch implemented; no optimization retained · [Requirements](PRD.md) · [Tracker](PROGRESS.md)
 
 ## Inspected facts and provenance
 

@@ -1,6 +1,6 @@
 # PRD — Shorten the Steam Deck game update
 
-Status: Deferred upstream; exploratory fork roadmap · Created: 2026-10-19
+Status: Initial diagnostic batch implemented; Deck qualification pending · Created: 2026-10-19
 
 [Technical plan](TECH_PLAN.md) · [Progress](PROGRESS.md)
 
@@ -24,6 +24,17 @@ benchmark-tour before/after measurements and gameplay checks. The broader
 milestones below are research directions, not prerequisites for that first PR.
 
 Excluded: 60 Hz simulation, arbitrary concurrent actor updates, GPU compute migration, a new scheduler framework, and automatic feature enablement before hardware qualification.
+
+## Initial diagnostic batch
+
+This PR adds opt-in watched-address lookup counters and a static table-analysis
+script, then records the desktop profiles used to select the next investigation.
+Normal builds compile out the counters. The evidence rejects prioritizing a
+one-entry cache and identifies no retained optimization or speedup yet.
+
+See [watched-address results](EDGE_WATCH_EXPERIMENT.md) and the
+[translated-chunk investigation](TRANSLATED_CHUNK_INVESTIGATION.md). Deck A/A,
+benchmark-tour and gameplay gates remain open.
 
 ## Current bottleneck, conceptually
 
