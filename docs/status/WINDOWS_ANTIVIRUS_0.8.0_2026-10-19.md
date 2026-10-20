@@ -27,8 +27,12 @@ unrelated unless someone shows otherwise.
 
 ## The report to Microsoft
 
-- [ ] Chris reports `BlueWake-v0.8.0-windows-x64.zip` at https://www.microsoft.com/en-us/wdsi/filesubmission as
-  incorrectly detected, with `Tecabans.STV!cl`. Date and result go here.
+- [x] Chris reported `BlueWake-v0.8.0-windows-x64.zip` at https://www.microsoft.com/en-us/wdsi/filesubmission as
+  incorrectly detected, with `Tecabans.STV!cl` (done by October 20). Result: not known yet. Don't report 0.8.0
+  again; add Microsoft's answer here when it comes.
+- October 20: the zip downloaded from the release again still matches `SHA256SUMS`
+  (`56cc845823ec7e6af19f5306ab7517a511d6bbcaa222cc7f84a437b38c588e2f`). The GitHub report is
+  [#422](https://github.com/chrissotraidis/bluewake/issues/422).
 
 ## Signing: the decision still open
 

@@ -60,9 +60,10 @@ just by building from `main`:
 
 - Put game, audio, timing and logging changes in shared code (`runtime/host/src`, or RecompCore for the
   runtime). The Windows build compiles the same files.
-- A desktop setting goes in both menus: `runtime/host/src/settings_menu.cpp` (Mac) and
-  `windows/src/win_settings.cpp` (Windows). Share a header between them when you can, as
-  `runtime/host/src/button_remap.h` does.
+- A desktop setting is a row in `runtime/host/src/settings_table.h`. Mac, Linux and Windows draw one menu from
+  it (`runtime/host/src/desktop_menu.cpp`, with the settings file in `desktop_settings.cpp`); a setting with a
+  control of its own is drawn there too. `runtime/host/src/settings_menu.cpp` (Mac and Linux) and
+  `windows/src/win_settings.cpp` hold only each platform's plumbing.
 - The Windows CI ("host" job) must pass before merging.
 - If the change still needs a check on a Windows PC, add it to "In `main`, for the next Windows build"
   in [docs/WINDOWS_TASKS.md](docs/WINDOWS_TASKS.md) in the same pull request.
@@ -72,8 +73,9 @@ just by building from `main`:
 - Write as the person whose account posts, in the first person and in plain, friendly language. If a bot
   drafts a reply, it is still that person's reply: say "I", and don't mention bots, agents or AI models.
 - Post only from your own maintainer's account. Never post as or for the other maintainer.
-- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic.
-  Say why when you close it.
+- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic, or
+  the fix is in a release and the reporter hasn't replied for 14 days since that was posted on the issue. Then
+  close it, name the release, and ask them to reopen it if it still happens. Say why when you close it.
 - Ask for what helps: the platform, the BlueWake version and the session log. Don't promise dates.
 - Don't post, push, or open issues or pull requests on other repositories (including
   `elliotttate/Wind-Waker-Recomp`) unless the maintainer asks for that specific action.
