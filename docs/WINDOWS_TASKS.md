@@ -24,7 +24,7 @@ is in `main` (October 17), off by default. Native HD import is in `main` too (#3
 audit and attribution passed at `ee8758c`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
 kept the earlier pack; after a restart all 3,546 textures loaded). Windows interactive import is still
 unchecked; Android #347's API 36 app import and recovery results do not replace that check
-([current status](GOAL_LOOP.md#where-things-stand-on-october-17)).
+([current status](GOAL_LOOP.md#090-on-saturday-october-24)).
 
 
 | Change | Issue | What to check | Result |

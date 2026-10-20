@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 17, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 20, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -31,7 +31,38 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## Where things stand on October 17
+## 0.9.0 on Saturday, October 24
+
+`main` stays releasable: every pull request passes CI, and anything that changes gameplay, timing or rendering is
+played on the platform it changes before it merges. Until Friday, merge what is ready, in the order below. On Friday
+evening `main` freezes for 0.9.0, and only docs merge until the release is out. The Windows build is made once, on
+Saturday, from the frozen commit; until then the Windows CI checks every merge.
+
+| Day | What | Who |
+| --- | --- | --- |
+| Tuesday to Thursday, October 20 to 22 | The merge window, in the order below | Contributors; Chris plays and merges |
+| Friday, October 23 | Freeze: `version.json` 0.9.0 and the candidate commit. Overnight on the Mac: the app-only IPA, PadMint's `player-check.sh` before tagging, the benchmark tour against 0.8.0 and the 468-place sweep | Chris decides; the Mac runs it |
+| Saturday, October 24 | The Windows build and its play checks on Chris's PC, a Linux AppImage if a contributor has built one, then publishing and `player-check.sh` after publishing | Chris |
+
+In merge order:
+
+1. **Tests and docs that change nothing in the game:** #397 (the native work pool tests) and #428 (the iPad tour)
+   merged on October 20.
+2. **One desktop menu,** #384 to #388 (pdale-boop): Chris's hands-on Mac pass with a controller, then the five in
+   order. They merge cleanly into `main`.
+3. **Smooth Motion without the flicker** (#371, RecompCore#40), then **sun shadows from a shadow map** (#398,
+   RecompCore#42): Chris looks at both on the Mac, the two RecompCore pull requests merge into `bluewake-next`, and
+   the BlueWake pull request that merges second is rebased on the first. Both pin RecompCore, and #398 also touches
+   `tests/test_safe_mode_hd.py`, as #388 does.
+4. **The Mac and iOS speed default:** the Windows and Linux recipe made the game 64 to 81% faster on the M3 Max and
+   the iPad Pro ([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). One pull request, after Chris plays the test
+   builds by hand. If that hasn't happened by Thursday, it stays opt-in for 0.9.0.
+5. **#392** (jslay88, the Mac compile flags on the slow chunks only): a tour run on the M3 Max against `main`.
+
+After 0.9.0: #424 (counters in the game module's native math), #347 (the Android HD import, which needs a phone),
+#342, and natives round 7 on the benchmark tour, which needs one extra Windows build.
+
+## Where things stood on October 17
 
 **The latest download is 0.8.0** (published October 18 from `f2611b1`): the Windows zip, the iPhone and iPad app for
 PadMint, the recipe and the source. [Its release record](status/RELEASE_0.8.0.md) lists what it contains and every
