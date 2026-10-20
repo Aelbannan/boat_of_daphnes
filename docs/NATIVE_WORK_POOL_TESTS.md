@@ -14,7 +14,7 @@ Architecture: [Overview](architecture/Overview.md) · [Host](architecture/Host.m
 ## Scope and review order
 
 [#399](https://github.com/chrissotraidis/bluewake/pull/399) supplies the pool/build
-foundation. This follow-up consolidates the remaining focused coverage from
+foundation. [#424](https://github.com/chrissotraidis/bluewake/pull/424) consolidates the remaining focused coverage from
 #406–#411. It adds no game optimization, worker-default change or new offload.
 Use it when a concrete optimization needs these contracts, not as a blanket gate.
 
