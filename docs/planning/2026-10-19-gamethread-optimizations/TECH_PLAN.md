@@ -82,14 +82,37 @@ On the development machine:
 ```bash
 git switch --detach 2ab8118fc09fa08569100201a871616d18a1b771
 python3 scripts/linux/build.py /path/to/GZLE01.iso \
-  --out build/deck-control --ci-container --clang22 --appimage
+  --out build/deck-control --ci-container --appimage
 sha256sum build/deck-control/BlueWake-x86_64.AppImage \
   build/deck-control/composite/gGZLE01_recomp.so
 ```
 
 Record the commit, dependency-lock hash, compiler, builder command, AppImage and
 module hashes, PGO/training status, and build summary. Copy the AppImage plus
-`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck.
+`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck. The
+container default is Clang 18. The optional Clang 22 path is currently blocked
+by [#433](https://github.com/chrissotraidis/bluewake/issues/433) and is not a
+control until that issue is resolved.
+
+### Deck test bundle
+
+Copy only the private AppImage, the two measurement scripts, and selected save
+states. Do not copy the build tree, ISO, generated sources, standalone module,
+or local logs.
+
+```text
+~/bluewake-test/
+├── BlueWake-x86_64.AppImage
+├── bench_tour.py
+├── profile_deck.sh
+└── states/
+    └── quick-N.bwstate
+```
+
+With `bench_tour.py --state states/quick-N.bwstate`, its positional card
+argument is unused; pass `unused.card`. The AppImage already contains the
+private translated module and disc copy, so retain it only on machines you
+control.
 
 ### 2. Freeze the Deck environment and private workload
 
