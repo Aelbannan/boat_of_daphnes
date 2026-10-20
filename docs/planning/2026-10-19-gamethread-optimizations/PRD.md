@@ -14,8 +14,8 @@ Steam Deck players encounter slow simulation while GPU capacity remains availabl
 
 Measure the critical path; parallelize profitable independent calculations; reduce serial translated/runtime overhead; investigate repeated graphics preparation and waits. Implement one measured hypothesis per change.
 
-There is no mandatory #399–#417 merge chain. [#399](https://github.com/chrissotraidis/bluewake/pull/399)
-is the test foundation; [#424](https://github.com/chrissotraidis/bluewake/pull/424)
+There is no mandatory #397–#417 merge chain. [#397](https://github.com/chrissotraidis/bluewake/pull/397)
+contains the plan and test foundation; [#424](https://github.com/chrissotraidis/bluewake/pull/424)
 consolidates #406–#411's focused follow-up coverage. #412–#417's qualification
 tooling remains deferred. Select only the tests needed by each measured change;
 establish the actual baseline revision rather than assuming these PRs merged.

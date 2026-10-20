@@ -2,7 +2,7 @@
 
 Status: Deferred upstream; exploratory fork roadmap. No Deck qualification claimed.
 
-Review route: #399 foundation → [#424 consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424)
+Review route: [#397 combined plan/foundation](https://github.com/chrissotraidis/bluewake/pull/397) → [#424 consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424)
 as needed → one benchmarked optimization at a time. #406–#411 are superseded;
 #412–#417 are deferred. The research milestones below are not a required merge chain.
 
