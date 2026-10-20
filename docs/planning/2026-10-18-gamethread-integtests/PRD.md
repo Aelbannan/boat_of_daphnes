@@ -12,9 +12,9 @@
 ## Goal and scope
 
 Give contributors a small, source-only regression suite for the existing native
-work pool. This plan covers [#399](https://github.com/chrissotraidis/bluewake/pull/399):
-shared native-math registration, standalone pool tests, and Linux integration.
-It does not require the complete optimization/qualification stack to merge.
+work pool. This PR contains both the scoped plan and its implementation: shared
+native-math registration, standalone pool tests, and Linux integration. It does
+not require the complete optimization/qualification stack to merge.
 
 No new offload, worker default, game algorithm, timing mode, or Windows worker
 backend is introduced. Public tests use synthetic inputs; personal modules,
@@ -43,7 +43,7 @@ The retained identifiers refer to the foundation portions of the earlier plan.
 
 ## Review sequence
 
-1. Review this scoped plan with [#399](https://github.com/chrissotraidis/bluewake/pull/399).
+1. Review this scoped plan and its implementation together in this PR.
 2. Review [#424's consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424) only as a concrete optimization
    needs it: boundaries/oracle, creation failure, DSO lifecycle, diagnostics and sanitizers.
 3. Submit the optimization separately, measured with the

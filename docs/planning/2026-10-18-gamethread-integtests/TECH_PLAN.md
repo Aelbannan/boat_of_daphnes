@@ -11,8 +11,8 @@
 
 ## Build and execution
 
-Implementation is reviewed in [#399](https://github.com/chrissotraidis/bluewake/pull/399);
-its added paths are not claimed to exist on main until it merges.
+Implementation is included in this PR; its added paths are not claimed to exist
+on `main` until this PR merges.
 
 | Component | Responsibility |
 |---|---|
@@ -39,7 +39,7 @@ in the harness. Timeouts make deadlock failures bounded.
 
 ## Validation
 
-Run on the #399 branch:
+Run on this PR's branch:
 
 ```bash
 cmake -S tests/native_work_pool -B build/native-work-pool -DCMAKE_BUILD_TYPE=Debug

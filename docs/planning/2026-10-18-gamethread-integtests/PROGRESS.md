@@ -10,9 +10,9 @@
 
 ## Scoped tasks
 
-Status: foundation implemented in [#399](https://github.com/chrissotraidis/bluewake/pull/399),
-pending upstream review. Existing M1 identifiers are retained; unchecked items
-are not claims that the implementation is absent.
+Status: plan and foundation implementation are combined in this PR, pending
+upstream review. Existing M1 identifiers are retained; unchecked items are not
+claims that the implementation is absent.
 
 - [ ] M1-T01: Review shared native-math CMake registration and preserved flags.
 - [ ] M1-T02: Review standalone production-pool tests without renderer dependencies.
@@ -21,10 +21,9 @@ are not claims that the implementation is absent.
 
 ## Evidence
 
-[#399's validation record](https://github.com/chrissotraidis/bluewake/pull/399)
-reports standalone, Linux-integrated and ASan/UBSan results; its
-[checks](https://github.com/chrissotraidis/bluewake/pull/399/checks) are the source
-for current CI status. This documentation revision ran no game or hardware test.
+This PR's validation record reports standalone, Linux-integrated and ASan/UBSan
+results; its checks are the source for current CI status. No game or hardware
+test is claimed.
 
 Do not transfer historical passing counts to a different commit or suite.
 Record the exact head, commands, selected cases, environment and limitations
@@ -32,7 +31,7 @@ when completing a task.
 
 ## Delivery
 
-- Review this plan (#397) with foundation #399.
+- Review the plan and foundation implementation together in #397.
 - [#424](https://github.com/chrissotraidis/bluewake/pull/424) consolidates #406–#411, used when needed by the
   first optimization; preserve their source commits and later oracle fixes.
 - Defer #412–#417 and #421; they are not a required merge chain.
