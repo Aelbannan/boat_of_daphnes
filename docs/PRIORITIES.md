@@ -14,7 +14,8 @@ version is [status/PRIORITIES_2026-10-08.md](status/PRIORITIES_2026-10-08.md).
 
 Within a tier, what reaches the most players with the clearest fix goes first. A new crash or data-loss report goes
 straight to the top. Keep the states apart: *suspected*, *cause found*, *fixed in main*, *shipped*, *confirmed*. Close
-an issue only when its reporter confirms, or it is a clear duplicate.
+an issue only when its reporter confirms, it is a clear duplicate, or it shipped and the reporter has been quiet for
+14 days since the release was posted on it ([AGENTS.md](../AGENTS.md#talking-to-people-on-github)).
 
 ## The list
 
