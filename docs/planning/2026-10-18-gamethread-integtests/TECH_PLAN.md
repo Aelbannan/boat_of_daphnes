@@ -56,7 +56,9 @@ on `main` until this PR merges.
 [`tests/native_work_pool_test.c`](../../../tests/native_work_pool_test.c)
 checks that the production worker pool divides, executes, and finishes
 synthetic work correctly. It needs no game, renderer, or disc. This validates
-the machinery that future parallel game calculations depend on.
+the machinery that future parallel game calculations depend on. The
+[compiled component tests](../../architecture/Testing.md#compiled-component-tests)
+section places this harness within BlueWake's broader test architecture.
 
 ```mermaid
 flowchart TD
