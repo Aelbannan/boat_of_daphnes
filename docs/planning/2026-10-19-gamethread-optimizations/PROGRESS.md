@@ -26,8 +26,8 @@ states, raw logs, and `perf.data` remain on the Deck.
 | Task | Current evidence | Limitation |
 |---|---|---|
 | M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; AC power; `powersave`; `perf` 6.15; active Plasma Wayland Desktop Mode; collection temperatures 29°C Deck sensor / 48°C APU. Historical AppImage source `3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`, SHA-256 `2fdd36b90d33f2d0068a03a46ff07629b2f5738929aefa7b96a89a68d2dd2b6b`; module SHA-256 `0775a84cc1e1042fff25df8fc05d506ce125d5a4da1c7d56065344e28e28c552`. | This is a source-identified historical diagnostic, not the pinned `2ab8118` control. Frame cap, refresh, TDP, texture/options receipt, and Game Mode receipt remain unrecorded. |
-| M0-T02 | Historical fixed-state A/A, six matching checkpoints each. Headless throughput: 34.0477, 34.1136, 34.4452 game frames/s; renderer-enabled unpaced throughput: 31.1062, 30.7188, 30.6021. A separate guide-compatible, wall-paced Desktop capture reported 27–29 game FPS after warmup, `busy=97%`, `cause=game-thread`, `workers: gx=32–38%`, and `gpu=1ms`. | The A/A values are not real-time FPS. The wall-paced result is one Desktop capture, not Game Mode, and needs repeated/scene-matched evidence. |
-| M0-T03 | Headless process-attached cycle sample: 2K samples, zero lost, ~96.0B cycles. Wall-paced process capture: 4K samples, zero lost; it contains 2,767 main-thread and 933 secondary-thread samples. Its flat report includes translated chunks plus GX/Aurora host symbols. | Deck `perf report` lacks the documented `--sort=tid` key here; separate TID captures are required before ranking process-wide symbols as game-thread work. |
+| M0-T02 | Historical fixed-state A/A plus three five-scene headless sweeps. Mean unpaced throughput: Fortress sea 33.77, Forest Haven 36.46, Outset 40.94, Windfall 44.47, and Dragon Roost 58.10 game frames/s; every requested scene loaded. A separate wall-paced Desktop capture reported 27–29 game FPS, `busy=97%`, and `cause=game-thread`. | Runs 1 and 3 have identical checkpoints; run 2 diverges from retrace 24,300. Windfall has 6.13% and Dragon Roost 3.18% range/mean. Game Mode and repeated scene-matched rendered evidence remain pending. |
+| M0-T03 | Five zero-loss, post-settle 30-second headless profiles captured one per scene; more than 99.5% of samples in each belong to the main thread. The slow scenes repeatedly expose host edge/search helpers, while Outset is led by translated chunks. | Four scene profiles contain unresolved native instruction addresses. Resolve them and explain the checkpoint divergence before selecting a candidate. The wall-paced rendered capture remains process-wide. |
 | Historical diagnostic | The AppImage launches directly on Deck, loads `quick-23874.bwstate` with `missing=0` and `mismatched=0`, and executed beyond retrace 31,000. Raw JSON, logs, and `perf.data` stay private under `~/bluewake-profile/`. | An extract-and-run wrapper previously misidentified the child PID; direct AppImage profiling works. This does not make the artifact a release candidate. |
 
 ### M1: One bounded candidate (depends: M0)
@@ -64,7 +64,7 @@ not overlap.
 
 | ID | Actual | Outcome | Evidence |
 |---|---|---|---|
-| IMP-01 | Historical A/A: headless maximum 1.2%; rendered Desktop maximum 1.6%; checkpoints match | Partial | M0 execution record; Game Mode and reproducible-control evidence pending |
+| IMP-01 | Five-scene order repeated three times; range/mean 0.59–6.13%. Runs 1 and 3 match; run 2 diverges at retrace 24,300. | Partial | M0 execution record; determinism, Game Mode, and reproducible-control evidence pending |
 | IMP-02 | Not selected | Planned | None |
 | IMP-03 | Not measured | Planned | None |
 | IMP-04 | Not measured | Planned | None |

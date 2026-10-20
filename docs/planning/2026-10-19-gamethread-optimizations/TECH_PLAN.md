@@ -262,8 +262,8 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 
 ### Measurement methodology
 
-- Loaded the same private `quick-23874.bwstate`; every run produced six
-  matching guest checkpoints.
+- Loaded the same private `quick-23874.bwstate`. The original single-scene A/A
+  runs produced matching checkpoints.
 - Ran [`bench_tour.py`](../../../scripts/bench_tour.py) three times headless
   and three times with the renderer in the active Desktop session. It discards
   the first 300 retraces and measures the next 1,500. Both modes are unpaced,
@@ -280,25 +280,42 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 - Ran one non-comparative, headless probe with `BLUEWAKE_NATIVE_WORKERS=2` and
   allowed normal shutdown so the native-math counters were printed. It is
   activation evidence only, not an A/B result.
+- Ran three headless five-scene sweeps from the known gameplay state. Each
+  requested warp loaded, each scene settled for 300 retraces, and the next
+  1,500 retraces supplied its throughput window. Runs 1 and 3 had identical
+  checkpoints; run 2 diverged at retrace 24,300 and remains unexplained.
+- Captured one post-settle 30-second `perf` profile per scene. More than 99.5%
+  of samples in every capture belonged to the main thread; all captures lost
+  zero samples.
 
-### Runtime observations — attribution still required
+### Five-scene workload survey
 
-The profile was attached to the running `bluewake` process. `gGZLE01_recomp.so`
-entries execute in the loaded game module; `bluewake` entries execute in the
-BlueWake host executable. Source files are build inputs, but the functions
-listed here are runtime costs. The wall-paced capture contains samples from
-multiple threads (2,767 main-thread samples and 933 from one secondary thread).
-Its flat report is process-wide, so these are candidate surfaces, not a
-game-thread-only ranking. Capture the main and GX-worker TIDs separately before
-choosing an optimization.
+These are unpaced computational-throughput results, not player-visible FPS.
+The order was stable in all three runs, but Windfall and Dragon Roost exceeded
+the 3% same-build noise guide and run 2 failed checkpoint equivalence.
 
-| Candidate surface | Wall-paced process evidence | What remains before selection |
-|---|---:|---|
-| Generated translated chunks through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` 4.13%; `func_803256E0` 2.82% | Attribute to the main TID, map each chunk to its guest range, and establish an oracle. |
-| BlueWake host edge/service and actor search in [`main.c`](../../../runtime/host/src/main.c) | `host_actor_search_native` 0.76%; `host_chassis_edge_service_full` 0.63%; `host_chassis_requires_full` 0.54% | Attribute to the main TID and measure call/decline reasons while preserving interrupt, deadline, and guest-memory contracts. |
-| GX/Aurora host path through [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | `build_draw_plan_into` 3.98%; `submit_packet` 2.45%; `parse_stream` 1.78% | Attribute to the GX worker. The frame log says the game thread is critical, so do not select graphics work from this flat report alone. |
-| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 2.64%, 1.12%, and 1.21%; two-worker probe: 85,096 vectors, maximum array 8, `parallel=0` | Existing runtime fast paths are active, but this scene cannot use the current pool threshold. Do not treat #424 or this profile as evidence of gameplay parallelism. |
-| RecompCore guest alias resolver [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 1.19% | Attribute to the main TID; then record resolution/pruning behavior and retain the guest-address contract. |
+| Scene | Mean game frames/s | Range / mean | Relative cost |
+|---|---:|---:|---|
+| Sea by Forsaken Fortress | 33.77 | 0.59% | Slowest |
+| Forest Haven | 36.46 | 1.97% | Second slowest |
+| Outset | 40.94 | 1.78% | Third slowest |
+| Windfall | 44.47 | 6.13% | Fourth; noisy |
+| Dragon Roost Cavern | 58.10 | 3.18% | Fastest; noisy |
+
+### Candidate status after the scene sweep
+
+`gGZLE01_recomp.so` entries execute in the loaded game module; `bluewake`
+entries execute in the host. The headless scene profiles isolate the main
+thread, while the earlier wall-paced rendered profile is process-wide. No
+optimization target is selected yet.
+
+| Candidate surface | Evidence across scenes | Decision |
+|---|---|---|
+| Host edge/service and actor search in [`main.c`](../../../runtime/host/src/main.c) | The concrete helpers recur in four scenes and rise in the slowest: `host_chassis_requires_full` reaches 1.22%, `host_actor_search_native` 1.08%, and `bw_search_word` 1.01% by the Fortress. | Keep under investigation; measure calls and decline reasons before proposing a change. `bluewake_host_main` is an umbrella, not a target. |
+| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | Outset is led by `func_802456E0` 6.70%, `func_803256E0` 3.55%, `func_802ED6E0` 3.11%, and `chassis_dispatch` 2.80%. Other scenes contain unresolved native instruction addresses. | Blocked on symbol resolution and guest-range mapping; do not assume Outset's chunks explain the other scenes. |
+| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | `bluewake_native_game_math_try` is 2.91% at Outset. The separate two-worker probe processed 85,096 vectors but saw a maximum array of 8 and `parallel=0`. | Not evidence for gameplay parallelization; first find a scene and batch size that activate the pool. |
+| Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | 2.27% at Outset and absent from the other scenes' top 15 resolved symbols. | Lower priority until repeated profiles show a broader cost. |
+| GX/Aurora path through [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | The earlier wall-paced Outset capture found renderer symbols, but the five-scene profiles are headless. | Requires scene-matched rendered profiles; the current frame log still identifies the game thread, not GPU wait, as the wall. |
 
 The unpaced A/A runs remain valid only as deterministic workload checks:
 headless throughput was 34.05–34.45 game frames/s and renderer-enabled
