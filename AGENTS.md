@@ -72,8 +72,9 @@ just by building from `main`:
 - Write as the person whose account posts, in the first person and in plain, friendly language. If a bot
   drafts a reply, it is still that person's reply: say "I", and don't mention bots, agents or AI models.
 - Post only from your own maintainer's account. Never post as or for the other maintainer.
-- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic.
-  Say why when you close it.
+- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic, or
+  the fix is in a release and the reporter hasn't replied for 14 days since that was posted on the issue. Then
+  close it, name the release, and ask them to reopen it if it still happens. Say why when you close it.
 - Ask for what helps: the platform, the BlueWake version and the session log. Don't promise dates.
 - Don't post, push, or open issues or pull requests on other repositories (including
   `elliotttate/Wind-Waker-Recomp`) unless the maintainer asks for that specific action.
