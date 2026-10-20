@@ -94,6 +94,15 @@ the default Clang 18 and optional Clang 22 `x86-64-v3` container paths are
 currently blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433);
 neither is a valid control until that issue is resolved.
 
+### Historical diagnostic
+
+[`3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5)
+is the last source revision verified locally to compile the Clang 22 application
+through the earlier packaged-Dawn route (RecompCore
+`77d4717d868cec8b4014932bb22978c284a535a7`). Its AppImage ABI audit fails on
+`GLIBCXX_3.4.32`, so it is a diagnostic checkpoint, not a Steam Deck control or
+a release candidate.
+
 ### Deck test bundle
 
 Copy only the private AppImage, the two measurement scripts, and selected save

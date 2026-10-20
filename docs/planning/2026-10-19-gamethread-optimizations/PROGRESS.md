@@ -1,6 +1,7 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: Planned; previous #421 measurements and conclusions discarded
+Status: M0 in progress; the reproducible control is blocked by #433. Preliminary
+Deck evidence uses an existing, source-unverified private AppImage.
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
@@ -16,6 +17,17 @@ Architecture: [performance workflow](../../performance/Overview.md#performance-w
 - [ ] M0-T01: Freeze source/build identity, Deck environment, private scene inputs, settings, metrics, and retention policy. (FR-01, FR-04)
 - [ ] M0-T02: Run same-build A/A headless, rendered, and Game Mode measurements; record noise and reject incomparable runs. (FR-01)
 - [ ] M0-T03: Capture flat/per-thread profiles and annotations; rank code candidates with estimated upper bounds and activation evidence. (FR-02)
+
+### M0 execution record
+
+This record retains only hashes and redacted measurements. Private AppImages,
+states, raw logs, and `perf.data` remain on the Deck.
+
+| Task | Current evidence | Limitation |
+|---|---|---|
+| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; plugged in; `powersave`; `perf` 6.15. Existing microSD AppImage SHA-256: `abe940206989975ea91a412b6c9780953dfb52d099d4e4f3b58b961cd7aeac07`. | The AppImage source/build receipt is unknown; it is not the pinned `2ab8118` control. |
+| M0-T02 | Fixed-state headless A/A runs: 34.281, 34.407, and 34.381 game FPS; 99.0% busy each; comparisons differ by +0.4% and +0.3%; all six checkpoints match. | Rendered and Game Mode measurements remain pending. |
+| M0-T03 | 30-second headless `perf` capture: 2K samples, zero lost. Leading flat samples include translated chunks, `bluewake_native_game_math_try`, `chassis_dispatch`, `bluewake_native_vec_try`, and `ppc_guest_alias_resolve`. | No source receipt, per-thread report, or symbol annotation yet; this cannot select an implementation candidate. |
 
 ### M1: One bounded candidate (depends: M0)
 
@@ -51,13 +63,14 @@ not overlap.
 
 | ID | Actual | Outcome | Evidence |
 |---|---|---|---|
-| IMP-01 | Not measured | Planned | None |
+| IMP-01 | Headless A/A is within 0.4%; checkpoints match | Partial | M0 execution record; rendered/Game Mode and reproducible-control evidence pending |
 | IMP-02 | Not selected | Planned | None |
 | IMP-03 | Not measured | Planned | None |
 | IMP-04 | Not measured | Planned | None |
-| IMP-05 | Not tested | Planned | None |
+| IMP-05 | Guest checkpoints match across the fixed-state headless A/A runs | Partial | M0 execution record; candidate and platform qualification pending |
 
 ## Evidence ledger
 
-No tasks are complete. Planning/source inspection is not performance,
-correctness, or hardware evidence.
+No task is complete. Planning/source inspection is not performance,
+correctness, or hardware evidence; preliminary hardware evidence does not
+replace the pinned control or the remaining rendered/Game Mode work.
