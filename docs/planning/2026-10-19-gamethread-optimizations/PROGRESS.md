@@ -1,6 +1,10 @@
 # PROGRESS — Shorten the Steam Deck game update
 
-Status: Planned; implementation and hardware validation not started.
+Status: Deferred upstream; exploratory fork roadmap. No Deck qualification claimed.
+
+Review route: #399 foundation → [#424 consolidated coverage](https://github.com/chrissotraidis/bluewake/pull/424)
+as needed → one benchmarked optimization at a time. #406–#411 are superseded;
+#412–#417 are deferred. The research milestones below are not a required merge chain.
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
@@ -10,7 +14,7 @@ Status: Planned; implementation and hardware validation not started.
 
 Architecture: [host execution](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/architecture/Host.md#main-loop-execution), [measurement](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/performance/Overview.md#performance-workflow).
 
-- [ ] M0-T01: Resolve merged prerequisite revision; recheck open PRs/branches and foundation runner interfaces. (FR-01, FR-04)
+- [ ] M0-T01: Record the actual baseline revision and select only the prerequisite tests needed by the candidate; recheck open PRs and runner interfaces. (FR-01, FR-04)
 - [ ] M0-T02: Collect Deck A/A baseline, profiles, wait time and actual kernel activation/batch distributions. (FR-01, FR-05)
 - [ ] M0-T03: Freeze scenes, thresholds, [run matrix](TECH_PLAN.md#run-matrix--proposed-freeze-at-m0), calculation rules and report schema; rank candidates. (FR-01, FR-02, FR-03, FR-05)
 

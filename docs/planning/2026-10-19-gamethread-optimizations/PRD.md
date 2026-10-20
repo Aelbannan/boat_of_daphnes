@@ -1,6 +1,6 @@
 # PRD — Shorten the Steam Deck game update
 
-Status: Draft; planning only · Created: 2026-10-19
+Status: Deferred upstream; exploratory fork roadmap · Created: 2026-10-19
 
 [Technical plan](TECH_PLAN.md) · [Progress](PROGRESS.md)
 
@@ -14,7 +14,14 @@ Steam Deck players encounter slow simulation while GPU capacity remains availabl
 
 Measure the critical path; parallelize profitable independent calculations; reduce serial translated/runtime overhead; investigate repeated graphics preparation and waits. Implement one measured hypothesis per change.
 
-Assume the [#399 prerequisite chain through #417](https://github.com/chrissotraidis/bluewake/pull/399) is merged and working, as requested. Actual inspected `main` is `095f7014cb2db2fb5640641133040593a7775a78`; the stack is still open. Establish the real merged revision before implementation. Reuse its tests, diagnostics and qualification runners.
+There is no mandatory #399–#417 merge chain. [#399](https://github.com/chrissotraidis/bluewake/pull/399)
+is the test foundation; [#424](https://github.com/chrissotraidis/bluewake/pull/424)
+consolidates #406–#411's focused follow-up coverage. #412–#417's qualification
+tooling remains deferred. Select only the tests needed by each measured change;
+establish the actual baseline revision rather than assuming these PRs merged.
+Keep exploratory work on the fork and submit one optimization at a time with
+benchmark-tour before/after measurements and gameplay checks. The broader
+milestones below are research directions, not prerequisites for that first PR.
 
 Excluded: 60 Hz simulation, arbitrary concurrent actor updates, GPU compute migration, a new scheduler framework, and automatic feature enablement before hardware qualification.
 

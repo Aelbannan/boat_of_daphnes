@@ -1,6 +1,6 @@
 # TECH_PLAN — Shorten the Steam Deck game update
 
-Status: Planning only · [Requirements](PRD.md) · [Tracker](PROGRESS.md)
+Status: Deferred upstream; exploratory fork roadmap · [Requirements](PRD.md) · [Tracker](PROGRESS.md)
 
 ## Inspected facts and provenance
 
@@ -10,7 +10,7 @@ Inspected BlueWake `main`: `095f7014cb2db2fb5640641133040593a7775a78`. Read AGEN
 - [Existing skinning](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/native_skin.c) is serial and reproduces guest arithmetic/state. Its 3.1% historical donor measurement is explicitly not a BlueWake benchmark.
 - [Dispatch](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/dispatch_loop.h) already inlines important control flow; [gather-pipe batching](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/cmake/composite/gather_pipe_batch.h) already avoids a host call per word. Tune remaining costs only after profiling.
 - [PERFORMANCE](https://github.com/chrissotraidis/bluewake/blob/095f7014cb2db2fb5640641133040593a7775a78/docs/PERFORMANCE.md) records a Deck experiment reducing GX worker activity without raising FPS: optimizing another thread need not shorten the bottleneck.
-- Inspected assumed-foundation tip: `ce33691850969bfddd93d606903ad6b58f5160ca` ([#417](https://github.com/chrissotraidis/bluewake/pull/417)); read its pool CMake registration and qualification CLI. Its reported hardware gaps remain facts about that snapshot; this plan adopts the user's hypothetical completed foundation.
+- The earlier #417 snapshot informed optional qualification tooling, not a merged prerequisite. The current review route is [#399](https://github.com/chrissotraidis/bluewake/pull/399), then [#424](https://github.com/chrissotraidis/bluewake/pull/424)'s consolidated tests only when needed. #412–#417 remain deferred. The broader research streams below do not gate the first measured optimization.
 
 ## Proposed changes
 
