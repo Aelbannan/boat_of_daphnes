@@ -83,6 +83,9 @@ if(NOT WIN32)
     add_executable(bluewake_native_work_pool_lifecycle_test
         ${BLUEWAKE_POOL_REPO_ROOT}/tests/native_work_pool_lifecycle_test.c)
     target_link_libraries(bluewake_native_work_pool_lifecycle_test PRIVATE ${CMAKE_DL_LIBS})
+    # A targeted CI build must also produce the DSO loaded by this executable;
+    # mentioning TARGET_FILE in add_test does not create a build dependency.
+    add_dependencies(bluewake_native_work_pool_lifecycle_test bluewake_native_work_pool_fixture)
     add_test(NAME bluewake_native_work_pool_lifecycle_test
         COMMAND bluewake_native_work_pool_lifecycle_test
             $<TARGET_FILE:bluewake_native_work_pool_fixture>)
