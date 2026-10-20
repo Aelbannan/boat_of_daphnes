@@ -163,6 +163,12 @@ target_include_directories(bluewake_disc_extract PRIVATE ${BLUEWAKE_REPO_ROOT}/a
 
 if(BLUEWAKE_LINUX_REGRESSION_TESTS)
     enable_testing()
+    # The native-math oracle requires a local player-owned module and remains an
+    # explicit build; the synthetic guard and work-pool tests remain public-safe.
+    include("${BLUEWAKE_REPO_ROOT}/cmake/native_math_tests.cmake")
+    bluewake_add_native_math_tests()
+    add_subdirectory(${BLUEWAKE_REPO_ROOT}/tests/native_work_pool native_work_pool_tests)
+
     add_executable(bluewake_fast_blocks_test EXCLUDE_FROM_ALL ${BLUEWAKE_REPO_ROOT}/tests/fast_blocks_test.c)
     target_include_directories(bluewake_fast_blocks_test PRIVATE
         ${GXRUNTIME_DIR}/include
