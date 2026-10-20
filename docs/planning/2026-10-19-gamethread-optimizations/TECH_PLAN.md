@@ -6,6 +6,10 @@ Source: upstream `main` at `2ab8118fc09fa08569100201a871616d18a1b771`
 
 [PRD](PRD.md) · [Tracker](PROGRESS.md)
 
+Architecture: [game thread](../../architecture/GameThread.md) ·
+[test evidence](../../architecture/Testing.md) ·
+[performance workflow](../../performance/Overview.md)
+
 ## Inspected facts
 
 - [`bench_tour.py`](../../../scripts/bench_tour.py) controls fixed scenes and
@@ -244,6 +248,7 @@ run alongside A/B measurement, and only one benchmark runs on the Deck at once.
 
 ## References
 
+- [Game-thread architecture](../../architecture/GameThread.md) — ownership, dispatch, services, graphics, concurrency, and measurement boundaries.
 - [Issue #215](https://github.com/chrissotraidis/bluewake/issues/215) — motivation and Deck context, not the fresh baseline.
 - [Steam Deck profiling guide](../../PROFILING.md) — current Linux procedure and interpretation.
 - [Performance overview](../../performance/Overview.md) — profiling, benchmarking, and tuning contracts.

@@ -218,6 +218,13 @@ Use the [Steam Deck profiling guide](../PROFILING.md) for collection commands an
 the [performance overview](../performance/Overview.md) for the profile → measure
 → tune → validate loop.
 
+The active Steam Deck investigation is tracked separately as planning work:
+[requirements](../planning/2026-10-19-gamethread-optimizations/PRD.md),
+[technical plan](../planning/2026-10-19-gamethread-optimizations/TECH_PLAN.md),
+and [progress](../planning/2026-10-19-gamethread-optimizations/PROGRESS.md).
+Those artifacts may select or reject candidates; this chapter remains the
+architecture baseline they reference.
+
 ## Testing and evidence
 
 Different layers establish different parts of the contract:

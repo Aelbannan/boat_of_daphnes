@@ -4,6 +4,9 @@ Status: Planned; previous #421 measurements and conclusions discarded
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
 
+Architecture: [game thread](../../architecture/GameThread.md) ·
+[test evidence](../../architecture/Testing.md)
+
 ## Milestones
 
 ### M0: Fresh Steam Deck baseline

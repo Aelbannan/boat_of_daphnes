@@ -8,6 +8,10 @@ Scope: profile, select, implement, and qualify one measured game-thread optimiza
 
 [Technical plan](TECH_PLAN.md) · [Progress](PROGRESS.md)
 
+Architecture: [game thread](../../architecture/GameThread.md) ·
+[runtime](../../architecture/Runtime.md) ·
+[performance workflow](../../performance/Overview.md)
+
 ## Motivation
 
 Steam Deck players can remain below the game's 30 FPS target while the GPU has
