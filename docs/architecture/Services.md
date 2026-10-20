@@ -144,7 +144,7 @@ dispatch at the nearest VI, DSP, audio, decrementer, or interrupt deadline.
 When the module yields, the host advances device cursors and rebudgets.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Charge["`Translated code
 charges cycles`"]
     Domain["`Cycle domain
@@ -267,16 +267,24 @@ persistence, and shutdown.
 ```mermaid
 flowchart TD
     Initialize["`Initialize services
-coherent boot-time registers`"]
-    Dispatch["`Dispatch translated work
-guest commands and RAM changes`"]
-    Synchronize["`Synchronize required devices
-ordered DMA, status and events`"]
-    Rebudget["`Select the next boundary
-deadline, decrementer or interrupt`"]
+coherent boot-time
+registers`"]
+    Dispatch["`Dispatch translated
+work
+guest commands and
+RAM changes`"]
+    Synchronize["`Synchronize required
+devices
+ordered DMA, status
+and events`"]
+    Rebudget["`Select the next
+boundary
+deadline, decrementer
+or interrupt`"]
     Stop{"Guest session ending?"}
     Shutdown["`Shut down services
-close storage and release resources`"]
+close storage and
+release resources`"]
 
     Initialize --> Dispatch
     Dispatch --> Synchronize --> Rebudget --> Stop

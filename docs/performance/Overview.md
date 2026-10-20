@@ -63,7 +63,8 @@ flowchart TD
 state, scene, settings`"]
     Runtime["BlueWake runtime"]
     Measure["`Instrumentation
-logs, counters, profiler`"]
+logs, counters,
+profiler`"]
     Evidence["`Measurement
 artifacts`"]
     Diagnose["`Bottleneck
@@ -109,9 +110,11 @@ changed scene`"]
     Profile["`Platform profiler
 sample native stacks`"]
     Hotspots["`Platform profile
-hot symbols and threads`"]
-    Diagnose["`Correlate runtime result
-with native ownership`"]
+hot symbols and
+threads`"]
+    Diagnose["`Correlate runtime
+result with native
+ownership`"]
 
     Inputs --> Tour --> Summary --> Choose
     Inputs --> Profile
@@ -282,6 +285,9 @@ not machine learning: the builder runs an instrumented copy of the translated
 game module, records LLVM execution counters, and supplies those counts to
 Clang when compiling the final module.
 
+The corresponding build stages, cache paths, and platform code references are
+mapped in [Build: Training pipeline](../architecture/Build.md#training-pipeline).
+
 The generated module contains hundreds of thousands of translated blocks. The
 compiler can understand each function's static control flow, but it cannot know
 which translated routes a player will execute frequently. Training supplies
@@ -295,16 +301,19 @@ translated C`"]
     Fingerprint{"`Matching source,
 compiler, options,
 and recipe?`"}
-    Instrument["`Compile temporary module
-with LLVM counters`"]
+    Instrument["`Compile temporary
+module with
+LLVM counters`"]
     Playback["`Run isolated headless
 opening and tours`"]
     Raw["`Raw .profraw
 counter files`"]
-    Merge["`Validate and merge with
-llvm-profdata`"]
-    Profile["Private composite.profdata"]
-    Final["`Compile final module with
+    Merge["`Validate and merge
+with llvm-profdata`"]
+    Profile["`Private
+composite.profdata`"]
+    Final["`Compile final module
+with
 -fprofile-instr-use`"]
     Module["`Optimized native
 game module`"]
@@ -523,7 +532,8 @@ and open the PR`"]
     Revise["`Reject or refine
 the hypothesis`"]
 
-    Question --> Control --> Benchmark --> Profile --> Investigate --> Change --> Candidate --> Compare
+    Question --> Control --> Benchmark --> Profile --> Investigate
+    Investigate --> Change --> Candidate --> Compare
     Compare -->|yes| Record
     Compare -->|no| Revise --> Question
 ```

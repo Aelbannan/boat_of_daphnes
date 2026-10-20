@@ -32,47 +32,24 @@ them.
 
 ```mermaid
 flowchart TD
-    Platform["`Platform app
-native
-integration`"]
-    Host["`BlueWake host
-coordination`"]
-    Module["`Game module
-translated
-code`"]
-    Guest["`Guest state
-CPU, memory,
-time`"]
-    Services["`GameCube
-services
-devices and
-I/O`"]
-    Graphics["`Graphics
-GXRuntime,
-Aurora, Dawn`"]
+    Platform["Platform app"]
+    Host["BlueWake host"]
+    Module["Game module"]
+    Guest["Guest state"]
+    Services["Services"]
+    Graphics["Graphics stack"]
     Disc["Disc data"]
-    Player["`Player data
-saves and
-settings`"]
-    Native["`Native
-platform
-OS, devices,
-GPU`"]
+    Player["Player data"]
+    Native["Native platform"]
 
     Platform -->|"starts"| Host
     Host -->|"loads ABI"| Module
     Host <-->|"coordinates"| Module
-    Host <-->|"`initializes,
-reads and
-updates`"| Guest
-    Module <-->|"`reads and
-updates while
-executing`"| Guest
+    Host <-->|"state access"| Guest
+    Module <-->|"guest execution"| Guest
     Module -->|"guest I/O"| Services
     Host <-->|"adapts"| Services
-    Services <-->|"`reads state /
-publishes
-results`"| Guest
+    Services <-->|"device state"| Guest
     Module -->|"GX work"| Graphics
     Host <-->|"presents"| Graphics
     Disc -->|"reads"| Services
@@ -105,25 +82,25 @@ section in each entity's linked chapter.
 ```mermaid
 flowchart TD
     Platform["Platform startup"]
-    Data["Persistent player data<br/>saves, settings, SRAM"]
+    Data["Player data"]
 
-    subgraph Process["BlueWake process — native code and memory"]
+    subgraph Process["BlueWake process"]
         Host["BlueWake host"]
-        Module["Native game module"]
-        Guest["Shared guest state<br/>CPUState and guest memory"]
-        Services["Compatibility services"]
+        Module["Game module"]
+        Guest["Guest state"]
+        Services["Services"]
         Graphics["Graphics stack"]
 
-        Host <-->|"Module ABI<br/>dispatch, callbacks, storage exports"| Module
-        Host <-->|"Initialize, inspect and modify"| Guest
-        Module <-->|"Registers, PC and memory accesses"| Guest
-        Host <-->|"Deadlines and event delivery"| Services
-        Module <-->|"MMIO and HLE calls<br/>results, callbacks and interrupts"| Services
-        Module -->|"GX gather-pipe data<br/>and display lists"| Graphics
+        Host <-->|"Module ABI"| Module
+        Host <-->|"state access"| Guest
+        Module <-->|"guest execution"| Guest
+        Host <-->|"events and deadlines"| Services
+        Module <-->|"guest I/O"| Services
+        Module -->|"GX commands"| Graphics
     end
 
-    Platform <-->|"Paths, settings and lifecycle events"| Host
-    Host <-->|"Load and persist through file APIs"| Data
+    Platform <-->|"paths and lifecycle"| Host
+    Host <-->|"persistence"| Data
 ```
 
 > This diagram maps contracts, not execution order or threads. Guest state is data stored within the native process. Service interactions may pass through host routing and shared guest state rather than direct module-to-service calls.
