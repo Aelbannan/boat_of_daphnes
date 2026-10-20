@@ -266,35 +266,41 @@ not the pinned current-source control. The raw AppImage, state, logs, and
   matching guest checkpoints.
 - Ran [`bench_tour.py`](../../../scripts/bench_tour.py) three times headless
   and three times with the renderer in the active Desktop session. It discards
-  the first 300 retraces and measures the next 1,500. Both modes are unpaced;
-  they measure simulation throughput, not player-visible FPS. They must not be
-  compared with the real-time Steam Deck report in [#215](https://github.com/chrissotraidis/bluewake/issues/215).
+  the first 300 retraces and measures the next 1,500. Both modes are unpaced,
+  deterministic simulation-throughput checks only; neither measures
+  player-visible FPS.
 - Attached `perf record -g -F 99` to one 30-second headless run. It captured
   2K user-space cycle samples with zero loss. `perf annotate` was used to
   inspect the leading symbols.
+- Ran the guide's wall-paced rendered command,
+  [`profile_deck.sh --rendered`](../../../scripts/linux/profile_deck.sh), in
+  the Deck's local Wayland session. Its post-warmup samples were 27–29 game
+  FPS, `busy=97%`, `cause=game-thread`, `workers: gx=32–38%`, and `gpu=1ms`.
+  This is a single Desktop Mode capture, not a Game Mode qualification.
 - Ran one non-comparative, headless probe with `BLUEWAKE_NATIVE_WORKERS=2` and
   allowed normal shutdown so the native-math counters were printed. It is
   activation evidence only, not an A/B result.
 
-### Ranked optimization investigations
+### Runtime observations — attribution still required
 
 The profile was attached to the running `bluewake` process. `gGZLE01_recomp.so`
 entries execute in the loaded game module; `bluewake` entries execute in the
 BlueWake host executable. Source files are build inputs, but the functions
-listed here are runtime costs.
+listed here are runtime costs. The wall-paced capture contains samples from
+multiple threads (2,767 main-thread samples and 933 from one secondary thread).
+Its flat report is process-wide, so these are candidate surfaces, not a
+game-thread-only ranking. Capture the main and GX-worker TIDs separately before
+choosing an optimization.
 
-| Rank | Code path | Metric found | Why it ranks here / required proof |
-|---|---|---:|---|
-| 1 | Generated translated chunks reached through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` 7.80%; `func_803256E0` 3.90% self time | Largest individual costs. Map each generated chunk to its guest range and establish a correctness oracle before proposing a native boundary. |
-| 2 | BlueWake host edge/service and actor-search paths in [`main.c`](../../../runtime/host/src/main.c) | `host_chassis_requires_full` 1.15%; `host_actor_search_native` 1.12%; `bw_search_word` 0.72%; `host_chassis_edge_service_full` 0.57% | Direct host-side evidence. Measure call/decline reasons first; preserve interrupt, deadline, and guest-memory contracts. `bluewake_host_main` is 1.62% but is an umbrella, not a candidate itself. |
-| 3 | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h) and [`module_export.c`](../../../cmake/composite/module_export.c) | `chassis_dispatch` 2.70% | Shared module boundary overhead may compound across guest edges. Measure dispatch/direct-call frequency and preserve edge-service and deadline semantics. |
-| 4 | RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 2.13% | Meaningful runtime helper cost, but alias semantics are safety-critical. First record resolution/pruning behavior and retain the guest-address contract. |
-| 5 | [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 3.29%, 1.88%, and 1.74% respectively; worker probe: 85,096 vectors, maximum array 8, `parallel=0` | Existing runtime fast paths are active but this scene cannot use the current pool threshold. Do not treat #424 or this profile as evidence of gameplay parallelism. |
-| 6 | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | Renderer-enabled unpaced throughput: 30.60–31.11 game frames/s; startup diagnostics reported `gpu=0ms` | Current evidence points away from GPU wait. Recheck in Game Mode before selecting graphics work. |
+| Candidate surface | Wall-paced process evidence | What remains before selection |
+|---|---:|---|
+| Generated translated chunks through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` 4.13%; `func_803256E0` 2.82% | Attribute to the main TID, map each chunk to its guest range, and establish an oracle. |
+| BlueWake host edge/service and actor search in [`main.c`](../../../runtime/host/src/main.c) | `host_actor_search_native` 0.76%; `host_chassis_edge_service_full` 0.63%; `host_chassis_requires_full` 0.54% | Attribute to the main TID and measure call/decline reasons while preserving interrupt, deadline, and guest-memory contracts. |
+| GX/Aurora host path through [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | `build_draw_plan_into` 3.98%; `submit_packet` 2.45%; `parse_stream` 1.78% | Attribute to the GX worker. The frame log says the game thread is critical, so do not select graphics work from this flat report alone. |
+| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 2.64%, 1.12%, and 1.21%; two-worker probe: 85,096 vectors, maximum array 8, `parallel=0` | Existing runtime fast paths are active, but this scene cannot use the current pool threshold. Do not treat #424 or this profile as evidence of gameplay parallelism. |
+| RecompCore guest alias resolver [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 1.19% | Attribute to the main TID; then record resolution/pruning behavior and retain the guest-address contract. |
 
-Headless simulation throughput was 34.05–34.45 game frames/s (maximum 1.2%
-spread, 98–99% busy). Renderer-enabled, unpaced Desktop throughput was
-30.60–31.11 game frames/s (maximum 1.6% spread, 97.9–98.2% busy). Neither is
-a real-time Game Mode result or evidence that the game holds 30 FPS. Self-time
-percentages are from one capture, are not additive, and do not estimate a
-speedup.
+The unpaced A/A runs remain valid only as deterministic workload checks:
+headless throughput was 34.05–34.45 game frames/s and renderer-enabled
+throughput was 30.60–31.11. They do not state or imply real-time 30 FPS. The
+wall-paced capture is consistent with [#215](https://github.com/chrissotraidis/bluewake/issues/215): the active limit is the game thread, not GPU wait.
