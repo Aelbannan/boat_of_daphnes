@@ -60,9 +60,10 @@ just by building from `main`:
 
 - Put game, audio, timing and logging changes in shared code (`runtime/host/src`, or RecompCore for the
   runtime). The Windows build compiles the same files.
-- A desktop setting goes in both menus: `runtime/host/src/settings_menu.cpp` (Mac) and
-  `windows/src/win_settings.cpp` (Windows). Share a header between them when you can, as
-  `runtime/host/src/button_remap.h` does.
+- A desktop setting is a row in `runtime/host/src/settings_table.h`. Mac, Linux and Windows draw one menu from
+  it (`runtime/host/src/desktop_menu.cpp`, with the settings file in `desktop_settings.cpp`); a setting with a
+  control of its own is drawn there too. `runtime/host/src/settings_menu.cpp` (Mac and Linux) and
+  `windows/src/win_settings.cpp` hold only each platform's plumbing.
 - The Windows CI ("host" job) must pass before merging.
 - If the change still needs a check on a Windows PC, add it to "In `main`, for the next Windows build"
   in [docs/WINDOWS_TASKS.md](docs/WINDOWS_TASKS.md) in the same pull request.
@@ -72,8 +73,9 @@ just by building from `main`:
 - Write as the person whose account posts, in the first person and in plain, friendly language. If a bot
   drafts a reply, it is still that person's reply: say "I", and don't mention bots, agents or AI models.
 - Post only from your own maintainer's account. Never post as or for the other maintainer.
-- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic.
-  Say why when you close it.
+- Don't close an issue until the reporter confirms the fix, unless it is a clear duplicate or off-topic, or
+  the fix is in a release and the reporter hasn't replied for 14 days since that was posted on the issue. Then
+  close it, name the release, and ask them to reopen it if it still happens. Say why when you close it.
 - Ask for what helps: the platform, the BlueWake version and the session log. Don't promise dates.
 - Don't post, push, or open issues or pull requests on other repositories (including
   `elliotttate/Wind-Waker-Recomp`) unless the maintainer asks for that specific action.
@@ -85,6 +87,26 @@ The maintainers decided on October 4, 2026 to make two exceptions: BlueWake may 
 Every release artifact must pass `scripts/release/check_public_assets.sh <artifact>...`, which runs `python3 ~/.codex/release-gate/release_gate.py` on the maintainer's machine. For the Windows and Linux builds the only accepted finding is `containsTranslatedGameCode: true`. Any other failure is a stop, not a note: these builds must contain no disc data, game assets, saves, signing material or console keys (Elliott's `nodtool.exe` embeds Wii common keys, so it is left out).
 
 Build the Windows and Linux release builds on a maintainer's or contributor's own machine from their own disc. Never put a disc image, files from a disc, or keys in CI secrets, caches or artifacts.
+
+### When antivirus flags the Windows download
+
+BlueWake.exe isn't code-signed, so each new Windows build is a file Windows has never seen, and Microsoft
+Defender sometimes blocks one (0.8.0 was flagged as `Tecabans.STV!cl` the day after release). Handle a report
+once per release, like this:
+
+1. Download the zip from the release and compare its SHA-256 with the release's `SHA256SUMS`. If they differ,
+   stop and tell Chris: that is a real problem, not a false alarm.
+2. Ask the player for the detection name (Windows Security › Protection history) and where they downloaded
+   the zip.
+3. Report that release's zip to Microsoft once, as incorrectly detected, with the detection name:
+   https://www.microsoft.com/en-us/wdsi/filesubmission. Note the date and the result in the release record.
+   Don't report a release nobody has had trouble with.
+4. Point players to [If Windows says it's a virus](docs/WINDOWS.md#if-windows-says-its-a-virus). Never tell
+   them to turn their antivirus off.
+
+Don't rebuild or republish to get around a detection. Every Windows release note gives the zip's SHA-256 and
+links that section. Signing is the lasting fix; the options are in
+[the 0.8.0 antivirus record](docs/status/WINDOWS_ANTIVIRUS_0.8.0_2026-10-19.md).
 
 The goal is releases without game code on every platform, with the game built on the player's machine the first
 time it starts ([docs/DIRECTION.md](docs/DIRECTION.md)). The Windows and Linux exceptions above stand until that works

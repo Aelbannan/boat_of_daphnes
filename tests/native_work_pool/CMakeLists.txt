@@ -56,7 +56,6 @@ if(NOT WIN32)
         ENVIRONMENT "BLUEWAKE_NATIVE_WORKERS=99"
         LABELS "native-work-pool;fast"
         TIMEOUT 15)
-
     add_test(NAME bluewake_native_work_pool_creation_failure_test
         COMMAND bluewake_native_work_pool_test 0)
     set_tests_properties(bluewake_native_work_pool_creation_failure_test PROPERTIES

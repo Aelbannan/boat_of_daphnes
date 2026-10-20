@@ -15,8 +15,6 @@
   <a href="https://discord.gg/xwHfUD2bxW"><img alt="Join the community on Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&amp;logoColor=white"></a>
 </p>
 
-![BlueWake at the Wind Waker title screen on an iPad Pro, running at 30 FPS and full speed, with the touch controls visible](docs/images/bluewake-ipad-title.jpg)
-
 > [!IMPORTANT]
 > **Bring your own disc.** BlueWake needs your own legally obtained copy of *The Wind Waker* for
 > GameCube, USA version (`GZLE01`, revision 0). This repository contains no disc image, game assets
@@ -44,7 +42,7 @@ alone: never share or upload it.**
 Wind Waker Recomp has moved here. Its creator, [Elliott](https://github.com/elliotttate), now
 maintains BlueWake together with Chris, and his work is part of BlueWake with his authorship kept.
 
-- **Windows:** BlueWake 0.7.0, on the [latest release](https://github.com/chrissotraidis/bluewake/releases/latest),
+- **Windows:** BlueWake 0.8.0, on the [latest release](https://github.com/chrissotraidis/bluewake/releases/latest),
   is built from BlueWake itself and replaces Wind Waker Recomp 0.4.0. Smooth
   Motion is off by default (press **F10** to turn it on), and 0.4.0's experimental 60 FPS game logic
   is gone.
@@ -58,14 +56,14 @@ How the move happened and what's left of it: [migration status](docs/MIGRATION_S
 
 ### Windows
 
-1. Download `BlueWake-v0.7.0-windows-x64.zip` from the
+1. Download `BlueWake-v0.8.0-windows-x64.zip` from the
    [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest).
 2. Unpack the whole ZIP and run `BlueWake.exe`.
 3. On first launch, choose your disc image (`.iso` or `.gcm`). A Dolphin `.rvz` must first be
    converted to ISO in Dolphin: right-click the game and choose **Convert File**.
 
-You need a Direct3D 12 GPU and a CPU with AVX2 (Intel Haswell from 2013, AMD Ryzen, or newer). If
-nothing happens when you open it, see the FAQ below. To build it yourself from your disc instead, see
+You need a CPU with AVX2 (Intel Haswell from 2013, AMD Ryzen, or newer) and a Direct3D 12 GPU; since 0.8.0 an older
+GPU gets Direct3D 11 instead of a black screen (not yet checked on such a PC). If nothing happens when you open it, see the FAQ below. To build it yourself from your disc instead, see
 [BlueWake on Windows](docs/WINDOWS.md).
 
 ### Linux
@@ -250,10 +248,6 @@ turn it off if you see glitches or slowdowns.
 Yes, on an A13 or newer. The touch controls sit in the black bars beside the picture. The busiest
 scenes dip below 30 FPS on an iPhone 14.
 
-<p align="center">
-  <img alt="BlueWake on an iPhone 14, with the touch controls in the black bars beside the picture" src="docs/images/bluewake-iphone-title.jpg" width="720">
-</p>
-
 </details>
 
 <details>
@@ -281,7 +275,7 @@ for news.
 
 Yes. On iPhone and iPad, any controller iOS supports works, with rumble, camera inversion and button
 remapping under **⋯ › Controller**. Mac, Windows and Linux work with Xbox, PlayStation, Switch Pro and
-other SDL controllers; remap buttons under **Settings › Controls › Controller buttons** (F1 or Esc
+other SDL controllers; remap buttons under **Settings › Controls › Controller button mapping** (F1 or Esc
 opens settings). The same tab changes what the mouse buttons and keyboard keys press.
 The settings menu works with a controller too: the D-pad or left stick moves, the game's A chooses, its B
 closes, LB and RB change tabs and the right stick scrolls.
@@ -343,6 +337,17 @@ Then turn on **HD textures** and restart BlueWake; the section shows how many te
 unless you pick specific ones, since they compete with the main textures. You don't need its
 **WideScreen Patch**; use BlueWake's built-in widescreen. For a smaller pack on iPhone and iPad, see
 [Mods](docs/MODS.md#installing).
+
+</details>
+
+<details>
+<summary><strong>Windows says the download is a virus</strong></summary>
+
+BlueWake isn't code-signed yet, so antivirus programs sometimes block a brand-new release they haven't seen
+before. Download it only from the [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest),
+check the zip against the release's `SHA256SUMS`, and see
+[If Windows says it's a virus](docs/WINDOWS.md#if-windows-says-its-a-virus) for what to do next. Please tell us
+the detection name it showed.
 
 </details>
 
@@ -409,3 +414,13 @@ See [RIGHTS_AND_LICENSES.md](RIGHTS_AND_LICENSES.md) for details and for game co
 BlueWake is an independent fan project, not affiliated with or endorsed by Nintendo. *The Legend of
 Zelda*, *The Wind Waker* and GameCube are trademarks of Nintendo. You need your own legally obtained
 disc and are responsible for following the laws that apply to it.
+
+## Legal
+
+BlueWake is an unofficial, fan-made project. It is not affiliated with, endorsed
+by, or sponsored by Nintendo. The Legend of Zelda: The Wind Waker and related
+names and marks are trademarks of Nintendo (and their respective owners). The
+source code in this repository contains no game data, disc images, or extracted
+assets. To use it, you need your own legally obtained copy of the game. On Mac,
+iPhone, iPad, Apple TV, Linux and Android, you build it yourself on your own
+machine. Please don't share game files or builds made from them.

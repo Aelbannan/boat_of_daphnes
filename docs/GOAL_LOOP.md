@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 17, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 20, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -31,11 +31,43 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## Where things stand on October 17
+## Where things stand on October 20
 
-**The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
-Nothing has been released since. **0.8.0 is frozen** (#376): [its release record](status/RELEASE_0.8.0.md) lists
-what it contains, the candidate commit and the checks before Chris publishes it. The October 15 version of this section
+No release this week. Chris reviews around Sunday, October 25, and 0.9.0 follows that review; the Windows build is
+made once, then, from the frozen commit. Until then `main` keeps moving and stays releasable: every pull request
+passes CI, and anything that changes gameplay, timing or rendering is played on the platform it changes before it
+merges.
+
+**Merged on October 20:** one desktop menu for Mac, Linux and Windows (#384 to #388, pdale-boop; the Mac host and
+the settings tests built and passed on the M3 Max), the native work pool tests (#397, irregularthanis), and the Mac
+and iPad benchmark-tour results (#425, #428).
+
+**Waiting on Chris's review:**
+
+- **Smooth Motion without the flicker** (#371, RecompCore#40) and **sun shadows from a shadow map** (#398,
+  RecompCore#42): a look on the Mac, then the two RecompCore pull requests merge into `bluewake-next`, then #371, then
+  #398 rebased on it.
+- **The Mac and iOS speed default** (draft #431): the Windows and Linux preparations made the game 64 to 81% faster on
+  the M3 Max and the iPad Pro ([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). It merges after Chris plays the test
+  builds by hand on the Mac and the iPad.
+- **The menu stack's hands-on pass** on the Mac with a controller, before the release.
+
+**Waiting on contributors:** #424 rebased on #397 (irregularthanis); #398 rebased on `main` (pdale-boop); whether
+#392's slow-chunk flags still help on top of #431 (jslay88).
+
+**0.9.0, after the review:** freeze `version.json` and the candidate commit; overnight on the Mac, the app-only IPA,
+PadMint's `player-check.sh` before tagging, the benchmark tour against 0.8.0 and the 468-place sweep; then the Windows
+build and its play checks on Chris's PC, a Linux AppImage if a contributor has built one, publishing and
+`player-check.sh` after publishing.
+
+After 0.9.0: #347 (the Android HD import, which needs a phone), #342, and natives round 7 on the benchmark tour, which
+needs one extra Windows build.
+
+## Where things stood on October 17
+
+**The latest download is 0.8.0** (published October 18 from `f2611b1`): the Windows zip, the iPhone and iPad app for
+PadMint, the recipe and the source. [Its release record](status/RELEASE_0.8.0.md) lists what it contains and every
+check. The freeze is over: the menu stack (#384 to #388), #371 and #392 are next. The October 15 version of this section
 is in [the October 15 snapshot](status/GOAL_LOOP_2026-10-15.md).
 
 **Merged on October 17:** the Android port as an experimental own-disc build (LiquidAzir, #93, with the app-only
