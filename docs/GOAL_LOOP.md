@@ -31,36 +31,37 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## 0.9.0 on Saturday, October 24
+## Where things stand on October 20
 
-`main` stays releasable: every pull request passes CI, and anything that changes gameplay, timing or rendering is
-played on the platform it changes before it merges. Until Friday, merge what is ready, in the order below. On Friday
-evening `main` freezes for 0.9.0, and only docs merge until the release is out. The Windows build is made once, on
-Saturday, from the frozen commit; until then the Windows CI checks every merge.
+No release this week. Chris reviews around Sunday, October 25, and 0.9.0 follows that review; the Windows build is
+made once, then, from the frozen commit. Until then `main` keeps moving and stays releasable: every pull request
+passes CI, and anything that changes gameplay, timing or rendering is played on the platform it changes before it
+merges.
 
-| Day | What | Who |
-| --- | --- | --- |
-| Tuesday to Thursday, October 20 to 22 | The merge window, in the order below | Contributors; Chris plays and merges |
-| Friday, October 23 | Freeze: `version.json` 0.9.0 and the candidate commit. Overnight on the Mac: the app-only IPA, PadMint's `player-check.sh` before tagging, the benchmark tour against 0.8.0 and the 468-place sweep | Chris decides; the Mac runs it |
-| Saturday, October 24 | The Windows build and its play checks on Chris's PC, a Linux AppImage if a contributor has built one, then publishing and `player-check.sh` after publishing | Chris |
+**Merged on October 20:** one desktop menu for Mac, Linux and Windows (#384 to #388, pdale-boop; the Mac host and
+the settings tests built and passed on the M3 Max), the native work pool tests (#397, irregularthanis), and the Mac
+and iPad benchmark-tour results (#425, #428).
 
-In merge order:
+**Waiting on Chris's review:**
 
-1. **Tests and docs that change nothing in the game:** #397 (the native work pool tests) and #428 (the iPad tour)
-   merged on October 20.
-2. **One desktop menu,** #384 to #388 (pdale-boop): Chris's hands-on Mac pass with a controller, then the five in
-   order. They merge cleanly into `main`.
-3. **Smooth Motion without the flicker** (#371, RecompCore#40), then **sun shadows from a shadow map** (#398,
-   RecompCore#42): Chris looks at both on the Mac, the two RecompCore pull requests merge into `bluewake-next`, and
-   the BlueWake pull request that merges second is rebased on the first. Both pin RecompCore, and #398 also touches
-   `tests/test_safe_mode_hd.py`, as #388 does.
-4. **The Mac and iOS speed default:** the Windows and Linux recipe made the game 64 to 81% faster on the M3 Max and
-   the iPad Pro ([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). One pull request, after Chris plays the test
-   builds by hand. If that hasn't happened by Thursday, it stays opt-in for 0.9.0.
-5. **#392** (jslay88, the Mac compile flags on the slow chunks only): a tour run on the M3 Max against `main`.
+- **Smooth Motion without the flicker** (#371, RecompCore#40) and **sun shadows from a shadow map** (#398,
+  RecompCore#42): a look on the Mac, then the two RecompCore pull requests merge into `bluewake-next`, then #371, then
+  #398 rebased on it.
+- **The Mac and iOS speed default** (draft #431): the Windows and Linux preparations made the game 64 to 81% faster on
+  the M3 Max and the iPad Pro ([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). It merges after Chris plays the test
+  builds by hand on the Mac and the iPad.
+- **The menu stack's hands-on pass** on the Mac with a controller, before the release.
 
-After 0.9.0: #424 (counters in the game module's native math), #347 (the Android HD import, which needs a phone),
-#342, and natives round 7 on the benchmark tour, which needs one extra Windows build.
+**Waiting on contributors:** #424 rebased on #397 (irregularthanis); #398 rebased on `main` (pdale-boop); whether
+#392's slow-chunk flags still help on top of #431 (jslay88).
+
+**0.9.0, after the review:** freeze `version.json` and the candidate commit; overnight on the Mac, the app-only IPA,
+PadMint's `player-check.sh` before tagging, the benchmark tour against 0.8.0 and the 468-place sweep; then the Windows
+build and its play checks on Chris's PC, a Linux AppImage if a contributor has built one, publishing and
+`player-check.sh` after publishing.
+
+After 0.9.0: #347 (the Android HD import, which needs a phone), #342, and natives round 7 on the benchmark tour, which
+needs one extra Windows build.
 
 ## Where things stood on October 17
 
