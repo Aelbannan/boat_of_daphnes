@@ -242,76 +242,47 @@ must report path activation, and must not be part of the timed A/B binaries.
 | Correctness | checkpoints, differential oracle, source tests | Reject skipped or changed game work |
 | Environment | clocks, temperature, power/TDP, hashes | Identify incomparable runs |
 
-### M0 collection and candidate-selection gate
+## Findings
 
-| Milestone task | Collect before selecting code | Result needed to advance |
-|---|---|---|
-| M0-T01 | Source/dependency/build receipt; AppImage and module hashes; Deck/SteamOS/kernel; Game or Desktop Mode; refresh/frame cap/TDP; power, governor, clocks/temperature; renderer, resolution, textures, Smooth Motion; fixed-state hash | One comparable control definition. A source-unverified AppImage may be a diagnostic, never the final control. |
-| M0-T02 | At least three same-build runs for the fixed state in headless, rendered Desktop Mode, and Game Mode; checkpoint comparison; FPS, busy, worst-frame/dip causes, and environmental metadata | Checkpoints match and same-build variation is at most 3%. Otherwise fix the workload or environment before profiling candidates. |
-| M0-T03 | Headless and rendered/Game Mode `perf` captures: flat and per-thread reports, call graphs/annotations for leading symbols, cycles and instructions per retrace, plus renderer/GPU/presentation waits where exposed | Rank a code path only when its cost is repeatable, belongs to the game-thread critical path, and has an independently safe contract plus a correctness oracle. |
+These are preliminary findings from a source-identified historical AppImage,
+not the pinned current-source control. The raw AppImage, state, logs, and
+`perf.data` remain private.
 
-The selection record must distinguish CPU saturation from GPU or presentation
-waiting. A high symbol percentage alone does not authorize a code change.
+### Environment
 
-### Preliminary investigation order
+| Item | Measured value |
+|---|---|
+| Hardware / OS | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50 |
+| Power / CPU policy | AC power; `powersave`; 2.42 GHz observed at collection |
+| Temperature | 29°C Deck sensor; 48°C APU |
+| Session | Plasma Wayland Desktop Mode; not Game Mode |
+| Artifact | Source [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5); AppImage `2fdd36…2dd2b6b`; module `0775a8…e28c552` |
+| Instrumentation | `perf` 6.15; process-attached cycle sampling works; system-wide `perf stat` is denied by `perf_event_paranoid=2` |
 
-This is an evidence-backed order for M0 investigation, not approval to change
-code. Measurements use the historical diagnostic AppImage described above;
-reconfirm them with the pinned control after #433 is resolved.
+### Measurement methodology
 
-| Order | Surface | Observed signal | Required next evidence |
-|---|---|---|---|
-| 1 | Mapped translated chunks | `func_802456E0` 7.80%; `func_803256E0` 3.90% flat self time | Map each chunk to its guest range and semantic contract; quantify calls and establish an oracle before proposing a native boundary. |
-| 2 | Existing native math/vector paths | `bluewake_native_game_math_try` 3.29%, `bluewake_native_math_try` 1.88%, `bluewake_native_vec_try` 1.74% | Record accept/decline counts, batch sizes, and independent inputs/outputs. Only then assess a worker-pool candidate. |
-| 3 | Dispatch boundary | `chassis_dispatch` 2.70% | Measure dispatch/direct-call frequency and verify any change preserves edge-service, deadline, and guest-state behavior. |
-| 4 | Guest alias resolution | `ppc_guest_alias_resolve` 2.13% | Record resolution, pruning, and alias-overlap behavior; retain the logical address and alias contract. |
-| 5 | GX/GPU path | Rendered startup diagnostics reported `gpu=0ms`; post-warmup game rate remained 30.60–31.11 FPS | Recheck in Game Mode before selecting graphics work; current Desktop Mode evidence points to the game thread, not GPU wait. |
+- Loaded the same private `quick-23874.bwstate`; every run produced six
+  matching guest checkpoints.
+- Ran [`bench_tour.py`](../../../scripts/bench_tour.py) three times headless
+  and three times with the renderer in the active Desktop session. It discards
+  the first 300 retraces and measures the next 1,500. Both modes are unpaced;
+  the renderer-enabled result is not a Game Mode or player-facing frame-pacing
+  result.
+- Attached `perf record -g -F 99` to one 30-second headless run. It captured
+  2K user-space cycle samples with zero loss. `perf annotate` was used to
+  inspect the leading symbols.
 
-The displayed percentages are self-time from one 30-second headless capture;
-they are not additive and do not estimate a speedup.
+### Ranked optimization investigations
 
-Verification layers: #424's synthetic pool/lifecycle tests where applicable;
-candidate guard/source tests; private translated-reference versus candidate
-oracle; Linux/Windows CI; then Deck benchmark, Game Mode play, audio/cutscene,
-input, save/reload, and shutdown. A compile or synthetic pass is not hardware
-qualification.
+| Rank | Code path | Metric found | Why it ranks here / required proof |
+|---|---|---:|---|
+| 1 | Generated translated chunks reached through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` 7.80%; `func_803256E0` 3.90% self time | Largest individual costs. Map each generated chunk to its guest range and establish a correctness oracle before proposing a native boundary. |
+| 2 | [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | 3.29%, 1.88%, and 1.74% respectively | Existing fast paths are active enough to investigate. Record accept/decline counts, batch sizes, and input/output independence before considering work-pool parallelism. |
+| 3 | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h) and [`module_export.c`](../../../cmake/composite/module_export.c) | `chassis_dispatch` 2.70% | Shared boundary overhead may compound across guest edges. Measure dispatch/direct-call frequency and preserve edge-service and deadline semantics. |
+| 4 | RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` 2.13% | Meaningful helper cost, but alias semantics are safety-critical. First record resolution/pruning behavior and retain the guest-address contract. |
+| 5 | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h) | Renderer-enabled runs: 30.60–31.11 FPS; startup diagnostics reported `gpu=0ms` | Current evidence points away from GPU wait. Recheck in Game Mode before selecting graphics work. |
 
-## Impact register
-
-| ID | Requirement | Entity / flow | Baseline | Target / measurement | Risk | Owner |
-|---|---|---|---|---|---|---|
-| IMP-01 | FR-01/02 | Deck measurement | Unknown | Comparable A/A evidence and ranked self-time | Thermal/process mismatch | M0 |
-| IMP-02 | FR-03 | Selected code path | Not selected | Positive activation and bounded semantic contract | Wrong hotspot or unsafe boundary | M1 |
-| IMP-03 | FR-04 | Game thread | Unknown | Cost reduction beyond noise | Shift work elsewhere | M2 |
-| IMP-04 | FR-04 | Rendered Game Mode | Unknown | Median ≥29.5 FPS without sustained game-thread dips | Scene remains CPU-bound | M2 |
-| IMP-05 | FR-05 | Guest/platform behavior | Untested | Required checks pass | Incomplete oracle or platform regression | M3 |
-
-## Implementation order
-
-| Milestone | Depends | Can run with | Deliverable / integration gate |
-|---|---|---|---|
-| M0 | — | — | Frozen control, Deck A/A noise, profiles, metrics, and ranked candidate |
-| M1 | M0 | — | One candidate plus focused activation/correctness tests; code ownership follows selected row |
-| M2 | M1 | M3 test preparation | Matched A/B builds and interleaved Deck evidence |
-| M3 | M1 | M2 | Differential, CI, lifecycle, and gameplay qualification on final candidate |
-| M4 | M2, M3 | — | Go/no-go record and one scoped upstream PR |
-
-Critical path: M0 → M1 → M2/M3 → M4. Candidate selection is serial because it
-determines code ownership and the necessary oracle. Only test preparation can
-run alongside A/B measurement, and only one benchmark runs on the Deck at once.
-
-## Decisions / gaps
-
-- Stable 30 FPS and measurable game-thread reduction are both required.
-- Exact baseline, slow-scene set beyond Outset, candidate, and attainable gain
-  are unresolved until M0. Use **unknown/not measured**, not old #421 data.
-- `perf stat` collection per fixed retrace window may need a small wrapper;
-  validate its synchronization before accepting cycles/instructions per retrace.
-
-## References
-
-- [Game-thread architecture](../../architecture/GameThread.md) — ownership, dispatch, services, graphics, concurrency, and measurement boundaries.
-- [Issue #215](https://github.com/chrissotraidis/bluewake/issues/215) — motivation and Deck context, not the fresh baseline.
-- [Steam Deck profiling guide](../../PROFILING.md) — current Linux procedure and interpretation.
-- [Performance overview](../../performance/Overview.md) — profiling, benchmarking, and tuning contracts.
-- [Test architecture](../../architecture/Testing.md) — evidence levels and private/hardware boundaries.
+Headless results were 34.05–34.45 FPS (maximum 1.2% spread, 98–99% busy).
+Renderer-enabled Desktop results were 30.60–31.11 FPS (maximum 1.6% spread,
+97.9–98.2% busy). Self-time percentages are from one capture, are not
+additive, and do not estimate a speedup.
