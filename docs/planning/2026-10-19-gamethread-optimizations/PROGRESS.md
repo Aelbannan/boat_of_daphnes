@@ -14,9 +14,9 @@ Architecture: [game thread](../../architecture/GameThread.md) ·
 
 Architecture: [performance workflow](../../performance/Overview.md#performance-workflow).
 
-- [ ] M0-T01: Freeze source/build identity, Deck environment, private scene inputs, settings, metrics, and retention policy. (FR-01, FR-04)
-- [ ] M0-T02: Run same-build A/A headless, rendered, and Game Mode measurements; record noise and reject incomparable runs. (FR-01)
-- [ ] M0-T03: Capture flat/per-thread profiles and annotations; rank code candidates with estimated upper bounds and activation evidence. (FR-02)
+- [ ] M0-T01: Freeze source/dependency/build receipt; AppImage/module/state hashes; Deck, power, display, renderer, and settings metadata. (FR-01, FR-04)
+- [ ] M0-T02: Run at least three same-build A/A headless, rendered Desktop Mode, and Game Mode measurements; record checkpoints, FPS, busy/dips, and environmental noise. (FR-01)
+- [ ] M0-T03: Capture flat/per-thread `perf`, call graphs/annotations, cycles/instructions per retrace, and renderer/GPU/presentation waits where available; rank one candidate only after the M0 gate. (FR-02)
 
 ### M0 execution record
 
@@ -25,9 +25,10 @@ states, raw logs, and `perf.data` remain on the Deck.
 
 | Task | Current evidence | Limitation |
 |---|---|---|
-| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; plugged in; `powersave`; `perf` 6.15. Existing microSD AppImage SHA-256: `abe940206989975ea91a412b6c9780953dfb52d099d4e4f3b58b961cd7aeac07`. | The AppImage source/build receipt is unknown; it is not the pinned `2ab8118` control. |
-| M0-T02 | Fixed-state headless A/A runs: 34.281, 34.407, and 34.381 game FPS; 99.0% busy each; comparisons differ by +0.4% and +0.3%; all six checkpoints match. | Rendered and Game Mode measurements remain pending. |
-| M0-T03 | 30-second headless `perf` capture: 2K samples, zero lost. Leading flat samples include translated chunks, `bluewake_native_game_math_try`, `chassis_dispatch`, `bluewake_native_vec_try`, and `ppc_guest_alias_resolve`. | No source receipt, per-thread report, or symbol annotation yet; this cannot select an implementation candidate. |
+| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; AC power; `powersave`; `perf` 6.15; active Plasma Wayland Desktop Mode; collection temperatures 29°C Deck sensor / 48°C APU. Historical AppImage source `3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`, SHA-256 `2fdd36b90d33f2d0068a03a46ff07629b2f5738929aefa7b96a89a68d2dd2b6b`; module SHA-256 `0775a84cc1e1042fff25df8fc05d506ce125d5a4da1c7d56065344e28e28c552`. | This is a source-identified historical diagnostic, not the pinned `2ab8118` control. Frame cap, refresh, TDP, texture/options receipt, and Game Mode receipt remain unrecorded. |
+| M0-T02 | Historical fixed-state A/A, six matching checkpoints each. Headless: 34.0477, 34.1136, 34.4452 FPS; 98%, 98%, 99% busy; maximum spread +1.2%. Rendered Desktop Mode: 31.1062, 30.7188, 30.6021 FPS; 97.875%, 98.208%, 98.125% busy; maximum spread -1.6%. | Game Mode and a second scene/low-load control remain pending. Desktop session logs report only startup game-thread dips; this is not a Game Mode qualification. |
+| M0-T03 | 30-second headless process-attached cycle sample: 2K samples, zero lost, ~96.0B cycles. Leading self time: `func_802456E0` 7.80%, `func_803256E0` 3.90%, `bluewake_native_game_math_try` 3.29%, `func_802ED6E0` 3.15%, `chassis_dispatch` 2.70%, `ppc_guest_alias_resolve` 2.13%. Annotations confirm translated dispatch/guest-state checks in the leading chunk and native-path guards in the math path. | `perf stat -a` is denied by `perf_event_paranoid=2`; no instructions-per-retrace, reliable thread split, or Game Mode profile yet. The resulting ranking is investigation order only. |
+| Historical diagnostic | The AppImage launches directly on Deck, loads `quick-23874.bwstate` with `missing=0` and `mismatched=0`, and executed beyond retrace 31,000. Raw JSON, logs, and `perf.data` stay private under `~/bluewake-profile/`. | An extract-and-run wrapper previously misidentified the child PID; direct AppImage profiling works. This does not make the artifact a release candidate. |
 
 ### M1: One bounded candidate (depends: M0)
 
@@ -63,7 +64,7 @@ not overlap.
 
 | ID | Actual | Outcome | Evidence |
 |---|---|---|---|
-| IMP-01 | Headless A/A is within 0.4%; checkpoints match | Partial | M0 execution record; rendered/Game Mode and reproducible-control evidence pending |
+| IMP-01 | Historical A/A: headless maximum 1.2%; rendered Desktop maximum 1.6%; checkpoints match | Partial | M0 execution record; Game Mode and reproducible-control evidence pending |
 | IMP-02 | Not selected | Planned | None |
 | IMP-03 | Not measured | Planned | None |
 | IMP-04 | Not measured | Planned | None |

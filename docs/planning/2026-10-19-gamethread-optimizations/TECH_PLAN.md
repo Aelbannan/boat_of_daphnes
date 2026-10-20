@@ -100,8 +100,10 @@ neither is a valid control until that issue is resolved.
 is the last source revision verified locally to compile the Clang 22 application
 through the earlier packaged-Dawn route (RecompCore
 `77d4717d868cec8b4014932bb22978c284a535a7`). Its AppImage ABI audit fails on
-`GLIBCXX_3.4.32`, so it is a diagnostic checkpoint, not a Steam Deck control or
-a release candidate.
+`GLIBCXX_3.4.32`, but that warning is not a Deck compatibility verdict: the
+resulting AppImage launched on the Deck, loaded the fixed state, and executed
+gameplay. It remains a diagnostic checkpoint, not the reproducible current
+source control or a release candidate.
 
 ### Deck test bundle
 
@@ -239,6 +241,34 @@ must report path activation, and must not be part of the timed A/B binaries.
 | Activation | calls, accepted/declined jobs, batches, items | Prove the candidate ran |
 | Correctness | checkpoints, differential oracle, source tests | Reject skipped or changed game work |
 | Environment | clocks, temperature, power/TDP, hashes | Identify incomparable runs |
+
+### M0 collection and candidate-selection gate
+
+| Milestone task | Collect before selecting code | Result needed to advance |
+|---|---|---|
+| M0-T01 | Source/dependency/build receipt; AppImage and module hashes; Deck/SteamOS/kernel; Game or Desktop Mode; refresh/frame cap/TDP; power, governor, clocks/temperature; renderer, resolution, textures, Smooth Motion; fixed-state hash | One comparable control definition. A source-unverified AppImage may be a diagnostic, never the final control. |
+| M0-T02 | At least three same-build runs for the fixed state in headless, rendered Desktop Mode, and Game Mode; checkpoint comparison; FPS, busy, worst-frame/dip causes, and environmental metadata | Checkpoints match and same-build variation is at most 3%. Otherwise fix the workload or environment before profiling candidates. |
+| M0-T03 | Headless and rendered/Game Mode `perf` captures: flat and per-thread reports, call graphs/annotations for leading symbols, cycles and instructions per retrace, plus renderer/GPU/presentation waits where exposed | Rank a code path only when its cost is repeatable, belongs to the game-thread critical path, and has an independently safe contract plus a correctness oracle. |
+
+The selection record must distinguish CPU saturation from GPU or presentation
+waiting. A high symbol percentage alone does not authorize a code change.
+
+### Preliminary investigation order
+
+This is an evidence-backed order for M0 investigation, not approval to change
+code. Measurements use the historical diagnostic AppImage described above;
+reconfirm them with the pinned control after #433 is resolved.
+
+| Order | Surface | Observed signal | Required next evidence |
+|---|---|---|---|
+| 1 | Mapped translated chunks | `func_802456E0` 7.80%; `func_803256E0` 3.90% flat self time | Map each chunk to its guest range and semantic contract; quantify calls and establish an oracle before proposing a native boundary. |
+| 2 | Existing native math/vector paths | `bluewake_native_game_math_try` 3.29%, `bluewake_native_math_try` 1.88%, `bluewake_native_vec_try` 1.74% | Record accept/decline counts, batch sizes, and independent inputs/outputs. Only then assess a worker-pool candidate. |
+| 3 | Dispatch boundary | `chassis_dispatch` 2.70% | Measure dispatch/direct-call frequency and verify any change preserves edge-service, deadline, and guest-state behavior. |
+| 4 | Guest alias resolution | `ppc_guest_alias_resolve` 2.13% | Record resolution, pruning, and alias-overlap behavior; retain the logical address and alias contract. |
+| 5 | GX/GPU path | Rendered startup diagnostics reported `gpu=0ms`; post-warmup game rate remained 30.60–31.11 FPS | Recheck in Game Mode before selecting graphics work; current Desktop Mode evidence points to the game thread, not GPU wait. |
+
+The displayed percentages are self-time from one 30-second headless capture;
+they are not additive and do not estimate a speedup.
 
 Verification layers: #424's synthetic pool/lifecycle tests where applicable;
 candidate guard/source tests; private translated-reference versus candidate
