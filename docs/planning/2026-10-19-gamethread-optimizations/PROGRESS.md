@@ -1,77 +1,44 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: M0 in progress; the reproducible control is blocked by #433. Preliminary
-Deck evidence uses an existing, source-identified historical private AppImage.
+Status: Profiling is in progress. Current-source control construction is
+blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 
-[Requirements](PRD.md) · [Technical plan](TECH_PLAN.md)
-
-Architecture: [game thread](../../architecture/GameThread.md) ·
-[test evidence](../../architecture/Testing.md)
+[Requirements](PRD.md) · [Technical plan](TECH_PLAN.md) ·
+[Game-thread architecture](../../architecture/GameThread.md)
 
 ## Milestones
 
-### M0: Fresh Steam Deck baseline
+### 1. Setup the Deck profiling environment
 
-Architecture: [performance workflow](../../performance/Overview.md#performance-workflow).
+- [x] Identify the Deck, OS, power, display, renderer, and profiling tools.
+- [x] Record the historical AppImage, module, and state hashes used for the
+  current diagnostic runs.
+- [ ] Replace the historical artifact with a current-source control after #433
+  is resolved, then record Game Mode and representative settings.
 
-- [ ] M0-T01: Freeze source/dependency/build receipt; AppImage/module/state hashes; Deck, power, display, renderer, and settings metadata. (FR-01, FR-04)
-- [ ] M0-T02: Run at least three same-build A/A headless, rendered Desktop Mode, and Game Mode measurements; record checkpoints, FPS, busy/dips, and environmental noise. (FR-01)
-- [ ] M0-T03: Capture flat/per-thread `perf`, call graphs/annotations, cycles/instructions per retrace, and renderer/GPU/presentation waits where available; rank one candidate only after the M0 gate. (FR-02)
+### 2. Run tests and gather metrics
 
-### M0 execution record
+- [x] Run three deterministic five-scene headless sweeps: all 31 checkpoints
+  match, with 0.47–1.31% range/mean.
+- [x] Run three wall-paced Desktop sweeps over the three slowest scenes: all 19
+  checkpoints match, with 29.943–29.979 mean game FPS and 88.55–97.48%
+  game-thread busy.
+- [x] Capture five symbol-complete, zero-loss, post-settle CPU profiles; more
+  than 99.5% of samples in each profile belong to the main thread.
+- [ ] Repeat the representative measurements and profile in Game Mode.
 
-This record retains only hashes and redacted measurements. Private AppImages,
-states, raw logs, and `perf.data` remain on the Deck.
+### 3. Rank the best optimization candidates
 
-| Task | Current evidence | Limitation |
-|---|---|---|
-| M0-T01 | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50; AC power; `powersave`; `perf` 6.15; Plasma Wayland Desktop Mode on an external 1920×1080/120 Hz display. Controlled rendered runs used Vulkan/Mailbox, a 960×720 window/framebuffer, scale 1, default GXCore, and isolated blank settings. Historical AppImage source `3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`, SHA-256 `2fdd36b90d33f2d0068a03a46ff07629b2f5738929aefa7b96a89a68d2dd2b6b`; module SHA-256 `0775a84cc1e1042fff25df8fc05d506ce125d5a4da1c7d56065344e28e28c552`. | Source-identified historical diagnostic, not pinned `2ab8118`. Exact TDP semantics, representative personal settings, and Game Mode receipt remain pending. |
-| M0-T02 | Three explicit-input five-scene headless sweeps loaded every scene, matched all 31 checkpoints, and stayed within 0.47–1.31% range/mean. Three wall-paced Desktop sweeps loaded Fortress sea, Forest Haven, and Outset, matched all 19 checkpoints, and measured 29.943–29.979 mean game FPS with 88.55–97.48% game-thread busy. | Game Mode repetitions and representative HD-texture/options evidence remain pending. Desktop runs used isolated defaults. |
-| M0-T03 | Five zero-loss, post-settle 30-second headless profiles captured one per scene; more than 99.5% of samples in each belong to the main thread and game-module symbols resolve. Recurring costs are translated chunks/dispatch, alias resolution, and existing native math/vector probes. | Map hot chunk offsets to guest ranges, collect available instruction/cycle evidence, and capture Game Mode thread/wait ownership before selecting one candidate. |
-| Historical diagnostic | The AppImage launches directly on Deck, loads `quick-23874.bwstate` with `missing=0` and `mismatched=0`, and executed beyond retrace 31,000. Raw JSON, logs, and `perf.data` stay private under `~/bluewake-profile/`. | An extract-and-run wrapper previously misidentified the child PID; direct AppImage profiling works. This does not make the artifact a release candidate. |
+- [x] Establish the current investigation order: translated chunks/dispatch,
+  guest alias resolution, then existing native math/vector paths.
+- [ ] Map hot chunk offsets to guest ranges and annotate the leading call sites.
+- [ ] Use the Game Mode evidence to select one bounded candidate; do not treat
+  the current investigation order as a chosen optimization.
 
-### M1: One bounded candidate (depends: M0)
+## Evidence boundary
 
-Owns only the code surface selected by M0; candidate-specific test preparation
-may proceed separately after its semantic interface is frozen.
-
-- [ ] M1-T01: Define preserved state, arithmetic, deadlines, ordering, fallback, and lifecycle behavior. (FR-03, FR-05)
-- [ ] M1-T02: Implement one opt-in candidate and positive activation reporting; keep timing instrumentation out of measured binaries. (FR-03)
-- [ ] M1-T03: Add focused source/guard and differential-oracle coverage, including decline/fallback cases. (FR-03, FR-05)
-
-### M2: Matched performance comparison (depends: M1)
-
-Parallel with M3's final test execution only where the Deck and test resources do
-not overlap.
-
-- [ ] M2-T01: Produce matched A/B builds and receipts; verify hashes and candidate activation. (FR-01, FR-03)
-- [ ] M2-T02: Run five interleaved headless/rendered pairs plus the Game Mode scene; compare cost, throughput, tails, waits, clocks, and noise. (FR-04)
-- [ ] M2-T03: Re-profile the candidate and explain where saved time went; record stable-30 result or remaining gap. (FR-02, FR-04)
-
-### M3: Correctness and platform qualification (depends: M1)
-
-- [ ] M3-T01: Run applicable #424 pool/lifecycle coverage, candidate tests, private oracle, and Linux/Windows CI. (FR-05)
-- [ ] M3-T02: Play the rendered Deck route with cutscene/audio, sailing/input, save/reload, and clean shutdown. (FR-05)
-- [ ] M3-T03: Check the low-load control and record regressions, skipped lanes, and incomplete evidence explicitly. (FR-04, FR-05)
-
-### M4: Decision and submission (depends: M2, M3)
-
-- [ ] M4-T01: Reconcile performance and correctness evidence against both success gates. (FR-04, FR-05)
-- [ ] M4-T02: Retain, revise, or reject the candidate; document any remaining bottleneck without carrying unsupported conclusions forward. (FR-02, FR-04)
-- [ ] M4-T03: Submit one scoped upstream PR with commands, redacted evidence, limitations, and rollback/default policy. (FR-03, FR-05)
-
-## Impact evidence
-
-| ID | Actual | Outcome | Evidence |
-|---|---|---|---|
-| IMP-01 | Five-scene explicit-input order repeated three times; all 31 checkpoints match and range/mean is 0.47–1.31%. Three rendered Desktop slow-scene runs also match all 19 checkpoints with 0.03–0.55% range/mean. | Partial | M0 execution record; Game Mode and reproducible-control evidence pending |
-| IMP-02 | Not selected | Planned | None |
-| IMP-03 | Not measured | Planned | None |
-| IMP-04 | Not measured | Planned | None |
-| IMP-05 | Guest checkpoints match across the fixed-state headless A/A runs | Partial | M0 execution record; candidate and platform qualification pending |
-
-## Evidence ledger
-
-No task is complete. Planning/source inspection is not performance,
-correctness, or hardware evidence; preliminary hardware evidence does not
-replace the pinned control or the remaining rendered/Game Mode work.
+Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The
+current evidence uses source-identified historical commit
+[`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
+not the blocked current-source control. Desktop runs used isolated default
+settings and do not replace Game Mode qualification.
