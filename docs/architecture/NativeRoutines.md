@@ -63,16 +63,21 @@ Native replacement support is prepared while the composite native game module
 running process or add the replacement to the BlueWake host.
 
 ```mermaid
-flowchart LR
-    Translation["Generated translated<br/>C chunks"]
-    Certifier["native_entries.py<br/>verify fragments"]
-    Hooked["Certified entry hook<br/>in generated C"]
-    NativeSource["Native implementation<br/>and guards"]
-    Compiler["Host C compiler"]
-    Module["gGZLE01_recomp<br/>shared module"]
+flowchart TD
+    Flag["Builder option<br/>--native-entries"]
+    Composite["OUT/composite-src<br/>translated C chunks"]
+    Registry["native_entries.py<br/>entry, fragments, digest"]
+    Verify{"Every translated variant<br/>matches the certified digest?"}
+    Hook["Insert guarded call<br/>at the guest entry label"]
+    Unchanged["Leave translated<br/>entry unchanged"]
+    Native["cmake/composite<br/>native C sources"]
+    CMake["Composite CMake target<br/>translated + native sources"]
+    Module["gGZLE01_recomp<br/>native game module"]
 
-    Translation --> Certifier --> Hooked --> Compiler
-    NativeSource --> Compiler --> Module
+    Flag --> Composite --> Registry --> Verify
+    Verify -->|"yes"| Hook --> CMake
+    Verify -->|"no"| Unchanged --> CMake
+    Flag --> Native --> CMake --> Module
 ```
 
 [`native_entries.py`](../../scripts/windows/native_entries.py) identifies each
@@ -88,6 +93,77 @@ rather than a Windows-only runtime boundary. See the [Linux builder
 invocation](../../scripts/linux/build.py#L766-L790), [Windows builder
 invocation](../../scripts/windows/build.py#L847-L873), and [module target
 configuration](../../cmake/composite/CMakeLists.txt#L171-L190).
+
+### Concrete example: `cBgS_Chk::ChkSameActorPid`
+
+The collision function at guest address `0x8024734C` shows the complete path.
+The [entry registry](../../scripts/windows/native_entries.py#L62-L75) binds
+that address to translated fragment `0x8024734C..0x8024738C`, the `bg` native
+group, and a SHA-256 digest. The certifier reconstructs and hashes the fragment
+for the base translation and every mod variant, then also rejects an entry if
+the fragment crosses a [host-watched
+address](../../scripts/windows/native_entries.py#L368-L392).
+
+```mermaid
+flowchart TD
+    Entry["Registry entry<br/>0x8024734C"]
+    Locate["Locate translated block<br/>in chunk 0x802456E0"]
+    Canonical["Canonicalize fragment<br/>and prepaid copies"]
+    Digest{"Digest matches<br/>the recorded SHA-256?"}
+    Watch{"Fragment names a<br/>host-watched address?"}
+    Insert["Insert native-bg include<br/>and guarded entry call"]
+    Keep["Do not hook this entry<br/>translated path remains"]
+
+    Entry --> Locate --> Canonical --> Digest
+    Digest -->|"no"| Keep
+    Digest -->|"yes"| Watch
+    Watch -->|"yes"| Keep
+    Watch -->|"no"| Insert
+```
+
+For a certified chunk, the [transformation
+step](../../scripts/windows/native_entries.py#L395-L428) inserts the equivalent
+of this directly after `label_8024734C`:
+
+```c
+if (bluewake_native_bg_enabled &&
+    bluewake_native_bg(ctx, 0x8024734Cu))
+    goto return_dispatch_802456E0;
+```
+
+The call target is the handwritten [collision
+implementation](../../cmake/composite/native_bg.c#L82-L120). It first checks
+whether the current guest state is safe to handle. Its public dispatcher
+returns `1` after a successful native result or `0` to leave execution on the
+translated path; it also records activation and decline counts. See
+[`bluewake_native_bg`](../../cmake/composite/native_bg.c#L282-L294).
+
+```mermaid
+flowchart LR
+    Chunk["Prepared translated chunk<br/>hook at 0x8024734C"]
+    NativeBg["native_bg.c<br/>guarded implementation"]
+    Runtime["module_export.c<br/>enable and counters"]
+    Core["GXRuntime CPU core<br/>and dispatch loop"]
+    Link["CMake shared-library link"]
+    Output["gGZLE01_recomp<br/>.so, .dll, or .dylib"]
+
+    Chunk --> Link
+    NativeBg --> Link
+    Runtime --> Link
+    Core --> Link
+    Link --> Output
+```
+
+Mechanically, the builder runs the preparation script against
+`OUT/composite-src`, then passes `BLUEWAKE_NATIVE_ENTRIES=ON` to the composite
+CMake build. CMake adds `native_bg.c` and the other selected native groups to
+the same shared-library target that already contains the translated DOL and
+REL chunks. The target is explicitly named
+[`g${GAME_ID}_recomp`](../../cmake/composite/CMakeLists.txt#L50-L76); the
+native-source selection is defined in the [native entries CMake
+block](../../cmake/composite/CMakeLists.txt#L171-L190). The resulting artifact
+is therefore one native game module containing both executable paths—not a
+second plug-in and not part of the BlueWake host executable.
 
 ## Runtime selection
 
