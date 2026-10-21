@@ -11,8 +11,7 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 ### 1. Setup the Deck profiling environment
 
 - [x] Identify the Deck, OS, power, display, renderer, and profiling tools.
-- [x] Record the historical AppImage, module, and state hashes used for the
-  current diagnostic runs.
+- [x] Record the control AppImage, module, and state hashes.
 - [x] Run the source-identified `3b5c5c4` control in Game Mode and verify its
   AppImage/module hashes before capture.
 - [ ] Replace it with a current-source control after #433 is resolved.
@@ -43,9 +42,8 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 ## Evidence boundary
 
 Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The
-current evidence uses source-identified historical commit
+current evidence uses source-identified control commit
 [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
 not the blocked current-source control. Desktop runs used isolated default
-settings. The Game Mode run used older commit
-[`4177913`](https://github.com/chrissotraidis/bluewake/commit/41779133a6f5e174e757f98d12ffaea1a6246d99)
-and is retained only as an artifact-mismatch diagnostic.
+settings. The control performs better than the older installed build, whose
+detailed measurements are intentionally omitted.

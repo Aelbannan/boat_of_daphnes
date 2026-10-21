@@ -94,16 +94,16 @@ the default Clang 18 and optional Clang 22 `x86-64-v3` container paths are
 currently blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433);
 neither is a valid control until that issue is resolved.
 
-### Historical diagnostic
+### Verified profiling control
 
 [`3b5c5c4826ef62bd1f8ff387734ff2ef295898e5`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5)
-is the last source revision verified locally to compile the Clang 22 application
+is the source revision used for the recorded measurements. It compiles the
+Clang 22 application
 through the earlier packaged-Dawn route (RecompCore
 `77d4717d868cec8b4014932bb22978c284a535a7`). Its AppImage ABI audit fails on
 `GLIBCXX_3.4.32`, but that warning is not a Deck compatibility verdict: the
 resulting AppImage launched on the Deck, loaded the fixed state, and executed
-gameplay. It remains a diagnostic checkpoint, not the reproducible current
-source control or a release candidate.
+gameplay. It is the profiling control, not a release candidate.
 
 ### Deck test bundle
 
@@ -244,9 +244,8 @@ must report path activation, and must not be part of the timed A/B binaries.
 
 ## Findings
 
-These are preliminary findings from a source-identified historical AppImage,
-not the pinned current-source control. The raw AppImage, state, logs, and
-`perf.data` remain private.
+These are findings from the source-identified profiling control. The raw
+AppImage, state, logs, and `perf.data` remain private.
 
 ### Environment
 
@@ -255,7 +254,7 @@ not the pinned current-source control. The raw AppImage, state, logs, and
 | Hardware / OS | Steam Deck Jupiter; SteamOS 3.8.28; kernel 6.18.50 |
 | Power / CPU policy | AC power; `powersave`; 2.42 GHz observed during collection; reported power cap `15000000` |
 | Temperature | 29°C Deck sensor; 48°C APU |
-| Sessions | Plasma Wayland Desktop Mode on an external 1920×1080/120 Hz display; separate artifact-mismatch diagnostic in Game Mode at 1280×800 |
+| Sessions | Plasma Wayland Desktop Mode on an external 1920×1080/120 Hz display; Game Mode at 1280×800 |
 | Controlled rendered configuration | Vulkan/Mailbox; 960×720 host window and framebuffer; scale 1; default GXCore renderer; blank isolated settings, so no HD texture pack or personal options |
 | Artifact | Source [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5); AppImage `2fdd36…2dd2b6b`; module `0775a8…e28c552` |
 | Instrumentation | `perf` 6.15; process-attached cycle sampling works; system-wide `perf stat` is denied by `perf_event_paranoid=2` |
@@ -318,26 +317,6 @@ they are not Game Mode or representative-HD-texture qualification.
 Only transient startup/load samples fell below target after warmup. Their
 reported cause was `game-thread`, with zero recorded GPU-wait milliseconds.
 
-### Game Mode artifact-mismatch diagnostic
-
-The Steam entry launched `BlueWake-Deck-Lean-4177913-x86_64.AppImage`, not the
-`3b5c5c4` control used above. Its AppImage hash is `aad622…6e039`; its module
-hash is `47290c…61f35`. Three matched 30-second captures in the Fortress sea
-scene lost zero samples and reproduced the player-visible slowdown, but they
-cannot rank candidates for the source-matched control.
-
-| Run | Mean game FPS | Mean shown FPS | Busy | GX wait | Present wait | GPU wait |
-|---|---:|---:|---:|---:|---:|---:|
-| 1 | 23.79 | 23.49 | 97.58% | 5.82 ms | 5.64 ms | 1.00 ms |
-| 2 | 23.60 | 23.26 | 97.40% | 5.87 ms | 5.73 ms | 1.00 ms |
-| 3 | 23.68 | 23.35 | 97.39% | 6.03 ms | 5.48 ms | 1.00 ms |
-
-The main game thread supplied about 61–62% of samples; the largest secondary
-BlueWake thread supplied about 31–32%. Frame logs consistently reported
-`cause=game-thread`. The old build's main-thread `host_direct_can_skip` cost is
-not a new candidate: later source already provides the module-side inline
-answer in [`direct_calls.h`](../../../cmake/composite/direct_calls.h).
-
 ### Source-matched Game Mode capture
 
 The Steam shortcut was retargeted to the verified `3b5c5c4` control. The
@@ -355,6 +334,8 @@ Game FPS is derived from every per-second retrace-rate sample, not only
 `fps-dip` lines. `build_draw_plan_into` is 4.10–4.49% of process samples but
 runs on the secondary render thread. The module reports
 `direct-calls=on inline-answer=on`; the old host callback hotspot is absent.
+This control also improves over the older installed build used before the
+profiling artifact was pinned.
 
 ### Candidate status after the scene sweep
 
@@ -369,7 +350,6 @@ optimization target is selected yet.
 | Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` appears in every source-matched headless scene and reaches 4.13% in Forest Haven. | Second investigation. Annotate call sites and distinguish unavoidable aliases from fast-path misses before changing address resolution. |
 | Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in source-matched headless scenes and 2.10–2.54% in Game Mode. The worker probe's largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Measurable but not evidence for pool activation; find a genuinely large independent batch first. |
 | GX draw-plan construction in [`gxcore.cpp`](../../../ref/recompcore/GXRuntime/graphics/gxcore/src/gxcore.cpp) | `build_draw_plan_into` is 4.10–4.49% in the source-matched Game Mode profiles. | Secondary render-thread cost, not the leading game-thread candidate. Keep separate from the 30 FPS critical path. |
-| Old-build direct-call callback | Build `4177913` placed `host_direct_can_skip` on the main thread. In `3b5c5c4`, `inline-answer=on` and the callback disappears from the leading symbols. | Already addressed; not a candidate. |
 | Host-specific helpers in [`main.c`](../../../runtime/host/src/main.c) | Corrected symbol-complete reports do not show actor search or another concrete host helper as a dominant recurring cost. | Do not select from the earlier unresolved reports. Reconsider only if Game Mode or annotated call paths expose a specific host cost. |
 
 The current ranking is an investigation order, not M0 candidate selection.
