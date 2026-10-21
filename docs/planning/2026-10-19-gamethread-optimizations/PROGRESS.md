@@ -13,8 +13,9 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 - [x] Identify the Deck, OS, power, display, renderer, and profiling tools.
 - [x] Record the historical AppImage, module, and state hashes used for the
   current diagnostic runs.
-- [ ] Run the source-identified `3b5c5c4` control in Game Mode, then replace it
-  with a current-source control after #433 is resolved.
+- [x] Run the source-identified `3b5c5c4` control in Game Mode and verify its
+  AppImage/module hashes before capture.
+- [ ] Replace it with a current-source control after #433 is resolved.
 
 ### 2. Run tests and gather metrics
 
@@ -25,16 +26,17 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
   game-thread busy.
 - [x] Capture five symbol-complete, zero-loss, post-settle CPU profiles; more
   than 99.5% of samples in each profile belong to the main thread.
-- [ ] Repeat the Game Mode captures with the `3b5c5c4` control. Three runs of
-  older installed build `4177913` reproduced 23.60–23.79 game FPS, but are not
-  comparable to the headless/Desktop control.
+- [x] Capture three matched, zero-loss Game Mode profiles of the `3b5c5c4`
+  control: 28.25–28.65 estimated game FPS and 97.58–97.72% busy. The three
+  windows consistently identify the game thread as the limit.
 
 ### 3. Rank the best optimization candidates
 
-- [x] Rank the source-matched headless investigation surfaces: translated
-  chunks/dispatch, guest alias resolution, then native math/vector paths.
-- [ ] Profile `3b5c5c4` in Game Mode, map hot translated chunk offsets to guest
-  ranges, and annotate the leading source-matched call sites.
+- [x] Rank the source-matched Game Mode surfaces: translated chunk
+  `func_802456E0`, other translated chunks/dispatch, then native math/vector
+  paths. GX draw planning is large but belongs to the secondary render thread.
+- [ ] Map `func_802456E0` sampled offsets to guest ranges and annotate the
+  leading source-matched call sites.
 - [ ] Select one bounded candidate after reproducing the ranking with the
   current-source control.
 

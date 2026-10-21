@@ -338,6 +338,24 @@ BlueWake thread supplied about 31–32%. Frame logs consistently reported
 not a new candidate: later source already provides the module-side inline
 answer in [`direct_calls.h`](../../../cmake/composite/direct_calls.h).
 
+### Source-matched Game Mode capture
+
+The Steam shortcut was retargeted to the verified `3b5c5c4` control. The
+running AppImage hash was `2fdd36…2dd2b6b`; its loaded module hash was
+`0775a8…e28c552`. Three matched 30-second Fortress sea captures lost zero
+samples.
+
+| Run | Estimated game FPS | Range | Busy | Leading main-thread symbol |
+|---|---:|---:|---:|---|
+| 1 | 28.65 | 26.15–29.65 | 97.72% | `func_802456E0` 4.55% |
+| 2 | 28.46 | 26.60–28.95 | 97.63% | `func_802456E0` 4.28% |
+| 3 | 28.25 | 25.30–28.70 | 97.58% | `func_802456E0` 4.04% |
+
+Game FPS is derived from every per-second retrace-rate sample, not only
+`fps-dip` lines. `build_draw_plan_into` is 4.10–4.49% of process samples but
+runs on the secondary render thread. The module reports
+`direct-calls=on inline-answer=on`; the old host callback hotspot is absent.
+
 ### Candidate status after the scene sweep
 
 `gGZLE01_recomp.so` entries execute in the loaded game module; `bluewake`
@@ -347,15 +365,17 @@ optimization target is selected yet.
 
 | Candidate surface | Evidence across scenes | Decision |
 |---|---|---|
-| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` leads four source-matched headless scenes at 5.41–6.29%; `func_803256E0` and `chassis_dispatch` also recur. | Highest source-matched investigation. Map sampled native offsets back to guest ranges before naming game logic or selecting a native replacement; chunk symbols are compilation buckets. |
+| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` leads the Game Mode main thread at 4.04–4.55% and four source-matched headless scenes at 5.41–6.29%; `func_803256E0` and `chassis_dispatch` also recur. | Highest source-matched investigation. Map sampled native offsets back to guest ranges before naming game logic or selecting a native replacement; chunk symbols are compilation buckets. |
 | Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` appears in every source-matched headless scene and reaches 4.13% in Forest Haven. | Second investigation. Annotate call sites and distinguish unavoidable aliases from fast-path misses before changing address resolution. |
-| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in several source-matched scenes. The worker probe's largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Measurable but not evidence for pool activation; find a genuinely large independent batch first. |
-| Game Mode graphics and direct-call costs | Old build `4177913` places GX draw planning on a secondary thread and `host_direct_can_skip` on the main thread. | Diagnostic only. Re-run the source-matched control; do not optimize an obsolete callback cost from the old installed build. |
+| Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in source-matched headless scenes and 2.10–2.54% in Game Mode. The worker probe's largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Measurable but not evidence for pool activation; find a genuinely large independent batch first. |
+| GX draw-plan construction in [`gxcore.cpp`](../../../ref/recompcore/GXRuntime/graphics/gxcore/src/gxcore.cpp) | `build_draw_plan_into` is 4.10–4.49% in the source-matched Game Mode profiles. | Secondary render-thread cost, not the leading game-thread candidate. Keep separate from the 30 FPS critical path. |
+| Old-build direct-call callback | Build `4177913` placed `host_direct_can_skip` on the main thread. In `3b5c5c4`, `inline-answer=on` and the callback disappears from the leading symbols. | Already addressed; not a candidate. |
 | Host-specific helpers in [`main.c`](../../../runtime/host/src/main.c) | Corrected symbol-complete reports do not show actor search or another concrete host helper as a dominant recurring cost. | Do not select from the earlier unresolved reports. Reconsider only if Game Mode or annotated call paths expose a specific host cost. |
 
 The current ranking is an investigation order, not M0 candidate selection.
 Current-source control construction remains blocked by
-[#433](https://github.com/chrissotraidis/bluewake/issues/433). The older installed
-build reproduces [#215](https://github.com/chrissotraidis/bluewake/issues/215),
-but the `3b5c5c4` control must be run in Game Mode before its investigation
-order or a candidate can be finalized.
+[#433](https://github.com/chrissotraidis/bluewake/issues/433). The source-matched
+Game Mode captures reproduce [#215](https://github.com/chrissotraidis/bluewake/issues/215)
+at 28.25–28.65 FPS and rank the translated chunk surface, but the chunk must be
+mapped and the result reproduced on a current-source control before selecting
+a bounded candidate.
