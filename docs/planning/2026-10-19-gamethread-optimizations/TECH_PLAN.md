@@ -320,10 +320,13 @@ reported cause was `game-thread`, with zero recorded GPU-wait milliseconds.
 
 ### Source-matched Game Mode capture
 
-The Steam shortcut was retargeted to the verified `3b5c5c4` control. The
-running AppImage hash was `2fdd36…2dd2b6b`; its loaded module hash was
-`0775a8…e28c552`. Three matched 30-second Fortress sea captures lost zero
-samples.
+After the `3b5c5c4` control was built and copied to the Deck, it was launched
+ad hoc through Steam in Game Mode and the Fortress sea state was loaded. Once
+gameplay was running, measurement was performed from the development machine
+over SSH: the active process and loaded module were verified, then `perf` was
+attached to that existing Game Mode process. The running AppImage hash was
+`2fdd36…2dd2b6b`; its module hash was `0775a8…e28c552`. Three matched 30-second
+captures lost zero samples.
 
 | Run | Estimated game FPS | Range | Busy | Leading main-thread symbol |
 |---|---:|---:|---:|---|
@@ -334,9 +337,7 @@ samples.
 Game FPS is derived from every per-second retrace-rate sample, not only
 `fps-dip` lines. `build_draw_plan_into` is 4.10–4.49% of process samples but
 runs on the secondary render thread. The module reports
-`direct-calls=on inline-answer=on`; the old host callback hotspot is absent.
-This control also improves over the older installed build used before the
-profiling artifact was pinned.
+`direct-calls=on inline-answer=on`.
 
 ### Mapped leading candidate
 
