@@ -427,24 +427,28 @@ that every host hook is silent.
 
 | ID | Requirement | Baseline | Target and measurement | Risk | Owner |
 |---|---|---|---|---|---|
-| IMP-01 | FR-03, FR-05 | Translated routine; no native entry | Byte-identical CPU/RAM differential cases with positive native activation | Missed callback, timing boundary or write order | M0–M2 |
-| IMP-02 | FR-01, FR-02, FR-04 | 4.04–4.55% Game Mode main-thread self time; 28.25–28.65 FPS | Matched Deck A/B: cost reduction beyond noise and stable 30 FPS | Optimization is correct but insufficient | M3 |
-| IMP-03 | FR-06 | Current default build recipe | Isolated compiler, tuning, native-entry and PGO comparisons | Overfitting or nonportable default | M4 |
+| IMP-01 | FR-03, FR-05 | Translated routine; no native entry | Byte-identical CPU/RAM differential cases with positive native activation | Missed callback, timing boundary or write order | M1 |
+| IMP-02 | FR-01, FR-02, FR-04 | 4.04–4.55% Game Mode main-thread self time; 28.25–28.65 FPS | Matched Deck A/B: cost reduction beyond noise and stable 30 FPS | Optimization is correct but insufficient | M0–M4, M9 |
+| IMP-03 | FR-06 | Current default build recipe | Isolated compiler, tuning, native-entry and PGO comparisons | Overfitting or nonportable default | M5–M9 |
 
-Critical path: M0 contract map → M1 oracle → M2 implementation → M3 Deck
-qualification. Source-only documentation of the map may proceed with fixture
-scaffolding, but the native body and oracle share the fixture contract and
-must integrate serially.
+Critical path: M0 control → runtime M1–M4 and build-time M5–M8 → M9 combined
+qualification. M1–M4 and M5–M8 are separate ordered tracks; they may run in
+parallel, but each track tests only one new variable at a time.
 
 ## Implementation order
 
 | Milestone | Depends | Deliverable / integration gate |
 |---|---|---|
-| M0 | Candidate ranking | Verified execution contract and fallback boundary |
-| M1 | M0 | Differential fixture that proves both activation and rejection |
-| M2 | M1 | Opt-in native entry passing the source-level correctness gates |
-| M3 | M2, #433 | Matched Deck A/B evidence and retain/reject decision |
-| M4 | #433 | Independent build-time experiment matrix; may run alongside M0–M2 |
+| M0 | Candidate ranking, #433 | Current-source control and A/A noise |
+| M1 | M0 | Native collision candidate and retain/reject decision |
+| M2 | M1 decision | Guest-alias candidate and retain/reject decision |
+| M3 | M2 decision | Dispatch/numeric candidate and retain/reject decision |
+| M4 | M3 decision | Conditional GX investigation if thread ownership changes |
+| M5 | M0 | Clang 18/22 comparison; parallel with M1–M3 |
+| M6 | M5 decision | Deck-specific tuning comparison |
+| M7 | M6 decision | Certified-native comparison |
+| M8 | M7 decision | PGO-weighting comparison and overfit check |
+| M9 | M4, M8 | Combined retained candidates and final qualification |
 
 ### Candidate status after the scene sweep
 
