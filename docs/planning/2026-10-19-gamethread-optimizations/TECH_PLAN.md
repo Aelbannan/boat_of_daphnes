@@ -337,6 +337,22 @@ runs on the secondary render thread. The module reports
 This control also improves over the older installed build used before the
 profiling artifact was pinned.
 
+### Mapped leading candidate
+
+The leading annotated offsets in `func_802456E0` map to guest range
+`0x802491F4–0x80249368`: Wind Waker's
+[`cBgW::GroundCrossGrpRp`](https://github.com/zeldaret/tww/blob/main/src/SSystem/SComponent/c_bg_w.cpp#L577-L602).
+It filters a collision group, checks its bounds and ground tree, then recursively
+visits child groups. Nearby samples map to other `cBgS`/`cBgW` collision paths,
+including registration and line crossing.
+
+BlueWake does not currently replace `GroundCrossGrpRp` natively. A first
+candidate should preserve its guest-visible registers, cycle/deadline behavior,
+group-pass callbacks, traversal order, and updates to the shared ground-check
+result. That state dependency makes parallel child traversal unsafe without a
+separate equivalence proof; a semantics-matched native path with translated
+fallback is the bounded first experiment.
+
 ### Candidate status after the scene sweep
 
 `gGZLE01_recomp.so` entries execute in the loaded game module; `bluewake`
@@ -346,7 +362,7 @@ optimization target is selected yet.
 
 | Candidate surface | Evidence across scenes | Decision |
 |---|---|---|
-| Translated chunks and dispatch through [`module_export.c`](../../../cmake/composite/module_export.c) | `func_802456E0` leads the Game Mode main thread at 4.04–4.55% and four source-matched headless scenes at 5.41–6.29%; `func_803256E0` and `chassis_dispatch` also recur. | Highest source-matched investigation. Map sampled native offsets back to guest ranges before naming game logic or selecting a native replacement; chunk symbols are compilation buckets. |
+| Ground-collision traversal in translated chunk [`func_802456E0`](../../../cmake/composite/module_export.c) | The chunk leads the Game Mode main thread at 4.04–4.55% and four headless scenes at 5.41–6.29%. Its leading annotated offsets map to `cBgW::GroundCrossGrpRp`; `func_803256E0` and `chassis_dispatch` also recur. | Selected bounded experiment: a semantics-matched native `GroundCrossGrpRp` path with translated fallback and differential tests. Do not parallelize its stateful recursion without separate proof. |
 | Guest alias resolver in RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` appears in every source-matched headless scene and reaches 4.13% in Forest Haven. | Second investigation. Annotate call sites and distinguish unavoidable aliases from fast-path misses before changing address resolution. |
 | Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in source-matched headless scenes and 2.10–2.54% in Game Mode. The worker probe's largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Measurable but not evidence for pool activation; find a genuinely large independent batch first. |
 | GX draw-plan construction in [`gxcore.cpp`](../../../ref/recompcore/GXRuntime/graphics/gxcore/src/gxcore.cpp) | `build_draw_plan_into` is 4.10–4.49% in the source-matched Game Mode profiles. | Secondary render-thread cost, not the leading game-thread candidate. Keep separate from the 30 FPS critical path. |

@@ -34,10 +34,12 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 - [x] Rank the source-matched Game Mode surfaces: translated chunk
   `func_802456E0`, other translated chunks/dispatch, then native math/vector
   paths. GX draw planning is large but belongs to the secondary render thread.
-- [ ] Map `func_802456E0` sampled offsets to guest ranges and annotate the
-  leading source-matched call sites.
-- [ ] Select one bounded candidate after reproducing the ranking with the
-  current-source control.
+- [x] Map the leading `func_802456E0` offsets to guest range
+  `0x802491F4–0x80249368`, `cBgW::GroundCrossGrpRp`.
+- [x] Select a bounded first experiment: a semantics-matched native
+  `GroundCrossGrpRp` path with translated fallback and differential tests.
+- [ ] Reproduce the ranking with the current-source control after #433 is
+  resolved before treating the candidate as qualified for implementation.
 
 ## Evidence boundary
 
