@@ -14,7 +14,7 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 - [x] Record the historical AppImage, module, and state hashes used for the
   current diagnostic runs.
 - [ ] Replace the historical artifact with a current-source control after #433
-  is resolved, then record Game Mode and representative settings.
+  is resolved. The historical control's Game Mode environment is recorded.
 
 ### 2. Run tests and gather metrics
 
@@ -25,15 +25,19 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
   game-thread busy.
 - [x] Capture five symbol-complete, zero-loss, post-settle CPU profiles; more
   than 99.5% of samples in each profile belong to the main thread.
-- [ ] Repeat the representative measurements and profile in Game Mode.
+- [x] Capture three matched 30-second Game Mode runs in the Fortress sea scene:
+  23.60–23.79 game FPS, 97.39–97.58% busy, 5.48–6.03 ms GX/present waits,
+  and 1 ms GPU wait; each profile lost zero samples.
 
 ### 3. Rank the best optimization candidates
 
-- [x] Establish the current investigation order: translated chunks/dispatch,
-  guest alias resolution, then existing native math/vector paths.
-- [ ] Map hot chunk offsets to guest ranges and annotate the leading call sites.
-- [ ] Use the Game Mode evidence to select one bounded candidate; do not treat
-  the current investigation order as a chosen optimization.
+- [x] Rank the Game Mode investigation surfaces: GX draw-plan construction,
+  direct-call skip checks, translated chunks/dispatch, then alias and native
+  math/vector paths.
+- [ ] Annotate the leading GX and direct-skip call sites and map hot translated
+  chunk offsets to guest ranges.
+- [ ] Select one bounded candidate after reproducing the ranking with the
+  current-source control.
 
 ## Evidence boundary
 
@@ -41,4 +45,4 @@ Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The
 current evidence uses source-identified historical commit
 [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
 not the blocked current-source control. Desktop runs used isolated default
-settings and do not replace Game Mode qualification.
+settings. The Game Mode result qualifies the historical diagnostic only.
