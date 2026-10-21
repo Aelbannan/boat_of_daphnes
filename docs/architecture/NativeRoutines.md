@@ -188,38 +188,78 @@ second plug-in and not part of the BlueWake host executable.
 
 ## Runtime selection
 
-The generated function entry first asks the native implementation whether it
-can safely handle the current state. A disabled entry or a declined call
-continues through the untouched translated path.
+The generated function entry asks the native implementation whether it can
+safely complete this particular call. A **guard** is one of the concrete
+preconditions checked before the native routine commits guest-visible state.
+The **contract** defines what the routine must do after those checks: either
+complete the guest function and publish an equivalent result, or decline
+without changing guest-visible state so the translated routine can run.
 
 ```mermaid
 flowchart TD
     PC["Guest PC reaches<br/>certified function entry"]
-    Enabled{"Native group<br/>enabled?"}
-    Guards{"All guards<br/>satisfied?"}
-    Native["Run native routine<br/>commit equivalent state"]
+    Enabled{"Native group enabled?"}
+    Ready{"No pending exception,<br/>journal, or exhausted budget?"}
+    Access{"Required RAM and timing<br/>checks supported?"}
+    Boundary{"Any crossed boundary<br/>is silent?"}
+    Native["Commit registers, timing,<br/>memory, and return PC"]
     Translation["Run generated<br/>translated routine"]
-    Continue["Continue from the same<br/>guest-visible outcome"]
+    Continue["Continue after the<br/>guest function returns"]
 
     PC --> Enabled
     Enabled -->|"no"| Translation
-    Enabled -->|"yes"| Guards
-    Guards -->|"no; no mutation"| Translation
-    Guards -->|"yes"| Native
+    Enabled -->|"yes"| Ready
+    Ready -->|"no; decline unchanged"| Translation
+    Ready -->|"yes"| Access
+    Access -->|"no; decline unchanged"| Translation
+    Access -->|"yes"| Boundary
+    Boundary -->|"no; decline unchanged"| Translation
+    Boundary -->|"yes or not crossed"| Native
     Translation --> Continue
     Native --> Continue
 ```
 
-The existing collision entry point demonstrates the interface:
+The existing collision entry point demonstrates this interface:
 
 ```c
 int bluewake_native_bg(CPUState* cpu, u32 address);
 ```
 
-| Return | Contract |
-| --- | --- |
-| `1` | The native routine completed the guest function and committed the state the translated path would have produced. |
-| `0` | The native routine changed nothing, so execution may continue through the translation. |
+For `cBgS_Chk::ChkSameActorPid`, the implementation evaluates the following
+guards while keeping its working values in C locals:
+
+| Guard | Concrete check | Why declining is necessary |
+| --- | --- | --- |
+| Supported entry | The dispatcher recognizes the supplied guest address | An unknown address has no matching native implementation. |
+| Runnable guest state | No pending exception or write journal, and a positive cycle budget | The translated path may need exception or observation behavior the native path does not reproduce. |
+| Block timing | Each translated block fits the remaining turn and deadline budget | Execution must return to normal dispatch when an event or budget boundary is due. |
+| Stable memory reads | Each required guest address passes `ppc_dispatch_poll_read_stable` | Aliased, exceptional, or host-observed reads must use the translated/runtime access path. |
+
+See the shared [readiness, timing, and memory
+guards](../../cmake/composite/native_bg.c#L47-L84) and the concrete
+[`ChkSameActorPid` path](../../cmake/composite/native_bg.c#L86-L137).
+`dBgW::ChkGrpThrough` adds another guard when it crosses a translated chunk:
+the edge filter must be active, the host must be quiet, and the boundary must
+not be watched. See [the boundary
+guard](../../cmake/composite/native_bg.c#L139-L143).
+
+The return value communicates the result of that decision to the generated
+hook:
+
+| Return | Required state on return | What the generated hook does next |
+| --- | --- | --- |
+| `1` | The native routine has committed the translated-equivalent registers, memory effects, timing state, and return PC. | Jump to the chunk's return dispatcher, skipping the translated function body. |
+| `0` | Guest-visible CPU and memory state remain exactly as they were at entry. | Fall through to the original translated function body. |
+
+For example, `ChkSameActorPid` performs its checks and calculations in locals,
+then writes `gpr[0]`, `gpr[3]`, `gpr[5]`, `cr`, `downcount`, and the return PC
+only at its [`done` commit
+point](../../cmake/composite/native_bg.c#L124-L137). The dispatcher records
+whether the call ran or declined and returns that decision to the generated
+hook; see [`bluewake_native_bg`](../../cmake/composite/native_bg.c#L282-L294).
+The comparison test independently verifies that declines leave CPU and RAM
+unchanged and that accepted results match the translated routine; see
+[`native_bg_test.c`](../../tests/native_bg_test.c#L340-L395).
 
 The global runtime setting `BLUEWAKE_NATIVE_ENTRIES=0` disables certified
 native entries. Some native groups also expose narrower switches and report
