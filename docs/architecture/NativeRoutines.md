@@ -18,9 +18,11 @@ Architecture path: [Overview](Overview.md) → [Runtime](Runtime.md) →
 
 BlueWake normally runs code produced by statically translating the game's
 PowerPC instructions to C and compiling that C for the host. For selected
-routines, the module can instead run a handwritten native implementation.
-Both paths operate on the same authoritative [guest machine
-state](GuestState.md).
+routines, the native game module (`gGZLE01_recomp`) can instead run a
+handwritten native implementation. Both executable paths live in that game
+module and operate on the same authoritative [guest machine
+state](GuestState.md). They are not part of the BlueWake host: the host loads
+the game module through its ABI and coordinates its execution.
 
 The [Wind Waker decompilation](https://github.com/zeldaret/tww) is different:
 it reconstructs readable C++ that helps contributors understand names,
@@ -56,8 +58,9 @@ once instead of reproducing PowerPC bookkeeping at every block.
 
 ## Build-time integration
 
-Native replacement support is prepared while the composite game module is
-built. It does not patch arbitrary machine code in a running process.
+Native replacement support is prepared while the composite native game module
+(`gGZLE01_recomp`) is built. It does not patch arbitrary machine code in a
+running process or add the replacement to the BlueWake host.
 
 ```mermaid
 flowchart LR
@@ -123,7 +126,7 @@ int bluewake_native_bg(CPUState* cpu, u32 address);
 
 The global runtime setting `BLUEWAKE_NATIVE_ENTRIES=0` disables certified
 native entries. Some native groups also expose narrower switches and report
-activation and decline counts at process exit. See [module
+activation and decline counts at process exit. See [native game module
 activation](../../cmake/composite/module_export.c#L173-L237).
 
 ## Guest-state contract
@@ -165,10 +168,10 @@ Certification and testing solve different problems:
 For example, [`native_bg_test.c`](../../tests/native_bg_test.c#L340-L395)
 copies the same initial CPU and RAM state into native and translated cases. It
 checks that a declined native call left state untouched, or compares an
-accepted call with the private translated module. These differential targets
-depend on locally generated game code and are therefore distinct from public
-source-only tests; see [generated and conditional
-tests](Testing.md#generated-and-conditional-tests).
+accepted call with a private translated-reference build of the native game
+module. These differential targets depend on locally generated game code and
+are therefore distinct from public source-only tests; see [generated and
+conditional tests](Testing.md#generated-and-conditional-tests).
 
 ## GroundCrossGrpRp example
 
