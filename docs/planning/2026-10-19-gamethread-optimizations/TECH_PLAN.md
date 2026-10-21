@@ -412,17 +412,37 @@ parallel, but each track tests only one new variable at a time.
 
 ## Implementation order
 
+### Shared control
+
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
 | M0 | Candidate ranking, #433 | Build current source with `build.py --ci-container --appimage`; repeat the target scene | AppImage/module hashes, provenance, A/A summaries and `perf.data` | Same artifact against itself | Inputs match and repeated results establish usable noise |
+
+After M0, the runtime and build-time tracks can proceed independently. Each
+track changes one variable at a time and carries forward only retained results.
+
+### Runtime track
+
+| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|
 | M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | Differential report, certified hook, activation count and Deck A/B summaries | M0 control | CPU/RAM match and the activated candidate improves beyond noise |
 | M2 | M1 decision | Add one guarded `ppc_guest_alias_resolve` fast path in RecompCore | RecompCore tests, pinned patch, call-site profile and Deck A/B summaries | Retained M1 build | Alias behavior/checkpoints match and the candidate improves beyond noise |
 | M3 | M2 decision | Test one dispatch reduction; test workers only with a profitable batch | Activation counts, batch sizes, component tests and Deck A/B summaries | Retained M2 build | Correct path activates and improves beyond synchronization cost |
 | M4 | M3 decision | Re-profile GX ownership only if the render thread becomes limiting | Per-thread profile and optional isolated GX candidate | Retained M3 build | Render-thread work limits frame delivery and an isolated change improves it |
+
+### Build-time track
+
+| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|
 | M5 | M0 | Build identical Clang 18 and Clang 22 artifacts | Compiler/flag records, matching profile hashes and Deck A/B summaries | M0 build-time control | One compiler repeatedly wins beyond noise |
 | M6 | M5 decision | Add `-mtune=znver2` while retaining `-march=x86-64-v3` | Effective flags, module hash/size and Deck A/B summaries | Retained M5 compiler | Deck improves; result remains Deck-specific unless broader evidence exists |
 | M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained M6 build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
 | M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |
+
+### Integration
+
+| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|
 | M9 | M4, M8 | Build only the retained runtime and build-time candidates together | Final AppImage, checkpoints, gameplay log, profile and A/B summaries | M0 plus each track's last retained build | Combined result remains correct and better; record whether 30 FPS is reached |
 
 ### Candidate status after the scene sweep
