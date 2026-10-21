@@ -1,59 +1,35 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: Profiling is in progress. Current-source control construction is
+Status: Candidate testing is planned. Current-source control construction is
 blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md) ·
 [Game-thread architecture](../../architecture/GameThread.md)
 
+## Completed prerequisite evidence
+
+- [x] Established the Deck environment and verified the profiled AppImage,
+  module, state and running Game Mode process.
+- [x] Collected repeatable headless, Desktop and Game Mode measurements with
+  matching checkpoints and zero-loss CPU profiles.
+- [x] Identified the game thread as limiting and mapped its leading translated
+  range to `cBgW::GroundCrossGrpRp`.
+
 ## Milestones
-
-### 1. Setup the Deck profiling environment
-
-- [x] Identify the Deck, OS, power, display, renderer, and profiling tools.
-- [x] Record the control AppImage, module, and state hashes.
-- [x] Run the source-identified `3b5c5c4` control in Game Mode and verify its
-  AppImage/module hashes before capture.
-- [ ] Replace it with a current-source control after #433 is resolved.
-
-### 2. Run tests and gather metrics
-
-- [x] Run three deterministic five-scene headless sweeps: all 31 checkpoints
-  match, with 0.47–1.31% range/mean.
-- [x] Run three wall-paced Desktop sweeps over the three slowest scenes: all 19
-  checkpoints match, with 29.943–29.979 mean game FPS and 88.55–97.48%
-  game-thread busy.
-- [x] Capture five symbol-complete, zero-loss, post-settle CPU profiles; more
-  than 99.5% of samples in each profile belong to the main thread.
-- [x] Capture three matched, zero-loss Game Mode profiles of the `3b5c5c4`
-  control: 28.25–28.65 estimated game FPS and 97.58–97.72% busy. The three
-  windows consistently identify the game thread as the limit.
-
-### 3. Rank the best optimization candidates
-
-- [x] Rank the source-matched Game Mode surfaces: translated chunk
-  `func_802456E0`, other translated chunks/dispatch, then native math/vector
-  paths. GX draw planning is large but belongs to the secondary render thread.
-- [x] Map the leading `func_802456E0` offsets to guest range
-  `0x802491F4–0x80249368`, `cBgW::GroundCrossGrpRp`.
-- [x] Select a bounded first experiment: a semantics-matched native
-  `GroundCrossGrpRp` path with translated fallback and differential tests.
-- [ ] Reproduce the ranking with the current-source control after #433 is
-  resolved before treating the candidate as qualified for implementation.
-
-## Candidate test order
 
 M0 creates the shared current-source control. Runtime and build-time candidates
 then remain separate: compare one change at a time, retain only a passing
 candidate, and use that retained result as the next track-specific control.
 
-### M0: Establish the shared control (depends: 3, #433)
+**Shared control**
+
+### M0: Establish the shared control (depends: candidate ranking, #433)
 
 - [ ] M0-T01: Build the current source with the default Linux recipe. (FR-01)
 - [ ] M0-T02: Record inputs, flags, PGO, hashes, size and Deck environment. (FR-01)
 - [ ] M0-T03: Repeat the target scene and establish current A/A noise. (FR-02)
 
-## Runtime candidate sequence
+**Runtime track**
 
 ### M1: Native `GroundCrossGrpRp` (depends: M0)
 
@@ -81,7 +57,7 @@ candidate, and use that retained result as the next track-specific control.
 - [ ] M4-T01: Reconsider GX only if the render thread becomes limiting. (FR-02)
 - [ ] M4-T02: Keep render-thread gains separate from game-thread claims. (FR-04)
 
-## Build-time candidate sequence
+**Build-time track**
 
 This track may run alongside M1–M3 after M0. Each step starts from the last
 retained build-time result, without incorporating unqualified runtime changes.
@@ -106,6 +82,8 @@ retained build-time result, without incorporating unqualified runtime changes.
 - [ ] M8-T01: Build a separately weighted Fortress/Forest Haven profile. (FR-06)
 - [ ] M8-T02: Compare target and out-of-tour scenes for overfitting. (FR-06)
 
+**Integration**
+
 ### M9: Combine retained candidates (depends: M4, M8)
 
 - [ ] M9-T01: Build only the independently retained runtime/build variants. (FR-04)
@@ -117,5 +95,4 @@ Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The
 current evidence uses source-identified control commit
 [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
 not the blocked current-source control. Desktop runs used isolated default
-settings. The control performs better than the older installed build, whose
-detailed measurements are intentionally omitted.
+settings.
