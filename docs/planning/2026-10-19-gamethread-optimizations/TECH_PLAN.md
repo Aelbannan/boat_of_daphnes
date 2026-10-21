@@ -26,12 +26,15 @@ Architecture: [game thread](../../architecture/GameThread.md) ·
 
 ## Planned changes
 
-| Status | Surface | Practical change | Requirement |
+| Track / milestone | Code or command | Produced artifact | Test and decision |
 |---|---|---|---|
-| Modify | Steam Deck measurement procedure and evidence record | Freeze inputs, measure A/A noise, profile, and rank current costs | FR-01, FR-02 |
-| Proposed | One M0-selected game-thread code path | Implement one bounded, opt-in candidate with activation evidence | FR-03 |
-| Modify | Benchmark and profiling evidence | Compare matched builds against cost-reduction and stable-30 gates | FR-04 |
-| Modify | Candidate-specific tests and qualification record | Prove behavior, fallback, lifecycle, and platform compatibility | FR-05 |
+| Shared control — M0 | [`build.py --ci-container --appimage`](../../../scripts/linux/build.py), [`bench_tour.py`](../../../scripts/bench_tour.py), [`profile_deck.sh`](../../../scripts/linux/profile_deck.sh) | Hashed AppImage/module, build provenance, A/A summaries and `perf.data` | Repeat one unchanged build until noise is known; all later candidates use the same source, state and Deck settings |
+| Runtime 1 — M1 collision | [`native_bg.c`](../../../cmake/composite/native_bg.c), [`native_entries.py`](../../../scripts/windows/native_entries.py), [`native_bg_test.c`](../../../tests/native_bg_test.c) | Opt-in `GroundCrossGrpRp` native entry, certified hook, activation count and differential report | CPU state/RAM must match the translation; retain when the Deck result beats M0 beyond noise |
+| Runtime 2 — M2 alias resolver | RecompCore [`cpu.c`](../../../ref/recompcore/GXRuntime/src/core/cpu.c) through its required upstream PR/pin/patch flow | One guarded resolver fast path plus alias/call-site evidence | Run resolver tests, checkpoints and Deck A/B against the retained runtime control |
+| Runtime 3 — M3/M4 dispatch and GX | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_work_pool.c`](../../../cmake/composite/native_work_pool.c); GX only if thread ownership changes | One measured serial fast path, or a positively activated batch large enough to amortize workers | Reject serial fallback as parallel evidence; keep secondary-render-thread gains separate from game-thread gains |
+| Build 1 — M5/M6 compiler | Existing `--clang22`; proposed recorded `-mtune=znver2` with `-march=x86-64-v3` | Clang 18, Clang 22 and Zen 2-tuned AppImages with matching profile/input hashes | Compare one compiler variable at a time; Deck tuning does not change the portable default |
+| Build 2 — M7/M8 preparation | Existing `--native-entries`; proposed separately fingerprinted Fortress/Forest Haven PGO recipe | Hook/activation report, profile hash, module size and target/out-of-tour summaries | Require certified active hooks; reject PGO overfitting or regressions outside the emphasized scenes |
+| Combined — M9 | Build only independently retained runtime and build variants | Final private AppImage and qualification record | Re-run checkpoints, gameplay, profiling and A/B; record any remaining gap to 30 FPS |
 
 ## Steam Deck procedure
 
