@@ -30,6 +30,26 @@ structures, and algorithms. BlueWake does not compile or execute that project
 as part of this mechanism. The generated translation remains the behavioral
 reference for a native replacement.
 
+The native routine does not remove or overwrite the translated routine. The
+build inserts a guarded call at the translated function's guest entry label,
+so both implementations remain in `gGZLE01_recomp`. On each invocation, the
+generated hook first checks the native group's enable flag and calls the
+native routine when enabled. The native routine then checks whether it supports
+the current guest state:
+
+- A return value of `1` means the native routine completed the function. The
+  hook jumps to the chunk's return dispatcher and skips the translated body.
+- A return value of `0` means the native routine declined without changing
+  guest-visible state. Execution falls through to the original translated
+  body.
+
+Selection is therefore a runtime decision for each call. The global
+`BLUEWAKE_NATIVE_ENTRIES=0` setting can force every certified entry to use its
+translated path; group-specific settings can disable narrower native groups.
+The concrete hook and its source references are shown under [Build-time
+integration](#build-time-integration), while the guard contract is detailed
+under [Runtime selection](#runtime-selection).
+
 ```mermaid
 flowchart TD
     Disc["Game executable<br/>PowerPC instructions"]
@@ -37,7 +57,7 @@ flowchart TD
     Generated["Generated C<br/>translated routines"]
     Native["Handwritten C<br/>native routines"]
     Decomp["zeldaret/tww<br/>research reference"]
-    Module["Native game module<br/>both executable paths"]
+    Module["Native game module<br/>both paths remain linked"]
 
     Disc --> DolRecomp --> Generated --> Module
     Native --> Module
