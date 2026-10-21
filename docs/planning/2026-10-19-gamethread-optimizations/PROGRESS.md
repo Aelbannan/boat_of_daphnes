@@ -111,14 +111,6 @@ retained build-time result, without incorporating unqualified runtime changes.
 - [ ] M9-T01: Build only the independently retained runtime/build variants. (FR-04)
 - [ ] M9-T02: Run final checkpoints, gameplay, profile and stable-30 gates. (FR-05)
 
-## Impact evidence
-
-| ID | Actual | Outcome | Evidence |
-|---|---|---|---|
-| IMP-01 | Not measured | Untested | None; M1 open |
-| IMP-02 | Not measured | Untested | None; M0 blocked by #433 |
-| IMP-03 | Not measured | Untested | None; M5–M8 wait for M0 |
-
 ## Evidence boundary
 
 Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The

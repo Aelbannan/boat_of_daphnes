@@ -32,6 +32,7 @@ Architecture: [game thread](../../architecture/GameThread.md) ·
 | Proposed | One M0-selected game-thread code path | Implement one bounded, opt-in candidate with activation evidence | FR-03 |
 | Modify | Benchmark and profiling evidence | Compare matched builds against cost reduction and the overall 30 FPS goal | FR-04 |
 | Modify | Candidate-specific tests and qualification record | Prove behavior, fallback, lifecycle, and platform compatibility | FR-05 |
+| Proposed | Deck build-time variants | Compare compiler, CPU tuning, native-entry and PGO variants independently | FR-06 |
 
 ## Steam Deck procedure
 
@@ -397,14 +398,6 @@ The implementation may call existing native collision leaves only when their
 combined register, timing and callback behavior matches the original call
 sequence. It must not treat the decompilation as the execution oracle or assume
 that every host hook is silent.
-
-### Reimplementation impact register
-
-| ID | Requirement | Baseline | Target and measurement | Risk | Owner |
-|---|---|---|---|---|---|
-| IMP-01 | FR-03, FR-05 | Translated routine; no native entry | Byte-identical CPU/RAM differential cases with positive native activation | Missed callback, timing boundary or write order | M1 |
-| IMP-02 | FR-01, FR-02, FR-04 | 4.04–4.55% Game Mode main-thread self time; 28.25–28.65 FPS | Matched Deck A/B: cost reduction beyond noise and stable 30 FPS | Optimization is correct but insufficient | M0–M4, M9 |
-| IMP-03 | FR-06 | Current default build recipe | Isolated compiler, tuning, native-entry and PGO comparisons | Overfitting or nonportable default | M5–M9 |
 
 Critical path: M0 control → runtime M1–M4 and build-time M5–M8 → M9 combined
 qualification. M1–M4 and M5–M8 are separate ordered tracks; they may run in
