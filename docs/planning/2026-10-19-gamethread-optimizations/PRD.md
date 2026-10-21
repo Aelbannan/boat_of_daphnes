@@ -4,7 +4,9 @@ Status: Planning only
 
 Source: upstream `main` at `2ab8118fc09fa08569100201a871616d18a1b771`
 
-Scope: profile, select, implement, and qualify one measured game-thread optimization; excluded: renderer-only tuning, 60 Hz simulation, and speculative actor parallelism
+Scope: profile, select, implement, and qualify one measured game-thread
+optimization plus bounded Deck build-time experiments; excluded: renderer-only
+tuning, 60 Hz simulation, and speculative actor parallelism
 
 [Technical plan](TECH_PLAN.md) · [Progress](PROGRESS.md)
 
@@ -49,6 +51,9 @@ Architecture: [game-module dispatch](../../architecture/GameModule.md#translated
 
 - Select only a path activated in the measured scene with a defensible upper
   bound. Preserve guest state, deadlines, arithmetic, ordering, and fallback.
+- The first experiment is a serial native replacement for
+  `cBgW::GroundCrossGrpRp`; it must preserve recursive traversal and callback
+  order. Parallel child traversal is explicitly out of scope.
 - Keep gameplay/timing changes off by default until affected-platform evidence
   supports enablement. Runtime-owned work follows the RecompCore PR/pin process.
 
@@ -67,6 +72,15 @@ Architecture: [test evidence levels](../../architecture/Testing.md#evidence-leve
 - Run applicable Linux/Windows CI and Deck gameplay checks. Private discs,
   modules, states, cards, and raw personal logs remain local.
 
+### FR-06 — Evaluate Deck build-time optimization
+
+Architecture: [build process](../../architecture/Build.md#6-train).
+
+- Compare compiler/tuning and profile variants independently against the same
+  control, source, training input and Deck workload.
+- Keep portable Linux defaults unchanged unless cross-device evidence supports
+  them; a Deck-specific result is not a general x86-64 result.
+
 ## Success and constraints
 
 | Metric | Baseline | Target | Validation |
@@ -75,9 +89,13 @@ Architecture: [test evidence levels](../../architecture/Testing.md#evidence-leve
 | Game-thread cost | Unknown; remeasure | Improvement exceeds the larger of 3% or measured A/A noise | Unpaced throughput, busy share, cycles and instructions per retrace |
 | Correctness | Untested for candidate | Required oracle/checkpoint and gameplay checks pass | Source tests, private oracle, benchmark checkpoints, rendered play |
 | Regression | Unknown | No material low-load, GX-wait, audio, input, save, or shutdown regression | Control scene, session diagnostics, manual route, lifecycle tests |
+| Build-time variant | Unknown | Improvement beyond A/A noise without correctness regression | Interleaved Deck A/B runs from matched artifacts |
 
 ## Clarifications
 
 - Confirmed by the user on 2026-10-20: both stable 30 FPS and measurable
   game-thread reduction are required.
-- Candidate and numerical baseline remain open until M0 captures fresh Deck data.
+- Confirmed by the user on 2026-10-20: proceed with the bounded native
+  `GroundCrossGrpRp` reimplementation plan.
+- The source-identified control selects the experiment; current-source
+  qualification remains blocked until #433 is resolved.

@@ -41,6 +41,45 @@ blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 - [ ] Reproduce the ranking with the current-source control after #433 is
   resolved before treating the candidate as qualified for implementation.
 
+### M0: Freeze the native contract (depends: 3)
+
+- [ ] M0-T01: Map the translated blocks, memory, calls, cycles and boundaries. (FR-02)
+- [ ] M0-T02: Record the unchanged-state fallback and serial traversal contract. (FR-03)
+
+### M1: Build the differential oracle (depends: M0)
+
+- [ ] M1-T01: Cover supported trees, callbacks and every fallback class. (FR-05)
+- [ ] M1-T02: Prove native activation; serial fallback cannot satisfy the test. (FR-05)
+
+### M2: Implement the opt-in native entry (depends: M1)
+
+- [ ] M2-T01: Add the serial entry, certified hook and activation counters. (FR-03)
+- [ ] M2-T02: Run differential, native, Linux and Windows checks. (FR-05)
+
+### M3: Qualify on Steam Deck (depends: M2, #433)
+
+- [ ] M3-T01: Build matched artifacts and record inputs, hashes and environment. (FR-01)
+- [ ] M3-T02: Run interleaved Deck comparisons and re-profile activation. (FR-02)
+- [ ] M3-T03: Retain only if correctness, cost and stable-30 gates pass. (FR-04)
+
+### M4: Evaluate Deck build-time variants (depends: #433)
+
+Parallel with M0–M2; it changes builder/compiler inputs, not collision code.
+
+- [ ] M4-T01: Compare matched Clang 18 and Clang 22 Deck artifacts. (FR-06)
+- [ ] M4-T02: Add and compare an `x86-64-v3` plus `znver2` tuning candidate. (FR-06)
+- [ ] M4-T03: Measure certified native entries with hook and activation evidence. (FR-06)
+- [ ] M4-T04: Compare a separately weighted Deck-scene PGO recipe. (FR-06)
+- [ ] M4-T05: Measure only independently successful variants together. (FR-06)
+
+## Impact evidence
+
+| ID | Actual | Outcome | Evidence |
+|---|---|---|---|
+| IMP-01 | Not measured | Untested | None; M1–M2 open |
+| IMP-02 | Not measured | Untested | None; M3 blocked by #433 |
+| IMP-03 | Not measured | Untested | None; M4 blocked by #433 |
+
 ## Evidence boundary
 
 Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The

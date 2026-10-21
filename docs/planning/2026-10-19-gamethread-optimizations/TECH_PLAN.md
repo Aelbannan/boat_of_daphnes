@@ -242,6 +242,31 @@ must report path activation, and must not be part of the timed A/B binaries.
 | Correctness | checkpoints, differential oracle, source tests | Reject skipped or changed game work |
 | Environment | clocks, temperature, power/TDP, hashes | Identify incomparable runs |
 
+## Build-time optimization experiments
+
+The [build pipeline](../../architecture/Build.md) already prepares the module,
+trains an LLVM profile, compiles hot and cold chunks separately, and packages
+the resulting host and module. Linux defaults already include `x86-64-v3`, PGO,
+lean blocks/memory/deadlines, behaviour timing, direct calls, fixed guest state,
+the gather pipe and the established native groups.
+
+| Priority | Experiment | Required change | Decision boundary |
+|---:|---|---|---|
+| 1 | Clang 18 versus optional Clang 22 | Use the existing [`--clang22`](../../../scripts/linux/build.py) container path | Same source, profile and flags; retain only a repeatable Deck gain |
+| 2 | Zen 2 scheduling | Add a recorded `-mtune=znver2` option while retaining `-march=x86-64-v3` | Deck-specific candidate; do not change the portable default from Deck evidence alone |
+| 3 | Certified native entries | Build with [`--native-entries`](../../../scripts/linux/build.py) and retain its hook/activation reports | Require certified hooks, positive activation, differential tests and a gain beyond noise |
+| 4 | Deck-scene PGO weighting | Add a separate training recipe emphasizing the measured Fortress and Forest Haven routes | Compare outside the emphasized scenes; reject overfitting or code-size regressions |
+
+Run these as isolated A/B experiments rather than one cumulative build. Only
+after each contribution is known should a final combined candidate be measured.
+Record compiler version, effective flags, profile hash, module hash and module
+size for every artifact.
+
+Do not pursue `--no-cold`/`--no-tiered` first: existing project measurements
+found the larger all-`-O2` module slower. `-O3` has no current performance case.
+`--native-gx` and `--native-set4` have no active hooks, and full-module LTO has
+no measured benefit proportional to its compile/link risk.
+
 ## Findings
 
 These are findings from the source-identified profiling control. The raw
@@ -352,6 +377,74 @@ group-pass callbacks, traversal order, and updates to the shared ground-check
 result. That state dependency makes parallel child traversal unsafe without a
 separate equivalence proof; a semantics-matched native path with translated
 fallback is the bounded first experiment.
+
+### Native reimplementation workstream
+
+This is a serial replacement of one measured guest routine. It follows the
+existing [`native_bg.c`](../../../cmake/composite/native_bg.c) contract: inspect
+all prerequisites before changing state, execute the native path only when its
+equivalence is known, and otherwise leave the CPU and RAM untouched so normal
+translation can run.
+
+```mermaid
+flowchart TD
+    Entry["GroundCrossGrpRp entry"] --> Guard{"RAM, timing, callbacks<br/>and traversal supported?"}
+    Guard -->|"No; no mutation"| Guest["Run translated routine"]
+    Guard -->|"Yes"| Native["Run serial native traversal<br/>in original child order"]
+    Native --> Commit["Commit registers, memory,<br/>PC and cycle state"]
+    Guest --> Return["Return to caller"]
+    Commit --> Return
+```
+
+| Status | File / symbol | Practical edit | Contract |
+|---|---|---|---|
+| Modify | [`native_bg.c`](../../../cmake/composite/native_bg.c) / `bluewake_native_bg` | Add the `0x802491F4` entry and a guarded serial implementation | Decline without mutation unless the complete path is supported |
+| Modify | [`native_bg.h`](../../../cmake/composite/native_bg.h) | Name the entry address and document the expanded collision scope | Keep one address-to-native dispatch surface |
+| Modify | [`native_entries.py`](../../../scripts/windows/native_entries.py) | Certify the translated fragments and insert the existing native-background hook | Preserve `BLUEWAKE_NATIVE_ENTRIES=0`; reject a changed or watched translation |
+| Modify | [`native_bg_test.c`](../../../tests/native_bg_test.c) | Compare native and translated execution over group trees, rejection paths and callbacks | Match CPU state and writable RAM byte-for-byte; prove native activation |
+
+Implementation order:
+
+1. Map every translated basic block, RAM field, call target, charged cycle and
+   observable boundary for `0x802491F4–0x80249368`.
+2. Extend the differential fixture first with shallow, recursive, filtered,
+   callback-mutated, invalid-pointer, alias, deadline and interruption cases.
+3. Implement an opt-in serial native path. Snapshot working values locally and
+   commit guest-visible state only after all guards have passed.
+4. Run translation/native differential tests, fallback tests, existing native
+   suites and Linux/Windows CI. A passing serial fallback does not count as
+   activation evidence.
+5. Compare matched Deck A/B artifacts. Retain the path only if it activates in
+   the target scene, reduces cost beyond noise and preserves checkpoints and
+   gameplay.
+
+The implementation may call existing native collision leaves only when their
+combined register, timing and callback behavior matches the original call
+sequence. It must not treat the decompilation as the execution oracle or assume
+that every host hook is silent.
+
+### Reimplementation impact register
+
+| ID | Requirement | Baseline | Target and measurement | Risk | Owner |
+|---|---|---|---|---|---|
+| IMP-01 | FR-03, FR-05 | Translated routine; no native entry | Byte-identical CPU/RAM differential cases with positive native activation | Missed callback, timing boundary or write order | M0–M2 |
+| IMP-02 | FR-01, FR-02, FR-04 | 4.04–4.55% Game Mode main-thread self time; 28.25–28.65 FPS | Matched Deck A/B: cost reduction beyond noise and stable 30 FPS | Optimization is correct but insufficient | M3 |
+| IMP-03 | FR-06 | Current default build recipe | Isolated compiler, tuning, native-entry and PGO comparisons | Overfitting or nonportable default | M4 |
+
+Critical path: M0 contract map → M1 oracle → M2 implementation → M3 Deck
+qualification. Source-only documentation of the map may proceed with fixture
+scaffolding, but the native body and oracle share the fixture contract and
+must integrate serially.
+
+## Implementation order
+
+| Milestone | Depends | Deliverable / integration gate |
+|---|---|---|
+| M0 | Candidate ranking | Verified execution contract and fallback boundary |
+| M1 | M0 | Differential fixture that proves both activation and rejection |
+| M2 | M1 | Opt-in native entry passing the source-level correctness gates |
+| M3 | M2, #433 | Matched Deck A/B evidence and retain/reject decision |
+| M4 | #433 | Independent build-time experiment matrix; may run alongside M0–M2 |
 
 ### Candidate status after the scene sweep
 
