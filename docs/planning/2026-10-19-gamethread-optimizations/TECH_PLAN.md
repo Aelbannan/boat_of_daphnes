@@ -197,8 +197,10 @@ map ranges before naming game logic.
 Build A and B from the same revision and inputs. Run five interleaved pairs
 (`A/B/B/A/...`) in headless and rendered modes, then repeat the Game Mode scene.
 Use `bench_tour.py compare`, verify candidate activation, compare medians and
-noise, re-profile B, and complete the gameplay route. Missing activation,
-correctness evidence, or 30 FPS evidence leaves qualification incomplete.
+noise, re-profile B, and complete the gameplay route. A candidate qualifies
+when it activates, preserves correctness, and improves on the matched control
+beyond noise. Reaching 30 FPS completes the broader performance goal; it is not
+required to retain an independently useful improvement.
 
 ```mermaid
 flowchart TD
@@ -207,9 +209,12 @@ flowchart TD
     Profile --> Rank["Rank exclusive<br/>cost and waits"]
     Rank --> Candidate["One bounded<br/>candidate"]
     Candidate --> Compare["Interleaved<br/>A/B runs"]
-    Compare --> Gates{"Faster,<br/>correct, and<br/>stable 30 FPS?"}
-    Gates -->|"yes"| Retain["Submit<br/>candidate"]
+    Compare --> Gates{"Activated, correct,<br/>and faster than<br/>control beyond noise?"}
+    Gates -->|"yes"| Retain["Retain<br/>candidate"]
     Gates -->|"no"| Record["Reject or<br/>iterate"]
+    Retain --> Goal{"Stable<br/>30 FPS?"}
+    Goal -->|"yes"| Complete["Performance<br/>goal met"]
+    Goal -->|"no"| Continue["Record remaining gap<br/>and test next candidate"]
 ```
 
 ## Build-time optimization experiments

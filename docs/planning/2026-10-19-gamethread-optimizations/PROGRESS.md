@@ -61,7 +61,7 @@ candidate, and use that retained result as the next track-specific control.
 - [ ] M1-T02: Build an oracle covering trees, callbacks and fallback classes. (FR-05)
 - [ ] M1-T03: Add the opt-in serial entry and activation counters. (FR-03)
 - [ ] M1-T04: Run differential, native, Linux and Windows checks. (FR-05)
-- [ ] M1-T05: Run Deck A/B and retain only if all gates pass. (FR-04)
+- [ ] M1-T05: Retain a correct gain beyond noise and record any 30 FPS gap. (FR-04)
 
 ### M2: Guest alias resolution (depends: M1 decision)
 
