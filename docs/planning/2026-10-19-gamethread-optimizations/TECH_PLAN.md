@@ -212,36 +212,6 @@ flowchart TD
     Gates -->|"no"| Record["Reject or<br/>iterate"]
 ```
 
-## Candidate surfaces
-
-Selection is measurement-driven; the rows are investigation boundaries, not
-preapproved changes.
-
-| Candidate | Referenced code | Why it may matter | Selection evidence |
-|---|---|---|---|
-| Dispatch/direct-call bookkeeping | [`dispatch_loop.h`](../../../cmake/composite/dispatch_loop.h), [`direct_calls.h`](../../../cmake/composite/direct_calls.h), [`host_direct_can_skip_with`](../../../runtime/host/src/main.c) | Runs at translated/host boundaries | High exclusive cost and call frequency after current defaults |
-| Hot translated chunk or larger native span | [`module_export.c`](../../../cmake/composite/module_export.c), patterns in [`native_search.c`](../../../cmake/composite/native_search.c) and [`native_j3d.c`](../../../cmake/composite/native_j3d.c) | Removes repeated translated bookkeeping from measured game work | Mapped hot chunk, verified original range, safe native boundary, upper-bound benefit |
-| Independent numeric batch | [`native_math.c`](../../../cmake/composite/native_math.c), [`native_skin.c`](../../../cmake/composite/native_skin.c), [`native_work_pool.c`](../../../cmake/composite/native_work_pool.c) | Can use otherwise idle CPU cores when inputs/outputs are independent | Inclusive kernel cost, profitable batch sizes, positive worker activation |
-| Guest-state/access helpers | [`guest_cpu.c`](../../../cmake/composite/guest_cpu.c), [`inline_gpr.h`](../../../cmake/composite/inline_gpr.h), [`inline_fp.h`](../../../cmake/composite/inline_fp.h) | Generated execution may spend time synchronizing or interpreting values | Annotated self-time; no assumption that inlining or caching helps |
-| GX command preparation on the game thread | [`gather_pipe.h`](../../../cmake/composite/gather_pipe.h), [`gather_pipe_batch.h`](../../../cmake/composite/gather_pipe_batch.h) | Game-thread command production can remain costly even with an idle GPU | Game-thread/GX symbols and waits, not GPU utilization alone |
-
-Proposed candidate instrumentation must be compile-time or explicitly opt-in,
-must report path activation, and must not be part of the timed A/B binaries.
-
-## Metrics and verification
-
-| Metric | Unit / source | Decision use |
-|---|---|---|
-| Game rate | game FPS and retraces/s from benchmark/session logs | Stable-30 gate and throughput benefit |
-| Game-thread cost | busy %, wall time per fixed retrace window | Primary critical-path reduction |
-| CPU work | cycles and instructions per retrace; IPC | Distinguish less work from clock/noise effects |
-| Hotspot ownership | flat self-time %, annotated instructions, TID | Select and explain candidate |
-| Waiting | GX/present/GPU wait ms; worker busy % | Reject wrong-domain optimization |
-| Distribution | median plus p95/p99 update time where available | Detect tail regressions hidden by averages |
-| Activation | calls, accepted/declined jobs, batches, items | Prove the candidate ran |
-| Correctness | checkpoints, differential oracle, source tests | Reject skipped or changed game work |
-| Environment | clocks, temperature, power/TDP, hashes | Identify incomparable runs |
-
 ## Build-time optimization experiments
 
 The [build pipeline](../../architecture/Build.md) already prepares the module,
