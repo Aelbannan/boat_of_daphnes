@@ -62,7 +62,7 @@ flowchart TD
     Disc --> DolRecomp --> Generated --> Module
     Native --> Module
     Decomp -.->|"names, structures<br/>and algorithms"| Native
-    Generated -.->|"behavioral oracle"| Native
+    Generated -.->|"behavioral reference"| Native
 ```
 
 | Form | Role in BlueWake | Authoritative for |
@@ -103,8 +103,9 @@ flowchart TD
 [`native_entries.py`](../../scripts/windows/native_entries.py) identifies each
 candidate by guest entry address, all translated fragments it replaces, and a
 SHA-256 digest of their canonical source. It inserts a hook only when those
-fragments still match the version used by the differential oracle and none of
-the required addresses conflicts with a host watch boundary.
+fragments still match the version used by the native-versus-translated
+comparison tests and none of the required addresses conflicts with a host
+watch boundary.
 
 The composite build includes the corresponding native sources only when
 `BLUEWAKE_NATIVE_ENTRIES` is selected. The Linux and Windows builders run the
@@ -257,7 +258,7 @@ Certification and testing solve different problems:
 | Fragment hashes | The hook targets the exact translated source shape that was reviewed and tested | Behavioral equivalence by itself |
 | Runtime guards | The native path runs only for state it claims to support | Correct results for accepted state |
 | Decline tests | Unsupported state falls back without mutation | Activation during ordinary gameplay |
-| Differential oracle | Accepted native cases match translated CPU and writable-memory results | A Steam Deck performance improvement |
+| Native-versus-translated comparison | Accepted native cases match translated CPU and writable-memory results | A Steam Deck performance improvement |
 | Activation counters | The measured scene actually used the native path | Correctness or useful speedup by itself |
 | Matched hardware A/B | The enabled path improves the selected metric beyond run-to-run noise | Equivalence outside the tested coverage |
 
@@ -320,7 +321,7 @@ measurement workstream is tracked in [PR
 | Native collision interface and return contract | [`cmake/composite/native_bg.h`](../../cmake/composite/native_bg.h), [`native_bg.c`](../../cmake/composite/native_bg.c) |
 | Build selection and native source inclusion | [`cmake/composite/CMakeLists.txt`](../../cmake/composite/CMakeLists.txt#L171-L190) |
 | Runtime enable, opt-out, and reports | [`cmake/composite/module_export.c`](../../cmake/composite/module_export.c#L173-L237) |
-| Native-versus-translated collision oracle | [`tests/native_bg_test.c`](../../tests/native_bg_test.c) |
+| Native-versus-translated collision comparison | [`tests/native_bg_test.c`](../../tests/native_bg_test.c) |
 | Generated dispatch and guest execution loop | [`cmake/composite/dispatch_loop.h`](../../cmake/composite/dispatch_loop.h) |
 | Decomp research reference | [`zeldaret/tww`](https://github.com/zeldaret/tww) |
 
