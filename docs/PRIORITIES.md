@@ -65,6 +65,14 @@ A follow-up from the 0.8.0 Mac benchmark (RELEASE_0.8.0.md): the cache-flush fal
 about 1 to 3% of game-thread speed at Forest Haven and the sea by the Fortress on an M3 Max. It fixes the sea charts
 and Picto Box previews (#263), so it stays on; measure it on a slower device and look for a cheaper check.
 
+Measured on a Steam Deck (VanGogh, 4 c / 8 t, October 22): no measurable cost. The same build (`51bee38` with local
+preparations) with `BLUEWAKE_CACHE_FLUSH_FALLBACK=0` and without it, headless and unpaced, warped from one save state,
+two interleaved rounds each way, game frames a second: Forest Haven 33.85 and 34.25 with it, 34.01 and 34.20 without
+(0.2% apart); the sea by the Fortress 31.72 and 32.12 with it, 31.81 and 32.02 without (0.0%). Busy 99% either way, so
+the game thread is the limit in both, and the two rounds of one variant differ by about as much. The log's
+`[texture-cache] fallback writeback=on` names which ran. A cheaper check is still worth looking for, but the Deck does
+not pay for this one.
+
 ## Contributors' pull requests
 
 Review within two days ([DIRECTION.md](DIRECTION.md)). Merged on October 17: LiquidAzir's Android port (#93),
