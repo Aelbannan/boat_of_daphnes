@@ -360,12 +360,11 @@ It filters a collision group, checks its bounds and ground tree, then recursivel
 visits child groups. Nearby samples map to other `cBgS`/`cBgW` collision paths,
 including registration and line crossing.
 
-BlueWake does not currently replace `GroundCrossGrpRp` natively. A first
-candidate should preserve its guest-visible registers, cycle/deadline behavior,
-group-pass callbacks, traversal order, and updates to the shared ground-check
-result. That state dependency makes parallel child traversal unsafe without a
-separate equivalence proof; a semantics-matched native path with translated
-fallback is the bounded first experiment.
+The guarded `GroundCrossGrpRp` experiment is implemented and rejected as a
+performance optimization in [PR #436](https://github.com/chrissotraidis/bluewake/pull/436).
+It preserved the supported early-return paths, but covered 28.1% of calls and
+was slower than translation for that accepted path on Deck. Its stateful
+recursion remains unsafe to parallelize without a separate equivalence proof.
 
 ### Native reimplementation workstream
 
@@ -431,8 +430,8 @@ track changes one variable at a time and carries forward only retained results.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | Differential report, certified hook, activation count and Deck A/B summaries | M0 control | CPU/RAM match and the activated candidate improves beyond noise |
-| M2 | M1 decision | Add one guarded `ppc_guest_alias_resolve` fast path in RecompCore | RecompCore tests, pinned patch, call-site profile and Deck A/B summaries | Retained M1 build | Alias behavior/checkpoints match and the candidate improves beyond noise |
+| M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | Differential report, certified hook, activation count and Deck A/B summaries | M0 control | **Rejected:** supported paths matched, but coverage was 28.1% and the accepted path was slower on Deck |
+| M2 | M1 decision | Add one guarded `ppc_guest_alias_resolve` fast path in RecompCore | RecompCore tests, pinned patch, call-site profile and Deck A/B summaries | Matched runtime control; M1 was not retained | Alias behavior/checkpoints match and the candidate improves beyond noise |
 | M3 | M2 decision | Test one dispatch reduction; test workers only with a profitable batch | Activation counts, batch sizes, component tests and Deck A/B summaries | Retained M2 build | Correct path activates and improves beyond synchronization cost |
 | M4 | M3 decision | Re-profile GX ownership only if the render thread becomes limiting | Per-thread profile and optional isolated GX candidate | Retained M3 build | Render-thread work limits frame delivery and an isolated change improves it |
 
@@ -456,11 +455,11 @@ track changes one variable at a time and carries forward only retained results.
 `gGZLE01_recomp.so` entries execute in the loaded game module; `bluewake`
 entries execute in the host. The headless scene profiles isolate the main
 thread, while the earlier wall-paced rendered profile is process-wide. No
-optimization target is selected yet.
+optimization target is retained yet.
 
 | Candidate surface | Evidence across scenes | Decision |
 |---|---|---|
-| Ground-collision traversal in translated chunk [`func_802456E0`](../../../cmake/composite/module_export.c) | The chunk leads the Game Mode main thread at 4.04–4.55% and four headless scenes at 5.41–6.29%. Its leading annotated offsets map to `cBgW::GroundCrossGrpRp`; `func_803256E0` and `chassis_dispatch` also recur. | Selected bounded experiment: a semantics-matched native `GroundCrossGrpRp` path with translated fallback and differential tests. Do not parallelize its stateful recursion without separate proof. |
+| Ground-collision traversal in translated chunk [`func_802456E0`](../../../cmake/composite/module_export.c) | The chunk leads the Game Mode main thread at 4.04–4.55% and four headless scenes at 5.41–6.29%. Its leading annotated offsets map to `cBgW::GroundCrossGrpRp`; `func_803256E0` and `chassis_dispatch` also recur. | [PR #436](https://github.com/chrissotraidis/bluewake/pull/436) completed the bounded experiment: correct supported paths, but 28.1% coverage and slower accepted Deck calls. Reject this partial hook; do not extend it for performance. |
 | Guest alias resolver in RecompCore [`cpu.c`](https://github.com/chrissotraidis/RecompCore/blob/338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4/GXRuntime/src/core/cpu.c) | `ppc_guest_alias_resolve` appears in every source-matched headless scene and reaches 4.13% in Forest Haven. | Second investigation. Annotate call sites and distinguish unavoidable aliases from fast-path misses before changing address resolution. |
 | Native math/vector paths: [`native_game_math.c`](../../../cmake/composite/native_game_math.c), [`native_math.c`](../../../cmake/composite/native_math.c), [`native_vec.c`](../../../cmake/composite/native_vec.c) | Native game-math/vector probes consume roughly 2–3.5% in source-matched headless scenes and 2.10–2.54% in Game Mode. The worker probe's largest array was 8, below the 768-item parallel threshold, so `parallel=0`. | Third investigation. Measurable but not evidence for pool activation; find a genuinely large independent batch first. |
 | GX draw-plan construction in [`gxcore.cpp`](https://github.com/chrissotraidis/RecompCore/blob/338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4/GXRuntime/graphics/gxcore/src/gxcore.cpp) | `build_draw_plan_into` is 4.10–4.49% in the source-matched Game Mode profiles. | Secondary render-thread cost, not the leading game-thread candidate. Keep separate from the 30 FPS critical path. |

@@ -31,13 +31,13 @@ candidate, and use that retained result as the next track-specific control.
 
 **Runtime track**
 
-### M1: Native `GroundCrossGrpRp` (depends: M0)
+### M1: Native `GroundCrossGrpRp` (depends: M0 decision) — rejected
 
-- [ ] M1-T01: Map translated memory, calls, cycles and boundaries. (FR-02)
-- [ ] M1-T02: Build an oracle covering trees, callbacks and fallback classes. (FR-05)
-- [ ] M1-T03: Add the opt-in serial entry and activation counters. (FR-03)
-- [ ] M1-T04: Run differential, native, Linux and Windows checks. (FR-05)
-- [ ] M1-T05: Retain a correct gain beyond noise and record any 30 FPS gap. (FR-04)
+- [x] M1-T01: Map translated memory, calls, cycles and boundaries. (FR-02)
+- [ ] M1-T02: Build an oracle covering trees, callbacks and fallback classes. (FR-05; the partial-path oracle is insufficient for full traversal.)
+- [x] M1-T03: Add the opt-in serial entry and activation counters. (FR-03)
+- [ ] M1-T04: Run differential, native, Linux and Windows checks. (FR-05; full-path and Windows coverage are unnecessary after the performance no-go.)
+- [x] M1-T05: Record the A/B decision: reject the partial hook; it is correct for supported paths but not faster than translation on Deck. (FR-04)
 
 ### M2: Guest alias resolution (depends: M1 decision)
 
@@ -96,3 +96,13 @@ current evidence uses source-identified control commit
 [`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
 not the blocked current-source control. Desktop runs used isolated default
 settings.
+
+## M1 decision record
+
+The detailed implementation and evidence are in [PR #436](https://github.com/chrissotraidis/bluewake/pull/436) and its
+[technical plan](https://github.com/irregularthanis/bluewake/blob/docs/groundcross-native-plan/docs/planning/2026-10-21-groundcross_native_reimplementation/TECH_PLAN.md).
+The guarded hook accepted 123,609 of 440,495 calls (28.1%); 99.46% of its
+declines required unimplemented traversal. Its accepted early return measured
+226.1 ns/call native versus 179.3 ns/call translated on Deck. Five interleaved
+pairs were within noise, so M1 is rejected and M2 becomes the next runtime
+investigation.
