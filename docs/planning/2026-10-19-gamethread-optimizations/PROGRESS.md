@@ -100,7 +100,7 @@ settings.
 
 ## M1 decision record
 
-The detailed implementation and evidence are in [PR #436](https://github.com/chrissotraidis/bluewake/pull/436).
+The detailed implementation and evidence are in [PR #436 (closed)](https://github.com/chrissotraidis/bluewake/pull/436).
 The guarded hook accepted 123,609 of 440,495 calls (28.1%); 99.46% of its
 declines required unimplemented traversal. Its accepted early return measured
 226.1 ns/call native versus 179.3 ns/call translated on Deck. Five interleaved
