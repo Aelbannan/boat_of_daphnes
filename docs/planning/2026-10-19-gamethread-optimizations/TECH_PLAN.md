@@ -117,14 +117,23 @@ or local logs.
 ├── BlueWake-x86_64.AppImage
 ├── bench_tour.py
 ├── profile_deck.sh
+├── evidence/
 └── states/
     └── quick-N.bwstate
 ```
 
-With `bench_tour.py --state states/quick-N.bwstate`, its positional card
-argument is unused; pass `unused.card`. The AppImage already contains the
-private translated module and disc copy, so retain it only on machines you
-control.
+Create the evidence directory once, then run every command below from the
+bundle root:
+
+```bash
+cd ~/bluewake-test
+mkdir -p evidence
+```
+
+With `./bench_tour.py --state states/quick-N.bwstate`, its positional card
+argument is unused; pass `unused.card`. The private translated module remains
+inside the AppImage; BlueWake's prepared disc data remains in its configured
+Deck data directory. Retain both only on machines you control.
 
 ### 2. Freeze the Deck environment and private workload
 
@@ -139,15 +148,15 @@ discard warmup before comparing runs.
 From the Deck, run the control at least three times per mode:
 
 ```bash
-python3 scripts/bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
-  --state /home/deck/.local/share/BlueWake/quick-N.bwstate --mode headless
+python3 ./bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
+  --state states/quick-N.bwstate --mode headless
 mv summary.json evidence/control-headless-1.json
 
-python3 scripts/bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
-  --state /home/deck/.local/share/BlueWake/quick-N.bwstate --mode rendered
+python3 ./bench_tour.py unused.card ./BlueWake-x86_64.AppImage \
+  --state states/quick-N.bwstate --mode rendered
 mv summary.json evidence/control-rendered-1.json
 
-python3 scripts/bench_tour.py compare \
+python3 ./bench_tour.py compare \
   evidence/control-headless-1.json evidence/control-headless-2.json
 ```
 
@@ -160,14 +169,14 @@ Headless/unpaced isolates execution throughput; rendered/Desktop Mode exposes
 GX, GPU, and presentation waits:
 
 ```bash
-scripts/linux/profile_deck.sh --seconds 30 \
+./profile_deck.sh --seconds 30 \
   --appimage ./BlueWake-x86_64.AppImage \
-  --state /home/deck/.local/share/BlueWake/quick-N.bwstate \
+  --state states/quick-N.bwstate \
   --out evidence/profile-headless
 
-scripts/linux/profile_deck.sh --rendered --seconds 30 \
+./profile_deck.sh --rendered --seconds 30 \
   --appimage ./BlueWake-x86_64.AppImage \
-  --state /home/deck/.local/share/BlueWake/quick-N.bwstate \
+  --state states/quick-N.bwstate \
   --out evidence/profile-rendered
 ```
 
@@ -237,6 +246,9 @@ Run these as isolated A/B experiments rather than one cumulative build. Only
 after each contribution is known should a final combined candidate be measured.
 Record compiler version, effective flags, profile hash, module hash and module
 size for every artifact.
+
+The normal Linux and Windows builders leave `--native-entries` off. M7 is an
+explicit candidate build, not a change to either builder's default behavior.
 
 Do not pursue `--no-cold`/`--no-tiered` first: existing project measurements
 found the larger all-`-O2` module slower. `-O3` has no current performance case.
