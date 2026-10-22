@@ -182,6 +182,15 @@ int main(int argc, char **argv)
         return 1;
     }
 #endif
+    if (bluewake_parallel_workers() != expected_workers) {
+        fprintf(stderr, "effective workers: got %u want %u\n",
+                bluewake_parallel_workers(), expected_workers);
+#if !defined(_WIN32)
+        pthread_mutex_destroy(&context->observations_mutex);
+#endif
+        free(context);
+        return 1;
+    }
 
     /* Exercise empty, below-grain serial, and uneven parallel partitions before
      * repeatedly replacing the context contents and submitted range. */
