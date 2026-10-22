@@ -46,7 +46,7 @@ candidate, and use that retained result as the next track-specific control.
 - [x] M2-T02: Compare the observed lookup work with the pinned resolver implementation. (FR-03)
 - [x] M2-T03: Reject a new guard: the relevant non-overlapping-alias binary search already exists. (FR-04)
 
-### M3: Native dispatch and numeric paths (depends: M2 decision)
+### M3: Native dispatch and numeric paths (depends: M2 decision) — [planned in PR #448](https://github.com/chrissotraidis/bluewake/pull/448)
 
 - [ ] M3-T01: Re-rank dispatch, math and vector self-time after M2. (FR-02)
 - [ ] M3-T02: Test serial dispatch reduction before any worker expansion. (FR-03)
