@@ -40,7 +40,7 @@ candidate, and use that retained result as the next track-specific control.
 - Not pursued: full-path and Windows qualification are unnecessary after the performance no-go.
 - [x] M1-T05: Record the A/B decision: reject the partial hook; it is correct for supported paths but not faster than translation on Deck. (FR-04)
 
-### M2: Guest alias resolution (depends: M1 decision)
+### M2: Guest alias resolution (depends: M1 decision) — [rejected in PR #447](https://github.com/chrissotraidis/bluewake/pull/447)
 
 - [x] M2-T01: Capture the fixed-route Deck alias-cost census and CPU sample. (FR-02)
 - [x] M2-T02: Compare the observed lookup work with the pinned resolver implementation. (FR-03)
