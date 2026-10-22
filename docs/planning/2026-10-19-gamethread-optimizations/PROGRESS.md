@@ -1,7 +1,8 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: Candidate testing is planned. Current-source control construction is
-blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433).
+Status: M1 is rejected and closed. M2 candidate investigation is next;
+current-source control construction remains blocked by
+[#433](https://github.com/chrissotraidis/bluewake/issues/433).
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md) ·
 [Game-thread architecture](../../architecture/GameThread.md)
@@ -31,12 +32,12 @@ candidate, and use that retained result as the next track-specific control.
 
 **Runtime track**
 
-### M1: Native `GroundCrossGrpRp` (depends: M0 decision) — rejected
+### M1: Native `GroundCrossGrpRp` (depends: M0 decision) — rejected and closed
 
 - [x] M1-T01: Map translated memory, calls, cycles and boundaries. (FR-02)
-- [ ] M1-T02: Build an oracle covering trees, callbacks and fallback classes. (FR-05; the partial-path oracle is insufficient for full traversal.)
+- Not pursued: a full-traversal oracle is unnecessary after the partial hook failed its Deck performance gate.
 - [x] M1-T03: Add the opt-in serial entry and activation counters. (FR-03)
-- [ ] M1-T04: Run differential, native, Linux and Windows checks. (FR-05; full-path and Windows coverage are unnecessary after the performance no-go.)
+- Not pursued: full-path and Windows qualification are unnecessary after the performance no-go.
 - [x] M1-T05: Record the A/B decision: reject the partial hook; it is correct for supported paths but not faster than translation on Deck. (FR-04)
 
 ### M2: Guest alias resolution (depends: M1 decision)
