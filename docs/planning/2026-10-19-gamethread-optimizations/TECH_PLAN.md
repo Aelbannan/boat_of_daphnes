@@ -237,7 +237,7 @@ the gather pipe and the established native groups.
 
 | Priority | Experiment | Required change | Decision boundary |
 |---:|---|---|---|
-| 1 | Clang 18 versus optional Clang 22 | Use the existing [`--clang22`](../../../scripts/linux/build.py) container path | Same source, profile and flags; retain only a repeatable Deck gain |
+| 1 | Clang 18 versus optional Clang 22 | Use the existing [`--clang22`](../../../scripts/linux/build.py) container path | Same source and flags; each compiler's trained PGO is part of its recipe; retain only a repeatable Deck gain |
 | 2 | Zen 2 scheduling | Add a recorded `-mtune=znver2` option while retaining `-march=x86-64-v3` | Deck-specific candidate; do not change the portable default from Deck evidence alone |
 | 3 | Certified native entries | Build with [`--native-entries`](../../../scripts/linux/build.py) and retain its hook/activation reports | Require certified hooks, positive activation, differential tests and a gain beyond noise |
 | 4 | Deck-scene PGO weighting | Add a separate training recipe emphasizing the measured Fortress and Forest Haven routes | Compare outside the emphasized scenes; reject overfitting or code-size regressions |
@@ -401,7 +401,7 @@ track changes one variable at a time and carries forward only retained results.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M5 | M0 | Build identical Clang 18 and Clang 22 artifacts | Compiler/flag records, matching profile hashes and Deck A/B summaries | M0 build-time control | One compiler repeatedly wins beyond noise |
+| M5 | M0 | Build Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes and Deck A/B summaries | M0 build-time control | One recipe repeatedly wins beyond noise; see [PR #437](https://github.com/chrissotraidis/bluewake/pull/437) |
 | M6 | M5 decision | Add `-mtune=znver2` while retaining `-march=x86-64-v3` | Effective flags, module hash/size and Deck A/B summaries | Retained M5 compiler | Deck improves; result remains Deck-specific unless broader evidence exists |
 | M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained M6 build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
 | M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |

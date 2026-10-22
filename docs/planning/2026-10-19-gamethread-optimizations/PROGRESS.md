@@ -63,10 +63,14 @@ candidate, and use that retained result as the next track-specific control.
 This track may run alongside M1–M3 after M0. Each step starts from the last
 retained build-time result, without incorporating unqualified runtime changes.
 
-### M5: Compiler version (depends: M0)
+### M5: Compiler recipe (depends: M0)
 
-- [ ] M5-T01: Compare matched Clang 18 and Clang 22 artifacts. (FR-06)
-- [ ] M5-T02: Retain Clang 22 only with repeatable Deck improvement. (FR-06)
+- [ ] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
+- [ ] M5-T02: Complete rendered/Game Mode gates before retaining the faster recipe. (FR-06)
+
+Headless result: [PR #437](https://github.com/chrissotraidis/bluewake/pull/437)
+records five warmed interleaved fixed-state pairs on #446: Clang 18's recipe is
+3.2% faster overall with matching checkpoints. Rendered and Game Mode remain.
 
 ### M6: Zen 2 tuning (depends: M5 decision)
 
