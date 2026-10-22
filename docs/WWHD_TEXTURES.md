@@ -26,11 +26,13 @@ Android integration is in [draft #347](https://github.com/chrissotraidis/bluewak
 
 1. Choose **Folder…** for your decrypted Wind Waker HD dump: the folder that
    holds `code`, `content` and `meta` (as Cemu uses it), or its `content` folder.
-   Alternatively, choose **WUD/WUX Image…**, then your disc key and either a
-   common key or a decrypted title key. Key files are 16-byte binary files or
-   text containing 32 hexadecimal digits. The menus show filenames, never key
-   values; key selections are used only for this import and are not saved in
-   settings. Cancelling a key picker returns to key selection. On iPhone/iPad,
+   Alternatively, choose **WUD/WUX Image…**, then the disc key and either a
+   common key or a decrypted title key. Each key can be 32 hexadecimal digits
+   typed or pasted into the form, or a key file. A keys file for the emulators
+   (`keys.txt`: one key per line, `#` comments, for every title) works as it is:
+   BlueWake tries its keys and keeps the one that decrypts this disc, so there
+   is no line to pick. Key selections are used only for this import and are not
+   saved in settings. Cancelling a key picker returns to key selection. On iPhone/iPad,
    cancelling the initial folder/image picker ends the flow; reopen **Import
    from Wind Waker HD…** to start again.
 2. BlueWake reads it with the GameCube disc it already plays and makes the pack
@@ -97,8 +99,11 @@ and use `build\wwhd-tools\Scripts\python.exe` wherever the commands below say
 ## Import your discs
 
 For a WUX/WUD image, supply your disc key and a common key file. Keys are
-16-byte binary files or text files containing 32 hexadecimal digits. The
-importer decrypts the disc's own embedded ticket to obtain its title key.
+16-byte binary files or text files containing 32 hexadecimal digits. The app
+also takes a `keys.txt` for the emulators, with every title's key in it, and
+picks the one that decrypts your disc; this script reads one key per file, so
+give it that disc's own line. The importer decrypts the disc's own embedded
+ticket to obtain its title key.
 
 ```sh
 build/wwhd-tools/bin/python scripts/import_wwhd_textures.py WindWakerHD.wux \

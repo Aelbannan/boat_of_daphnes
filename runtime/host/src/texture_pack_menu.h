@@ -88,6 +88,11 @@ inline PackState state_of(size_t textures, bool on) {
     return textures > 0 ? PackState::Ready : PackState::Empty;
 }
 
+// What an import left out: textures whose name already had a replacement, and
+// HD resources that could not be read. Amber, between the green of a pack that
+// loaded and the red of one that did not.
+inline ImVec4 skipped_color() { return ImVec4(1.f, 0.78f, 0.33f, 1.f); }
+
 inline ImVec4 state_color(PackState s) {
     switch (s) {
     case PackState::Ready: return ImVec4(0.35f, 0.9f, 0.45f, 1.f); // green
