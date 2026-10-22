@@ -401,7 +401,7 @@ track changes one variable at a time and carries forward only retained results.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M5 | M0 | Build Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes and Deck A/B summaries | M0 build-time control | One recipe repeatedly wins beyond noise; see [PR #437](https://github.com/chrissotraidis/bluewake/pull/437) |
+| M5 | M0 | Build Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes and Deck A/B summaries | M0 build-time control | Headless fixed-state evidence favors Clang 18 by 3.2%; preliminary rendered evidence favors it by 2.4%, but the rendered stage-completion parser must be repaired and Game Mode repeated before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
 | M6 | M5 decision | Add `-mtune=znver2` while retaining `-march=x86-64-v3` | Effective flags, module hash/size and Deck A/B summaries | Retained M5 compiler | Deck improves; result remains Deck-specific unless broader evidence exists |
 | M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained M6 build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
 | M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |

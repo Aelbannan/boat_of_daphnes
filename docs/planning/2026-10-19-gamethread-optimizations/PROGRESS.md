@@ -68,9 +68,13 @@ retained build-time result, without incorporating unqualified runtime changes.
 - [ ] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
 - [ ] M5-T02: Complete rendered/Game Mode gates before retaining the faster recipe. (FR-06)
 
-Headless result: [PR #437](https://github.com/chrissotraidis/bluewake/pull/437)
-records five warmed interleaved fixed-state pairs on #446: Clang 18's recipe is
-3.2% faster overall with matching checkpoints. Rendered and Game Mode remain.
+Results: [PR #437](https://github.com/chrissotraidis/bluewake/pull/437)
+records five warmed interleaved fixed-state headless pairs on #446: Clang 18's
+recipe is 3.2% faster overall with matching checkpoints. A single warmed
+Desktop Mode rendered pair also favors Clang 18 by 2.4%, but its stage-completion
+parser did not recognize the build's warp-log form; repeat it after repair.
+One matched Game Mode profile per recipe remained game-thread limited at roughly
+27–29 game FPS. Neither rendered/Game Mode result is a default-selection gate.
 
 ### M6: Zen 2 tuning (depends: M5 decision)
 
