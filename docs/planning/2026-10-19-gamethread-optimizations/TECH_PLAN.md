@@ -392,7 +392,7 @@ track changes one variable at a time and carries forward only retained results.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | Differential report, certified hook, activation count and Deck A/B summaries | M0 control | **Rejected:** supported paths matched, but coverage was 28.1% and the accepted path was slower on Deck |
+| M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | [PR #436 (closed)](https://github.com/chrissotraidis/bluewake/pull/436): differential report, certified hook, activation count and Deck A/B summaries | M0 control | **Rejected:** supported paths matched, but coverage was 28.1% and the accepted path was slower on Deck |
 | M2 | M1 decision | Add one guarded `ppc_guest_alias_resolve` fast path in RecompCore | RecompCore tests, pinned patch, call-site profile and Deck A/B summaries | Matched runtime control; M1 was not retained | Alias behavior/checkpoints match and the candidate improves beyond noise |
 | M3 | M2 decision | Test one dispatch reduction; test workers only with a profitable batch | Activation counts, batch sizes, component tests and Deck A/B summaries | Retained M2 build | Correct path activates and improves beyond synchronization cost |
 | M4 | M3 decision | Re-profile GX ownership only if the render thread becomes limiting | Per-thread profile and optional isolated GX candidate | Retained M3 build | Render-thread work limits frame delivery and an isolated change improves it |
