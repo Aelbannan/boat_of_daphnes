@@ -1,7 +1,7 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: M1 and M2 are rejected. M3 candidate investigation is next;
-current-source control construction remains blocked by
+Status: M1, M2, and M3 are rejected. M4 remains conditional on a render-thread
+limit; current-source control construction remains blocked by
 [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md) ·
@@ -46,12 +46,12 @@ candidate, and use that retained result as the next track-specific control.
 - [x] M2-T02: Compare the observed lookup work with the pinned resolver implementation. (FR-03)
 - [x] M2-T03: Reject a new guard: the relevant non-overlapping-alias binary search already exists. (FR-04)
 
-### M3: Native dispatch and numeric paths (depends: M2 decision) — [planned in PR #448](https://github.com/chrissotraidis/bluewake/pull/448)
+### M3: Native dispatch and numeric paths (depends: M2 decision) — [rejected in PR #448](https://github.com/chrissotraidis/bluewake/pull/448)
 
-- [ ] M3-T01: Re-rank dispatch, math and vector self-time after M2. (FR-02)
-- [ ] M3-T02: Test serial dispatch reduction before any worker expansion. (FR-03)
-- [ ] M3-T03: Require profitable batch sizes before testing parallel work. (FR-05)
-- [ ] M3-T04: Run correctness, activation and Deck A/B gates. (FR-04)
+- [x] M3-T01: Capture dispatch, native activation, and pool telemetry on the fixed Deck route. (FR-02)
+- [x] M3-T02: Reject a serial dispatch change: the sampled path is the existing exact PC-keyed cache. (FR-03)
+- [x] M3-T03: Reject worker work: production `array_max=8` does not reach the 256-item grain. (FR-05)
+- Not pursued: correctness and A/B gates require a selected code change.
 
 ### M4: Secondary graphics work (depends: M3 decision)
 
@@ -114,3 +114,12 @@ The resolver accounted for 1.60% sampled self time, but successful lookups used
 about 11 comparisons across roughly 1,900 aliases—the existing sorted-index
 binary-search path. No distinct equivalence-safe guard was identified, so M2
 is rejected without a RecompCore change. M3 is the next runtime investigation.
+
+### M3 decision
+
+[PR #448](https://github.com/chrissotraidis/bluewake/pull/448) captured a
+60-second Deck profile with zero lost samples and normal-exit activation
+telemetry. `selected_dispatch` maps to the existing generated exact PC-keyed
+cache; native routing exposes no redundant guard; and the sole pool client
+remained serial (`array_max=8`, `parallel=0`). M3 is rejected without a code
+change.
