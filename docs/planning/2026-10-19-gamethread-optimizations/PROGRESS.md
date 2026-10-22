@@ -65,8 +65,9 @@ retained build-time result, without incorporating unqualified runtime changes.
 
 ### M5: Compiler recipe (depends: M0)
 
-- [ ] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
-- [ ] M5-T02: Complete rendered/Game Mode gates before retaining the faster recipe. (FR-06)
+- [x] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
+- [x] M5-T02: Capture paired Desktop Mode rendered and Game Mode observations. (FR-06)
+- [ ] M5-T03: Repair rendered stage confirmation, repeat controlled rendered/Game Mode comparisons, then retain or reject a recipe. (FR-06)
 
 Results: [PR #437](https://github.com/chrissotraidis/bluewake/pull/437)
 records five warmed interleaved fixed-state headless pairs on #446: Clang 18's
@@ -75,6 +76,11 @@ Desktop Mode rendered pair also favors Clang 18 by 2.4%, but its stage-completio
 parser did not recognize the build's warp-log form; repeat it after repair.
 One matched Game Mode profile per recipe remained game-thread limited at roughly
 27–29 game FPS. Neither rendered/Game Mode result is a default-selection gate.
+
+| Task | Commit / artifact | Command / method | Environment / input | Result |
+|---|---|---|---|---|
+| M5-T01 | #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
+| M5-T02 | Same private AppImages and fixed state | One warmed Desktop Mode rendered pair; one 30-second Game Mode `perf` capture per recipe | Deck Desktop Mode and Game Mode; same sea location for Game Mode | Rendered pair favors Clang 18 by 2.4%; both Game Mode runs are game-thread limited at roughly 27–29 FPS. |
 
 ### M6: Zen 2 tuning (depends: M5 decision)
 
