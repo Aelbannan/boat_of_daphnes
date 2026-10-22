@@ -98,11 +98,11 @@ inline constexpr Setting kSettings[] = {
     {.key = "BLUEWAKE_HD_SUN_SHADOWS", .kind = Kind::Bool, .label = "Sun shadows outdoors (from the HD look)",
      .tab = Tab::Mods, .control = Control::Switch,
      .experimental = "From a shadow map, so what is off screen still casts. Played on Linux (Vulkan) and Windows (Direct3D 12); not yet on a Mac."},
-    // The sun shadow map's quality (Aurora's post_fx reads it when it starts).
+    // The sun shadow map's quality (hd_look.c hands it to Aurora's post_fx when it changes).
     {.key = "DOL_AURORA_SUN_SHADOW_QUALITY", .kind = Kind::Choice, .fallback = "high", .label = "Sun shadow quality",
      .tab = Tab::Mods, .control = Control::Chooser,
      .note = "High is the sharpest, and keeps islands and palms behind the camera casting; Low is for slower graphics cards.",
-     .needs = "BLUEWAKE_HD_SUN_SHADOWS", .next_launch = Os::All,
+     .needs = "BLUEWAKE_HD_SUN_SHADOWS",
      .experimental = "Low, Medium and High played on Linux (Vulkan); not yet on Windows or a Mac."},
     {.key = "BLUEWAKE_PAUSE_UNFOCUSED", .old_windows = "pause_unfocused", .kind = Kind::Bool,
      .label = "Pause while the window is in the background", .control = Control::Switch},

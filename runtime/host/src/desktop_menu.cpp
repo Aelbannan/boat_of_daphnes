@@ -247,7 +247,8 @@ void apply_now(const bw_settings::Setting& s) {
         set_env("BLUEWAKE_FADE_FRAMES", value != "0" ? "6" : "0");
     if (next_launch(s))
         return;
-    if (std::strncmp(key, "BLUEWAKE_HD_", 12) == 0)  // the HD look and its parts (sun shadows)
+    if (std::strncmp(key, "BLUEWAKE_HD_", 12) == 0 ||  // the HD look and its parts (sun shadows)
+        std::strcmp(key, "DOL_AURORA_SUN_SHADOW_QUALITY") == 0)
         bluewake_hd_look_reload();
     else if (std::strcmp(key, "BLUEWAKE_MENU_PAUSES") == 0)
         read_menu_pauses();

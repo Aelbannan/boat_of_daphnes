@@ -75,6 +75,18 @@ void bluewake_hd_look_reload(void) {
         aurora_set_ambient_occlusion(ao == 1);
     if (sun_map >= 0)
         aurora_set_sun_shadow_map(sun_map == 1);
+    // The shadow quality (DOL_AURORA_SUN_SHADOW_QUALITY, also in the menu),
+    // handed over when it changes: the renderer makes its map again at once.
+    {
+        static int s_quality = -1;
+        const char* value = getenv("DOL_AURORA_SUN_SHADOW_QUALITY");
+        const int quality = value == NULL || value[0] == '\0' ? 2 : strcmp(value, "low") == 0 ? 0
+                            : strcmp(value, "medium") == 0 ? 1 : 2;
+        if (quality != s_quality) {
+            aurora_set_sun_shadow_quality(quality);
+            s_quality = quality;
+        }
+    }
     fprintf(stderr, "[hd-look] distant islands %s, ambient occlusion %s, sun shadows %s%s, edge light %s, torch light %s, cloud shadows %s, far blur %s, bloom %s\n",
             bluewake_hd_distant_islands ? "on" : "off", ao < 0 ? "unset" : ao ? "on" : "off",
             g_sun == 1 ? "on" : "off", g_sun == 1 && sun_map == 1 ? " (shadow map)" : "", g_edge == 1 ? "on" : "off", g_torch == 1 ? "on" : "off",
