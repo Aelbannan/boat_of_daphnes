@@ -1,6 +1,6 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: M1 is rejected and closed. M2 candidate investigation is next;
+Status: M1 and M2 are rejected. M3 candidate investigation is next;
 current-source control construction remains blocked by
 [#433](https://github.com/chrissotraidis/bluewake/issues/433).
 
@@ -42,9 +42,9 @@ candidate, and use that retained result as the next track-specific control.
 
 ### M2: Guest alias resolution (depends: M1 decision)
 
-- [ ] M2-T01: Re-profile retained M1 and annotate alias-resolution callers. (FR-02)
-- [ ] M2-T02: Test one guarded resolver fast path in RecompCore. (FR-03)
-- [ ] M2-T03: Run alias, checkpoint, platform and Deck A/B gates. (FR-04)
+- [x] M2-T01: Capture the fixed-route Deck alias-cost census and CPU sample. (FR-02)
+- [x] M2-T02: Compare the observed lookup work with the pinned resolver implementation. (FR-03)
+- [x] M2-T03: Reject a new guard: the relevant non-overlapping-alias binary search already exists. (FR-04)
 
 ### M3: Native dispatch and numeric paths (depends: M2 decision)
 
@@ -104,5 +104,13 @@ The detailed implementation and evidence are in [PR #436 (closed)](https://githu
 The guarded hook accepted 123,609 of 440,495 calls (28.1%); 99.46% of its
 declines required unimplemented traversal. Its accepted early return measured
 226.1 ns/call native versus 179.3 ns/call translated on Deck. Five interleaved
-pairs were within noise, so M1 is rejected and M2 becomes the next runtime
-investigation.
+pairs were within noise, so M1 is rejected.
+
+### M2 decision
+
+The [M2 investigation PR #447](https://github.com/chrissotraidis/bluewake/pull/447)
+captured two fixed-route Deck alias-cost reports and a 20-second 99 Hz profile.
+The resolver accounted for 1.60% sampled self time, but successful lookups used
+about 11 comparisons across roughly 1,900 aliases—the existing sorted-index
+binary-search path. No distinct equivalence-safe guard was identified, so M2
+is rejected without a RecompCore change. M3 is the next runtime investigation.
