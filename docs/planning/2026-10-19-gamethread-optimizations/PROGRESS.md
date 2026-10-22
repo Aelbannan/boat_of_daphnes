@@ -32,7 +32,7 @@ candidate, and use that retained result as the next track-specific control.
 
 **Runtime track**
 
-### M1: Native `GroundCrossGrpRp` (depends: M0 decision) — rejected and closed
+### M1: Native `GroundCrossGrpRp` (depends: M0 decision) — [rejected and closed in PR #436](https://github.com/chrissotraidis/bluewake/pull/436)
 
 - [x] M1-T01: Map translated memory, calls, cycles and boundaries. (FR-02)
 - Not pursued: a full-traversal oracle is unnecessary after the partial hook failed its Deck performance gate.

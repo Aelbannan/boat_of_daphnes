@@ -368,48 +368,10 @@ recursion remains unsafe to parallelize without a separate equivalence proof.
 
 ### Native reimplementation workstream
 
-This is a serial replacement of one measured guest routine. It follows the
-existing [`native_bg.c`](../../../cmake/composite/native_bg.c) contract: inspect
-all prerequisites before changing state, execute the native path only when its
-equivalence is known, and otherwise leave the CPU and RAM untouched so normal
-translation can run.
-
-```mermaid
-flowchart TD
-    Entry["GroundCrossGrpRp entry"] --> Guard{"RAM, timing, callbacks<br/>and traversal supported?"}
-    Guard -->|"No; no mutation"| Guest["Run translated routine"]
-    Guard -->|"Yes"| Native["Run serial native traversal<br/>in original child order"]
-    Native --> Commit["Commit registers, memory,<br/>PC and cycle state"]
-    Guest --> Return["Return to caller"]
-    Commit --> Return
-```
-
-| Status | File / symbol | Practical edit | Contract |
-|---|---|---|---|
-| Modify | [`native_bg.c`](../../../cmake/composite/native_bg.c) / `bluewake_native_bg` | Add the `0x802491F4` entry and a guarded serial implementation | Decline without mutation unless the complete path is supported |
-| Modify | [`native_bg.h`](../../../cmake/composite/native_bg.h) | Name the entry address and document the expanded collision scope | Keep one address-to-native dispatch surface |
-| Modify | [`native_entries.py`](../../../scripts/windows/native_entries.py) | Certify the translated fragments and insert the existing native-background hook | Preserve `BLUEWAKE_NATIVE_ENTRIES=0`; reject a changed or watched translation |
-| Modify | [`native_bg_test.c`](../../../tests/native_bg_test.c) | Compare native and translated execution over group trees, rejection paths and callbacks | Match CPU state and writable RAM byte-for-byte; prove native activation |
-
-Implementation order:
-
-1. Map every translated basic block, RAM field, call target, charged cycle and
-   observable boundary for `0x802491F4–0x80249368`.
-2. Extend the differential fixture first with shallow, recursive, filtered,
-   callback-mutated, invalid-pointer, alias, deadline and interruption cases.
-3. Implement an opt-in serial native path. Snapshot working values locally and
-   commit guest-visible state only after all guards have passed.
-4. Run translation/native differential tests, fallback tests, existing native
-   suites and Linux/Windows CI. A passing serial fallback does not count as
-   activation evidence.
-5. Compare matched Deck A/B artifacts. Retain the path only if it activates in
-   the target scene, reduces cost beyond noise and preserves checkpoints and
-   gameplay.
-
-The implementation may call existing native collision leaves only when their
-combined register, timing and callback behavior matches the original call
-sequence. It must not treat the decompilation as the execution oracle or assume
-that every host hook is silent.
+The detailed design, tests, evidence, and rejection decision are in the
+[closed PR #436 technical-plan files](https://github.com/chrissotraidis/bluewake/pull/436/files).
+This parent plan records only its milestone result; it does not duplicate the
+experiment's implementation design.
 
 Critical path: M0 control → runtime M1–M4 and build-time M5–M8 → M9 combined
 qualification. M1–M4 and M5–M8 are separate ordered tracks; they may run in
