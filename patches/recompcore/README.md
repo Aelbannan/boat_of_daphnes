@@ -176,3 +176,11 @@ the sea's height shading the water. Its long shadows hold until the sun is 3 deg
 from the moon (opposite the sun) at half strength, from 12 degrees up. It keeps debug tools for testers, each off
 unless its variable is set (the F3 frame dump, `_DEBUG` views, `DOL_AURORA_SUN_SHADOW_MAP_ALL`,
 `DOL_AURORA_SUN_CASTER_LOG`, `DOL_AURORA_GAME_SHADOW_LOG`); docs/HD_SUN_SHADOW_MAP.md lists them.
+
+Patch 0184 preserves jslay88's RecompCore #43: vendored Dawn advances to `1155e0ed`, whose bundled
+Abseil includes `immintrin.h` correctly when the Linux AppImage builder enables BMI2 through
+`-march=x86-64-v3`. Cache callbacks use Dawn's setters; the prebuilt package tag stays unchanged.
+Patch 0185 keeps those callbacks compatible with the pinned Apple headers by omitting `noexcept`
+on their lambdas (RecompCore #44). The existing header's callback traits do not accept that qualifier.
+Focused Mac, iOS, tvOS and Android NDK source checks and a callback-forwarding fixture pass; full application
+builds and the Sunday gameplay/visual checks are separate. 0183 is reserved for #398's sun shadows.

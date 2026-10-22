@@ -1,4 +1,4 @@
-From a8fab305aabe21312e53539afca7448dc7bef95b Mon Sep 17 00:00:00 2001
+From 1446450c79046bd34e43abadc27522eeab768a6e Mon Sep 17 00:00:00 2001
 From: pdale-boop <237306950+pdale-boop@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 14:28:02 -0500
 Subject: [PATCH] Aurora: sun shadows from a shadow map, so what is off screen
@@ -31,27 +31,29 @@ render() takes the HD look's camera once for each frame it encodes
 that picks a draw's in-between ranges is collect_parts(), shared with the map.
 
 
-The commits since, squashed into this patch (be07338..a8fab30):
+The commits since, squashed into this patch (be07338..1446450, after RecompCore#44's merge b225a10, which
+patches 0184 and 0185 hold):
 
-- b5f97e0bf9 Aurora: the sun shadow map's screen steps leave out what the map holds
-- d0e3b56450 local debug: F3 dumps the next frames (DOL_AURORA_FRAME_INTERP_DUMP_KEY)
-- d9f8b251c9 Aurora: with the sun shadow map on, the game's own shadows are left out
-- dbebefa4f7 Aurora: the sun shadow map's shadows at the scene's size, without the screen's steps
-- c874b6f741 Aurora: the sun shadow map filters a turned disc of lookups
-- 4268c62211 local debug: DOL_AURORA_SUN_SHADOW_MAP_DEBUG=2 shows the map itself as contour bands
-- 7b4a9af4ea local test: DOL_AURORA_SUN_SHADOW_MAP_ALL lets alpha-tested draws cast, solid
-- 4751fc8ce0 Aurora: alpha-tested scenery casts its texture's cutout into the sun shadow map
-- fdc3269fff local debug: DOL_AURORA_SUN_CASTER_LOG says why a scope's draws cast or not
-- 4ca198351b Aurora: the sail and flags cast into the sun shadow map
-- 607dc37921 Aurora: the game's own shadows are left out while the sun shadow map is on
-- bdeac61beb Aurora: blended furniture casts when its vertices stand still
-- 6431e33307 Aurora: the sun shadow map in four cascades, and a bias for a low sun
-- e5c99f4933 Aurora: the sun shadow map's long shadows at sunset, and the moon's at night
-- f7219ed9f9 Aurora: the host's switch decides the sun shadow map unless the variable is set
-- c20e40906e Aurora: sun shadow map terms that grow with distance, cubes for cascades, the sea's swell, a gap fill, and quality levels
-- 30e53d0a79 Aurora: the game's simple shadows are left out on Linux too while the sun shadow map is on
-- 8005264d2a local debug: F3 frame dumps on Linux and macOS, and DOL_AURORA_GAME_SHADOW_LOG
-- a8fab305aa Aurora: the sun shadow quality can change while running (aurora_set_sun_shadow_quality)
+- a59208ed75 Aurora: sun shadows from a shadow map, so what is off screen still casts (off by default)
+- ca30c4ad69 Aurora: the sun shadow map's screen steps leave out what the map holds
+- 74b4d1a246 local debug: F3 dumps the next frames (DOL_AURORA_FRAME_INTERP_DUMP_KEY)
+- c7bcecb5a5 Aurora: with the sun shadow map on, the game's own shadows are left out
+- ad5b0bc25c Aurora: the sun shadow map's shadows at the scene's size, without the screen's steps
+- 07dd8f4333 Aurora: the sun shadow map filters a turned disc of lookups
+- 65f4cea7ed local debug: DOL_AURORA_SUN_SHADOW_MAP_DEBUG=2 shows the map itself as contour bands
+- 5a319792e1 local test: DOL_AURORA_SUN_SHADOW_MAP_ALL lets alpha-tested draws cast, solid
+- 1be2e4e44b Aurora: alpha-tested scenery casts its texture's cutout into the sun shadow map
+- 5d3c5ea17b local debug: DOL_AURORA_SUN_CASTER_LOG says why a scope's draws cast or not
+- 514e17fcdb Aurora: the sail and flags cast into the sun shadow map
+- 4a6a2e6724 Aurora: the game's own shadows are left out while the sun shadow map is on
+- d4a58aa57d Aurora: blended furniture casts when its vertices stand still
+- 2b9bed4a09 Aurora: the sun shadow map in four cascades, and a bias for a low sun
+- f1ccff4d40 Aurora: the sun shadow map's long shadows at sunset, and the moon's at night
+- eb1299b747 Aurora: the host's switch decides the sun shadow map unless the variable is set
+- f1f54ee0ed Aurora: sun shadow map terms that grow with distance, cubes for cascades, the sea's swell, a gap fill, and quality levels
+- 6bf71401ed Aurora: the game's simple shadows are left out on Linux too while the sun shadow map is on
+- 37414ca986 local debug: F3 frame dumps on Linux and macOS, and DOL_AURORA_GAME_SHADOW_LOG
+- 1446450c79 Aurora: the sun shadow quality can change while running (aurora_set_sun_shadow_quality)
 ---
  .../graphics/aurora/include/aurora/aurora.h   |   9 +
  GXRuntime/graphics/aurora/lib/gfx/common.cpp  |  87 +-
