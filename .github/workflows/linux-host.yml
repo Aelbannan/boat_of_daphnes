@@ -29,9 +29,8 @@ jobs:
           tags: bluewake-linux-ci:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # Keep these commands identical to the former runner-native job. The
-      # Dockerfile replaces only dependency installation, not what CI builds,
-      # tests, packages, or audits.
+      # Use the shared container and the player builder's x86-64-v3 target
+      # so BMI2-dependent vendored Dawn/Abseil code is compiled in CI too.
       - name: Fetch the pinned public runtime
         run: |
           set -euo pipefail
@@ -56,8 +55,8 @@ jobs:
               cmake -S linux -B build/linux-host -G Ninja \
                 -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
                 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-                -DCMAKE_C_FLAGS=-D_GNU_SOURCE \
-                -DCMAKE_CXX_FLAGS=-stdlib=libc++ \
+                "-DCMAKE_C_FLAGS=-D_GNU_SOURCE -march=x86-64-v3" \
+                "-DCMAKE_CXX_FLAGS=-stdlib=libc++ -march=x86-64-v3" \
                 -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ \
                 -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ \
                 -DCMAKE_CXX_STANDARD_LIBRARIES= \

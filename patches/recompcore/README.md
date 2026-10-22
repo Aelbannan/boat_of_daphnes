@@ -151,3 +151,11 @@ Patch 0182 is RecompCore #41: the HD look's cloud shadows take the sea's place f
 depth far out on the sea made straight-edged steps (the "square" shadows on Vulkan, a hard band on Metal), with gradient
 noise turned per octave. The cloud, sun-shadow, ambient-occlusion and bloom passes add half an 8-bit step of dither so
 their smooth shades don't band on the sea. 0181 is taken by draft #342.
+
+Patch 0184 preserves jslay88's RecompCore #43: vendored Dawn advances to `1155e0ed`, whose bundled
+Abseil includes `immintrin.h` correctly when the Linux AppImage builder enables BMI2 through
+`-march=x86-64-v3`. Cache callbacks use Dawn's setters; the prebuilt package tag stays unchanged.
+Patch 0185 keeps those callbacks compatible with the pinned Apple headers by omitting `noexcept`
+on their lambdas (RecompCore #44). The existing header's callback traits do not accept that qualifier.
+Focused Mac, iOS, tvOS and Android NDK source checks and a callback-forwarding fixture pass; full application
+builds and the Sunday gameplay/visual checks are separate. 0183 is reserved for #398's sun shadows.

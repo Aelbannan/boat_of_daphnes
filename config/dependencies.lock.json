@@ -112,11 +112,11 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "338a3dbcdd384142f0fe40db44e0cd1d1b0c61e4",
+      "sha": "f71c6901a3fe3c93a0a79fc8808a7fa27c7e5baa",
       "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
-      "verified": "2026-10-15",
+      "verified": "2026-10-22",
       "upstream": {
         "url": "https://github.com/ExpansionPak/RecompCore",
         "base_sha": "5c3611e2bcb03d1578274c956bc3d7b913527ec2"
@@ -623,6 +623,14 @@
             "patches/recompcore/0182-Aurora-HD-look-cloud-shadows-take-the-sea-from-its-plane-and-dither-the-shades.patch"
           ],
           "evidence": "RecompCore#41: the HD look's cloud shadows take the sea's place from its plane (only nearer surfaces from depth), with gradient noise turned per octave, and the cloud, sun-shadow, ambient-occlusion and bloom passes dither by half an 8-bit step. M3 Max, Metal, a copied card warped to Outset and Dragon Roost with cloud shadows alone at 0.8: the straight-edged band across Outset's sea is gone; the full HD look renders without shader errors. Vulkan and Direct3D 12, where the panels were reported (#371), not yet checked."
+        },
+        "dawn_x86_64_v3": {
+          "runtime": "f71c6901a3fe3c93a0a79fc8808a7fa27c7e5baa",
+          "tracked_patches": [
+            "patches/recompcore/0184-Aurora-Dawn-with-BMI2.patch",
+            "patches/recompcore/0185-Dawn-cache-callbacks-with-pinned-headers.patch"
+          ],
+          "evidence": "RecompCore#44 retains jslay88 RecompCore#43 and removes noexcept from two cache callback lambdas for the existing Dawn packages. Original callback failure reproduced with hash-verified iOS headers; fixed block passes Mac, iOS, tvOS and Android NDK source compilation and native callback forwarding. Contributor Clang 18/22 vendored-Dawn host links and synthetic AppImage checks passed on #43. BlueWake CI now covers x86-64-v3; updated host builds and gameplay/visual acceptance are separate checks."
         }
       }
     },
