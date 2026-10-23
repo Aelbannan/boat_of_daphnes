@@ -161,4 +161,13 @@ instead of their place in the list, which shifted whenever one faded or came int
 neighbour's alpha, with their colours counting too (each cloud is drawn twice, once with alpha 1). The water around a
 swimming Link follows him as well: a ripple's growing rings, the trail of rings behind him and his wake, which stepped
 at 30 FPS or jumped back a ring whenever a new one was born. It sits on `bluewake-next` after #41, so this pin carries
-#37, #38 and #41 as well.
+#37, #38 and #41 as well. The pin, `b225a10`, merges RecompCore #44 (0184 and 0185, below) onto #40, so
+the Dawn fix is kept between merges.
+
+Patch 0184 preserves jslay88's RecompCore #43: vendored Dawn advances to `1155e0ed`, whose bundled
+Abseil includes `immintrin.h` correctly when the Linux AppImage builder enables BMI2 through
+`-march=x86-64-v3`. Cache callbacks use Dawn's setters; the prebuilt package tag stays unchanged.
+Patch 0185 keeps those callbacks compatible with the pinned Apple headers by omitting `noexcept`
+on their lambdas (RecompCore #44). The existing header's callback traits do not accept that qualifier.
+Focused Mac, iOS, tvOS and Android NDK source checks and a callback-forwarding fixture pass; full application
+builds and the Sunday gameplay/visual checks are separate. 0183 is reserved for #398's sun shadows.
