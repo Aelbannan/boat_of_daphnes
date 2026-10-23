@@ -21,9 +21,9 @@ headroom and the game thread is saturated ([#215](https://github.com/chrissotrai
 The confirmed goal is both to reduce measured game-thread cost and to reach a
 stable 30 FPS in repeatable demanding Deck scenes without changing gameplay.
 
-Earlier #421 measurements and candidate conclusions are discarded. Issue reports
-explain why the work matters but are not the new baseline. All decisions start
-from fresh Steam Deck evidence produced from one recorded revision.
+Completed experiments retain their own recorded source revision and conclusion.
+A new current-control comparison must record its own revision rather than
+generalizing an earlier experiment's evidence.
 
 ## Requirements
 
@@ -97,5 +97,6 @@ Architecture: [build process](../../architecture/Build.md#6-train).
   game-thread reduction are required.
 - Confirmed by the user on 2026-10-20: proceed with the bounded native
   `GroundCrossGrpRp` reimplementation plan.
-- The source-identified control selects the experiment; current-source
-  qualification remains blocked until #433 is resolved.
+- The reported [#433](https://github.com/chrissotraidis/bluewake/issues/433)
+  regression was retracted. A certified current control requiring native-entry
+  generation is blocked by [#451](https://github.com/chrissotraidis/bluewake/issues/451).

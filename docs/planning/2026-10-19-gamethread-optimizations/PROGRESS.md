@@ -1,8 +1,9 @@
 # PROGRESS — Steam Deck game-thread optimization
 
-Status: M1, M2, and M3 are rejected. M4 remains conditional on a render-thread
-limit; current-source control construction remains blocked by
-[#433](https://github.com/chrissotraidis/bluewake/issues/433).
+Status: M1–M3 and M6 are completed negative results. M4 remains conditional on
+a render-thread limit. The [#433](https://github.com/chrissotraidis/bluewake/issues/433)
+regression claim was retracted; [#451](https://github.com/chrissotraidis/bluewake/issues/451)
+blocks certified native-entry generation for a current control.
 
 [Requirements](PRD.md) · [Technical plan](TECH_PLAN.md) ·
 [Game-thread architecture](../../architecture/GameThread.md)
@@ -24,7 +25,7 @@ candidate, and use that retained result as the next track-specific control.
 
 **Shared control**
 
-### M0: Establish the shared control (depends: candidate ranking, #433)
+### M0: Establish the shared control (depends: candidate ranking)
 
 - [ ] M0-T01: Build the current source with the default Linux recipe. (FR-01)
 - [ ] M0-T02: Record inputs, flags, PGO, hashes, size and Deck environment. (FR-01)
@@ -66,21 +67,20 @@ retained build-time result, without incorporating unqualified runtime changes.
 ### M5: Compiler recipe (depends: M0)
 
 - [x] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
-- [x] M5-T02: Capture paired Desktop Mode rendered and Game Mode observations. (FR-06)
+- [ ] M5-T02: Confirm loaded rendered scenes, then capture qualified rendered and Game Mode observations. (FR-06)
 - [ ] M5-T03: Repair rendered stage confirmation, repeat controlled rendered/Game Mode comparisons, then retain or reject a recipe. (FR-06)
 
 Results: [PR #437](https://github.com/chrissotraidis/bluewake/pull/437)
-records five warmed interleaved fixed-state headless pairs on #446: Clang 18's
-recipe is 3.2% faster overall with matching checkpoints. A single warmed
-Desktop Mode rendered pair also favors Clang 18 by 2.4%, but its stage-completion
-parser did not recognize the build's warp-log form; repeat it after repair.
-One matched Game Mode profile per recipe remained game-thread limited at roughly
-27–29 game FPS. Neither rendered/Game Mode result is a default-selection gate.
+records five warmed interleaved fixed-state headless pairs on source #446
+`48a5872`: Clang 18's recipe is 3.2% faster overall with matching checkpoints.
+The rendered scenes are not accepted because loading was not confirmed. Repeat
+the rendered and Game Mode stages after confirmation; neither is a
+default-selection gate yet.
 
 | Task | Commit / artifact | Command / method | Environment / input | Result |
 |---|---|---|---|---|
 | M5-T01 | #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
-| M5-T02 | Same private AppImages and fixed state | One warmed Desktop Mode rendered pair; one 30-second Game Mode `perf` capture per recipe | Deck Desktop Mode and Game Mode; same sea location for Game Mode | Rendered pair favors Clang 18 by 2.4%; both Game Mode runs are game-thread limited at roughly 27–29 FPS. |
+| M5-T02 | — | Not accepted pending scene-load confirmation | — | Open; no rendered or Game Mode result is retained for recipe selection. |
 
 ### M6: Zen 2 tuning (decision recorded in [PR #438](https://github.com/chrissotraidis/bluewake/pull/438))
 
@@ -92,7 +92,7 @@ One matched Game Mode profile per recipe remained game-thread limited at roughly
 | M6-T01 | [PR #438](https://github.com/chrissotraidis/bluewake/pull/438#issuecomment-6357949110) | Four interleaved headless, unpaced rounds for matched builds from `56a9537` | Steam Deck; five fixed scenes; candidate adds module-only `-mtune=znver2` | Scene medians range from -0.7% to +0.4%; mean +0.0%. |
 | M6-T02 | [PR #438 decision record](https://github.com/chrissotraidis/bluewake/pull/438) | Compare medians against observed variation | Same workload | Reject / park this flag; retain `x86-64-v3` and do not add a builder option. |
 
-### M7: Certified native entries (depends: M6 decision)
+### M7: Certified native entries (depends: M6 decision, #451)
 
 - [ ] M7-T01: Build `--native-entries` and verify hook certification. (FR-06)
 - [ ] M7-T02: Require activation, differential checks and a Deck gain. (FR-06)
@@ -111,11 +111,12 @@ One matched Game Mode profile per recipe remained game-thread limited at roughly
 
 ## Evidence boundary
 
-Private AppImages, states, raw logs, and `perf.data` remain on the Deck. The
-current evidence uses source-identified control commit
-[`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5),
-not the blocked current-source control. Desktop runs used isolated default
-settings.
+Private AppImages, states, raw logs, and `perf.data` remain on the Deck.
+Experiment sources are deliberately separate: M1–M3 use the source-matched
+[`3b5c5c4`](https://github.com/chrissotraidis/bluewake/commit/3b5c5c4826ef62bd1f8ff387734ff2ef295898e5)
+control; M5 uses [#446 source `48a5872`](https://github.com/chrissotraidis/bluewake/pull/446);
+and M6 uses `56a9537` as recorded in [PR #438](https://github.com/chrissotraidis/bluewake/pull/438).
+None is a certified current native-entry control while #451 is unresolved.
 
 ## M1 decision record
 

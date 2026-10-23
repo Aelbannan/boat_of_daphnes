@@ -19,10 +19,10 @@ Architecture: [game thread](../../architecture/GameThread.md) ·
   `run.log`, and a session-log copy. Headless and rendered runs answer different
   questions; neither invokes the benchmark tour.
 - [`native_work_pool.c`](../../../cmake/composite/native_work_pool.c) provides
-  synchronous range work on POSIX; Windows remains serial. #424 adds broader
-  pool/lifecycle coverage but is not evidence that any game candidate is faster.
-- No old #421 result is retained. Baseline, noise, hotspots, and activation are
-  **unknown/not measured** for this plan.
+  synchronous range work on POSIX; Windows remains serial. [PR #424 (merged)](https://github.com/chrissotraidis/bluewake/pull/424)
+  adds broader pool/lifecycle coverage but is not evidence that any game candidate is faster.
+- Each completed experiment retains its own source label and conclusion. Those
+  records do not establish a current-source control.
 
 ## Planned changes
 
@@ -90,10 +90,11 @@ sha256sum build/deck-control/BlueWake-x86_64.AppImage \
 
 Record the commit, dependency-lock hash, compiler, builder command, AppImage and
 module hashes, PGO/training status, and build summary. Copy the AppImage plus
-`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck. Both
-the default Clang 18 and optional Clang 22 `x86-64-v3` container paths are
-currently blocked by [#433](https://github.com/chrissotraidis/bluewake/issues/433);
-neither is a valid control until that issue is resolved.
+`scripts/bench_tour.py` and `scripts/linux/profile_deck.sh` to the Deck. The
+[#433](https://github.com/chrissotraidis/bluewake/issues/433) regression claim
+was retracted. A control requiring certified `--native-entries` is blocked by
+[#451](https://github.com/chrissotraidis/bluewake/issues/451), whose native
+generators cannot reproduce the current prepared leaves.
 
 ### Verified profiling control
 
@@ -383,7 +384,7 @@ parallel, but each track tests only one new variable at a time.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M0 | Candidate ranking, #433 | Build current source with `build.py --ci-container --appimage`; repeat the target scene | AppImage/module hashes, provenance, A/A summaries and `perf.data` | Same artifact against itself | Inputs match and repeated results establish usable noise |
+| M0 | Candidate ranking | Build current source with `build.py --ci-container --appimage`; repeat the target scene | AppImage/module hashes, provenance, A/A summaries and `perf.data` | Same artifact against itself | Inputs match and repeated results establish usable noise |
 
 After M0, the runtime and build-time tracks can proceed independently. Each
 track changes one variable at a time and carries forward only retained results.
@@ -401,9 +402,9 @@ track changes one variable at a time and carries forward only retained results.
 
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
-| M5 | M0 | Build and compare Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes, Deck A/B summaries and paired rendered/Game Mode observations | M0 build-time control | Comparison and paired observations complete. Headless fixed-state evidence favors Clang 18 by 3.2%; preliminary rendered evidence favors it by 2.4%. Repair rendered stage confirmation and repeat controlled rendered/Game Mode comparison before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
+| M5 | M0 | Build and compare Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes, Deck A/B summaries and qualified rendered/Game Mode observations | M0 build-time control | Headless fixed-state evidence on source `48a5872` favors Clang 18 by 3.2%. Rendered scenes are not accepted until loading is confirmed; repeat the controlled rendered/Game Mode comparison before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
 | M6 | — | [Measure module-only `-mtune=znver2`](https://github.com/chrissotraidis/bluewake/pull/438) while retaining `-march=x86-64-v3` | Fixed-source four-round, five-scene Deck comparison | Identical untuned build | **Rejected / parked:** +0.0% mean; no builder flag or portable-default change |
-| M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
+| M7 | M6 decision, #451 | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained build | Native generation succeeds; hooks certify and activate, tests pass, and Deck improves beyond noise |
 | M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |
 
 ### Integration
@@ -429,9 +430,8 @@ optimization target is retained yet.
 | Host-specific helpers in [`main.c`](../../../runtime/host/src/main.c) | Corrected symbol-complete reports do not show actor search or another concrete host helper as a dominant recurring cost. | Do not select from the earlier unresolved reports. Reconsider only if Game Mode or annotated call paths expose a specific host cost. |
 
 The current ranking is an investigation order, not M0 candidate selection.
-Current-source control construction remains blocked by
-[#433](https://github.com/chrissotraidis/bluewake/issues/433). The source-matched
-Game Mode captures reproduce [#215](https://github.com/chrissotraidis/bluewake/issues/215)
-at 28.25–28.65 FPS and rank the translated chunk surface, but the chunk must be
-mapped and the result reproduced on a current-source control before selecting
-a bounded candidate.
+The [#433](https://github.com/chrissotraidis/bluewake/issues/433) regression
+claim was retracted. [#451](https://github.com/chrissotraidis/bluewake/issues/451)
+blocks a certified native-entry current control. The source-matched Game Mode
+captures reproduce [#215](https://github.com/chrissotraidis/bluewake/issues/215)
+at 28.25–28.65 FPS, but do not substitute for a current control.
