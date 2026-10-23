@@ -238,7 +238,7 @@ the gather pipe and the established native groups.
 | Priority | Experiment | Required change | Decision boundary |
 |---:|---|---|---|
 | 1 | Clang 18 versus optional Clang 22 | Use the existing [`--clang22`](../../../scripts/linux/build.py) container path | Same source and flags; each compiler's trained PGO is part of its recipe; retain only a repeatable Deck gain |
-| 2 | Zen 2 scheduling | Add a recorded `-mtune=znver2` option while retaining `-march=x86-64-v3` | Deck-specific candidate; do not change the portable default from Deck evidence alone |
+| 2 | Zen 2 scheduling | [Rejected in PR #438](https://github.com/chrissotraidis/bluewake/pull/438): module-only `-mtune=znver2` measured +0.0% mean across five Deck scenes | Keep `-march=x86-64-v3` and the portable default; result is limited to this flag and workload |
 | 3 | Certified native entries | Build with [`--native-entries`](../../../scripts/linux/build.py) and retain its hook/activation reports | Require certified hooks, positive activation, differential tests and a gain beyond noise |
 | 4 | Deck-scene PGO weighting | Add a separate training recipe emphasizing the measured Fortress and Forest Haven routes | Compare outside the emphasized scenes; reject overfitting or code-size regressions |
 
@@ -402,8 +402,8 @@ track changes one variable at a time and carries forward only retained results.
 | Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
 |---|---|---|---|---|---|
 | M5 | M0 | Build and compare Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes, Deck A/B summaries and paired rendered/Game Mode observations | M0 build-time control | Comparison and paired observations complete. Headless fixed-state evidence favors Clang 18 by 3.2%; preliminary rendered evidence favors it by 2.4%. Repair rendered stage confirmation and repeat controlled rendered/Game Mode comparison before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
-| M6 | M5 decision | Add `-mtune=znver2` while retaining `-march=x86-64-v3` | Effective flags, module hash/size and Deck A/B summaries | Retained M5 compiler | Deck improves; result remains Deck-specific unless broader evidence exists |
-| M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained M6 build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
+| M6 | — | [Measure module-only `-mtune=znver2`](https://github.com/chrissotraidis/bluewake/pull/438) while retaining `-march=x86-64-v3` | Fixed-source four-round, five-scene Deck comparison | Identical untuned build | **Rejected / parked:** +0.0% mean; no builder flag or portable-default change |
+| M7 | M6 decision | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained build | Hooks certify and activate, tests pass, and Deck improves beyond noise |
 | M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |
 
 ### Integration

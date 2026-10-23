@@ -82,10 +82,15 @@ One matched Game Mode profile per recipe remained game-thread limited at roughly
 | M5-T01 | #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
 | M5-T02 | Same private AppImages and fixed state | One warmed Desktop Mode rendered pair; one 30-second Game Mode `perf` capture per recipe | Deck Desktop Mode and Game Mode; same sea location for Game Mode | Rendered pair favors Clang 18 by 2.4%; both Game Mode runs are game-thread limited at roughly 27–29 FPS. |
 
-### M6: Zen 2 tuning (depends: M5 decision)
+### M6: Zen 2 tuning (decision recorded in [PR #438](https://github.com/chrissotraidis/bluewake/pull/438))
 
-- [ ] M6-T01: Add `-mtune=znver2` while retaining `-march=x86-64-v3`. (FR-06)
-- [ ] M6-T02: Compare Deck results and preserve the portable default. (FR-06)
+- [x] M6-T01: Measure module-only `-mtune=znver2` while retaining `-march=x86-64-v3`.
+- [x] M6-T02: Reject the option and preserve the portable default.
+
+| Task | Commit / artifact | Command / method | Environment / input | Result |
+|---|---|---|---|---|
+| M6-T01 | [PR #438](https://github.com/chrissotraidis/bluewake/pull/438#issuecomment-6357949110) | Four interleaved headless, unpaced rounds for matched builds from `56a9537` | Steam Deck; five fixed scenes; candidate adds module-only `-mtune=znver2` | Scene medians range from -0.7% to +0.4%; mean +0.0%. |
+| M6-T02 | [PR #438 decision record](https://github.com/chrissotraidis/bluewake/pull/438) | Compare medians against observed variation | Same workload | Reject / park this flag; retain `x86-64-v3` and do not add a builder option. |
 
 ### M7: Certified native entries (depends: M6 decision)
 
