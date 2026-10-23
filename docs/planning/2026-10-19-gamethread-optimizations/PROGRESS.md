@@ -77,6 +77,13 @@ The rendered scenes are not accepted because loading was not confirmed. Repeat
 the rendered and Game Mode stages after confirmation; neither is a
 default-selection gate yet.
 
+| Run | What ran | Outcome | Decision use |
+|---|---|---|---|
+| Build and smoke | Clean Clang 18 and Clang 22 #446 builds; ABI and extraction/help smoke | Both private artifacts passed | Artifact validation only |
+| Headless benchmark | Five scenes; 10 interleaved A/B/B/A samples per recipe | Clang 18 +3.2%; 31 checkpoints match | Accepted headless finding |
+| Rendered Desktop attempt | One warmed five-scene tour | Completion parser reported scenes not loaded | Excluded from selection |
+| Game Mode attempt | One 30-second profile per recipe | Directional profile, not repeated controlled comparison | Excluded from selection |
+
 | Task | Commit / artifact | Command / method | Environment / input | Result |
 |---|---|---|---|---|
 | M5-T01 | [PR #437 findings](https://github.com/chrissotraidis/bluewake/pull/437); #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
