@@ -77,6 +77,11 @@ The rendered scenes are not accepted because loading was not confirmed. Repeat
 the rendered and Game Mode stages after confirmation; neither is a
 default-selection gate yet.
 
+Remaining M5 order: confirm rendered loading; record rendered A/A noise; run
+five interleaved rendered pairs; verify the local Game Mode route; record Game
+Mode A/A noise and five interleaved pairs; then retain a recipe or record an
+inconclusive result. The detailed procedure is in [PR #437](https://github.com/chrissotraidis/bluewake/pull/437).
+
 | Run | What ran | Outcome | Decision use |
 |---|---|---|---|
 | Build and smoke | Clean Clang 18 and Clang 22 #446 builds; ABI and extraction/help smoke | Both private artifacts passed | Artifact validation only |
