@@ -73,11 +73,27 @@ In `main`, not yet in a download. On a build of `main`, use
 **F1 › Mods › Wind Waker HD textures › Import from Wind Waker HD…** with
 your own decrypted folder, then a USA WUD/WUX image and its keys:
 
-- Cancel and reopen each picker; replace the image; switch between common
-  and title key. Import must stay disabled until all required files are selected.
+- Keys, three ways, each of them importing without a line picked out by hand:
+  a key file holding one key; 32 hex digits pasted into the field; an
+  emulator `keys.txt` with hundreds of keys for other titles in it, comments
+  and `name = key` lines included. Import stays disabled until the image and
+  both keys are there.
+- Cancel and reopen each picker: a cancel leaves the rest of the form as it
+  was. Choose a second image after one is already chosen: both key fields
+  clear, because a key belongs to its own disc, and Import stays disabled
+  until they are given again. Choose a second file into either key field, and
+  switch between common and title key: the unlock key field clears.
+- Give the wrong line of a USA `keys.txt` first (`[USA, NUS]` instead of
+  `[USA, WUD]`, or another title's key): the import fails with a message that
+  says what was wrong, the image and both keys stay in the form, and a
+  one-edit retry succeeds.
+- The result is coloured like the texture-pack state above it: green for the
+  count imported, amber for what was skipped (a name already taken, an HD
+  resource that could not be read) and red for a failure, with
+  `import-report.json` naming the resources it could not read.
 - Import while the game runs, close/reopen the menu, cancel an active import,
   and quit during one. Existing packs and saves must stay intact; incomplete
-  output must be removed. A wrong key should give a recoverable error.
+  output must be removed.
 - Finish an import, Resume to save the choice, then restart. Verify the pack
   loads. Turn HD textures off, Resume and restart; check gameplay with original
   textures. Turn them on, Resume and restart again to check the pack. Confirm key paths
