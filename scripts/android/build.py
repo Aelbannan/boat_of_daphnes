@@ -712,9 +712,9 @@ class AndroidBuilder(wb.Builder):
                 text = self.adb("shell", f"cat {self.DEVICE_FILES}/logs/{log_name}", capture=True, check=False)
                 if "[android] host returned" in text:
                     break
-                retraces = re.findall(r"retrace=(\d+)", text[-20000:])
+                observed_retraces = re.findall(r"retrace=(\d+)", text[-20000:])
                 print(f"  {name}: {elapsed // 60}m {elapsed % 60:02d}s, retrace "
-                      f"{retraces[-1] if retraces else 0}/{self.TRAINING_RETRACES}", flush=True)
+                      f"{observed_retraces[-1] if observed_retraces else 0}/{self.TRAINING_RETRACES}", flush=True)
             if elapsed > 60 and not self.adb("shell", "pidof", self.app_id, check=False).stdout.strip():
                 die(f"the training playback {name} stopped early (device log {log_name})")
             if elapsed > 3 * 3600:
