@@ -99,7 +99,11 @@ def game_table():
         assert at % SCALE == 0
         records.append((0, path.rsplit("/", 1)[-1], at // SCALE, size, flags, cluster))
     assert len(records) == 17
-    return file_table([(1, 1), (2, 2), (4, 2), (6, 6)], records, SCALE)
+    # A real disc counts a hashed content's allocation in payload sectors, so the
+    # hash blocks stored with that payload are not in the count: three 0x10000
+    # blocks are six sectors on disc but 3 x 0xFC00 payload bytes, five sectors.
+    hashed_sectors = (3 * HASH_DATA) // SECTOR
+    return file_table([(1, 1), (2, 2), (4, 2), (6, hashed_sectors)], records, SCALE)
 
 
 def system_bytes(game_fst, bad_digest=False):
