@@ -195,8 +195,9 @@ The loop was short: change RecompCore, build host-only, play, look, repeat.
   flag off themselves.
 - **Surfaces facing away from the sun** are shaded by the map, which the screen version never did. It looks right
   to us, but it's a change in the look worth a second opinion.
-- **Before review:** drop the four debug commits from #42, regenerate patch 0183, and decide whether
-  `DOL_AURORA_SUN_SHADOW_MAP=0` stays as a user-facing comparison switch.
+- **The debug tools stay.** The four debug commits stay in #42 and in patch 0183 as tools for testers, each off
+  unless its variable is set (listed under the switches above). `DOL_AURORA_SUN_SHADOW_MAP=0` stays too, as a
+  variable for comparing against the screen-only shadows; it isn't in the menu.
 - **Platforms:** played on Windows (Direct3D 12) and Linux (Vulkan), both RTX 5070 Ti. Not yet on AMD or Intel GPUs,
   Mac (Metal) or iPad.
 
