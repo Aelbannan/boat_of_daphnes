@@ -131,7 +131,13 @@ struct Content {
     DiscSha1 digest{};
 };
 
-Region cluster_region(const Partition& partition, const FileTable& table, uint16_t index) {
+// Bytes a content occupies on the disc: a hashed content stores a hash block
+// with its payload, and an encrypted one is read in whole AES blocks.
+uint64_t physical_bytes(const Content& content) {
+    return (content.type & 1) ? align16(content.size) : content.size;
+}
+
+Region cluster_region(const Partition& partition, const FileTable& table, uint16_t index, uint64_t bytes = 0) {
     if (index >= table.clusters.size())
         throw FormatError("invalid Wii U content index");
     const Cluster& cluster = table.clusters[index];
@@ -141,7 +147,13 @@ Region cluster_region(const Partition& partition, const FileTable& table, uint16
     // A zero allocation size falls back to partition bounds; game contents
     // additionally have their TMD size.
     if (cluster.sectors) {
-        const uint64_t bytes = uint64_t(cluster.sectors) * kSector;
+        // A hashed content's allocation counts payload sectors, so on a real
+        // disc it falls short of the hash blocks stored with that payload. The
+        // title metadata's own size is the authority when it asks for more.
+        const uint64_t allocated = std::max(uint64_t(cluster.sectors) * kSector, bytes);
+        range(offset, allocated, partition.data.size());
+        result.end = result.start + allocated;
+    } else if (bytes) {
         range(offset, bytes, partition.data.size());
         result.end = result.start + bytes;
     }
@@ -344,18 +356,18 @@ struct WiiUDisc::Impl {
     }
 
     const Content& checked_content(const WiiUDiscEntry& entry) const {
-        const Region region = cluster_region(game, files, entry.cluster);
         const auto found = contents.find(entry.cluster);
         if (found == contents.end())
             throw FormatError("Wii U file references missing title content");
         const Content& content = found->second;
+        const Region region = cluster_region(game, files, entry.cluster, physical_bytes(content));
         uint64_t logical_size = content.size;
         if (content.type & 2) {
             if (content.size % kBlock)
                 throw FormatError("invalid Wii U hashed content size");
             logical_size = content.size / kBlock * kPayload;
         }
-        range(0, (content.type & 1) ? align16(content.size) : content.size, region.size());
+        range(0, physical_bytes(content), region.size());
         range(entry.offset, entry.size, logical_size);
         return content;
     }
@@ -384,7 +396,7 @@ struct WiiUDisc::Impl {
         if (entry.size > kMaxFile)
             throw FormatError("disc file is too large");
         const Content& content = checked_content(entry);
-        const Region region = cluster_region(game, files, entry.cluster);
+        const Region region = cluster_region(game, files, entry.cluster, physical_bytes(content));
         if (!(content.type & 3))
             return read_region(region, entry.offset, entry.size);
 
