@@ -16,5 +16,8 @@ inline const char* bw_option_note(const char* name) {
     if (std::strcmp(name, "invert_camera_x") == 0)
         return "The game's own camera turns the other way: the keyboard's T F G H, and a controller when the "
                "fast right-stick camera is off. To invert a controller's camera, use Controls.";
+    if (std::strcmp(name, "sea_compass") == 0)
+        return "The compass at sea turns the other way, so sailing east its N points left and sailing west it "
+               "points right, as in Wind Waker HD. Off keeps the GameCube compass.";
     return nullptr;
 }
