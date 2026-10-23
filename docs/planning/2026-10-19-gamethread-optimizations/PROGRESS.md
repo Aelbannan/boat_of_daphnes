@@ -64,7 +64,7 @@ candidate, and use that retained result as the next track-specific control.
 This track may run alongside M1–M3 after M0. Each step starts from the last
 retained build-time result, without incorporating unqualified runtime changes.
 
-### M5: Compiler recipe (depends: M0)
+### M5: Compiler recipe (partial result in [PR #437](https://github.com/chrissotraidis/bluewake/pull/437); depends: M0)
 
 - [x] M5-T01: Compare Clang 18 and 22 recipes, including their trained PGO profiles. (FR-06)
 - [ ] M5-T02: Confirm loaded rendered scenes, then capture qualified rendered and Game Mode observations. (FR-06)
@@ -79,7 +79,7 @@ default-selection gate yet.
 
 | Task | Commit / artifact | Command / method | Environment / input | Result |
 |---|---|---|---|---|
-| M5-T01 | #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
+| M5-T01 | [PR #437 findings](https://github.com/chrissotraidis/bluewake/pull/437); #446 `48a5872`; private Clang 18/22 AppImages | Fixed-state five-scene headless A/B/B/A pairs | Steam Deck on mains; compiler-specific PGO; 10 samples/recipe | All checkpoints match; Clang 18 recipe median +3.2% overall. |
 | M5-T02 | — | Not accepted pending scene-load confirmation | — | Open; no rendered or Game Mode result is retained for recipe selection. |
 
 ### M6: Zen 2 tuning (decision recorded in [PR #438](https://github.com/chrissotraidis/bluewake/pull/438))
