@@ -382,36 +382,36 @@ parallel, but each track tests only one new variable at a time.
 
 ### Shared control
 
-| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
-|---|---|---|---|---|---|
-| M0 | Candidate ranking | Build current source with `build.py --ci-container --appimage`; repeat the target scene | AppImage/module hashes, provenance, A/A summaries and `perf.data` | Same artifact against itself | Inputs match and repeated results establish usable noise |
+| Milestone | Status | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|---|
+| M0 | Pending | Candidate ranking | Build current source with `build.py --ci-container --appimage`; repeat the target scene | AppImage/module hashes, provenance, A/A summaries and `perf.data` | Same artifact against itself | Inputs match and repeated results establish usable noise |
 
 After M0, the runtime and build-time tracks can proceed independently. Each
 track changes one variable at a time and carries forward only retained results.
 
 ### Runtime track
 
-| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
-|---|---|---|---|---|---|
-| M1 | M0 | Add and test the serial `GroundCrossGrpRp` native entry | [PR #436 (closed)](https://github.com/chrissotraidis/bluewake/pull/436): differential report, certified hook, activation count and Deck A/B summaries | M0 control | **Rejected:** supported paths matched, but coverage was 28.1% and the accepted path was slower on Deck |
-| M2 | M1 decision | Measure `ppc_guest_alias_resolve` before changing it | [PR #447](https://github.com/chrissotraidis/bluewake/pull/447): Deck census, CPU profile, and source comparison | M1 was not retained | **Rejected:** the measured non-overlapping lookup is the existing sorted-index binary search; no distinct guard was selected |
-| M3 | M2 decision | Measure dispatch and native numeric activation | [PR #448](https://github.com/chrissotraidis/bluewake/pull/448): M3 source-matched Deck census, profile, and annotation | M2 was not retained | **Rejected:** the dispatch cache already implements the measured hit path; numeric guards expose no distinct reduction and the pool has no eligible batch |
-| M4 | M3 decision | Re-profile GX ownership only if the render thread becomes limiting | Per-thread profile and optional isolated GX candidate | Retained M3 build | Render-thread work limits frame delivery and an isolated change improves it |
+| Milestone | Status | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|---|
+| M1 | Rejected | M0 | Add and test the serial `GroundCrossGrpRp` native entry | [PR #436 (closed)](https://github.com/chrissotraidis/bluewake/pull/436): differential report, certified hook, activation count and Deck A/B summaries | M0 control | **Rejected:** supported paths matched, but coverage was 28.1% and the accepted path was slower on Deck |
+| M2 | Rejected | M1 decision | Measure `ppc_guest_alias_resolve` before changing it | [PR #447](https://github.com/chrissotraidis/bluewake/pull/447): Deck census, CPU profile, and source comparison | M1 was not retained | **Rejected:** the measured non-overlapping lookup is the existing sorted-index binary search; no distinct guard was selected |
+| M3 | Rejected | M2 decision | Measure dispatch and native numeric activation | [PR #448](https://github.com/chrissotraidis/bluewake/pull/448): M3 source-matched Deck census, profile, and annotation | M2 was not retained | **Rejected:** the dispatch cache already implements the measured hit path; numeric guards expose no distinct reduction and the pool has no eligible batch |
+| M4 | Conditional | M3 decision | Re-profile GX ownership only if the render thread becomes limiting | Per-thread profile and optional isolated GX candidate | Retained M3 build | Render-thread work limits frame delivery and an isolated change improves it |
 
 ### Build-time track
 
-| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
-|---|---|---|---|---|---|
-| M5 | M0 | Build and compare Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes, Deck A/B summaries and qualified rendered/Game Mode observations | M0 build-time control | Headless fixed-state evidence on source `48a5872` favors Clang 18 by 3.2%. Rendered scenes are not accepted until loading is confirmed; repeat the controlled rendered/Game Mode comparison before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
-| M6 | — | [Measure module-only `-mtune=znver2`](https://github.com/chrissotraidis/bluewake/pull/438) while retaining `-march=x86-64-v3` | Fixed-source four-round, five-scene Deck comparison | Identical untuned build | **Rejected / parked:** +0.0% mean; no builder flag or portable-default change |
-| M7 | M6 decision, #451 | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained build | Native generation succeeds; hooks certify and activate, tests pass, and Deck improves beyond noise |
-| M8 | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |
+| Milestone | Status | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|---|
+| M5 | In progress | M0 | Build and compare Clang 18 and Clang 22 recipes | Compiler/flag records, per-recipe PGO hashes, Deck A/B summaries and qualified rendered/Game Mode observations | M0 build-time control | Headless fixed-state evidence on source `48a5872` favors Clang 18 by 3.2%. Rendered scenes are not accepted until loading is confirmed; repeat the controlled rendered/Game Mode comparison before selection. See [PR #437](https://github.com/chrissotraidis/bluewake/pull/437). |
+| M6 | Rejected / parked | — | [Measure module-only `-mtune=znver2`](https://github.com/chrissotraidis/bluewake/pull/438) while retaining `-march=x86-64-v3` | Fixed-source four-round, five-scene Deck comparison | Identical untuned build | **Rejected / parked:** +0.0% mean; no builder flag or portable-default change |
+| M7 | Blocked | M6 decision, #451 | Build with `--native-entries` | Certification log, hook/activation report, differential results and Deck A/B summaries | Retained build | Native generation succeeds; hooks certify and activate, tests pass, and Deck improves beyond noise |
+| M8 | Blocked | M7 decision | Train a separately fingerprinted Fortress/Forest Haven PGO profile | Profile hash, module size, target and out-of-tour summaries | Retained M7 build | Target improves without meaningful out-of-tour regression |
 
 ### Integration
 
-| Milestone | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
-|---|---|---|---|---|---|
-| M9 | M4, M8 | Build only the retained runtime and build-time candidates together | Final AppImage, checkpoints, gameplay log, profile and A/B summaries | M0 plus each track's last retained build | Combined result remains correct and better; record whether 30 FPS is reached |
+| Milestone | Status | Depends | What is built or run | Artifact / evidence | Compared with | Advance when |
+|---|---|---|---|---|---|---|
+| M9 | Blocked | M4, M8 | Build only the retained runtime and build-time candidates together | Final AppImage, checkpoints, gameplay log, profile and A/B summaries | M0 plus each track's last retained build | Combined result remains correct and better; record whether 30 FPS is reached |
 
 ### Candidate status after the scene sweep
 
