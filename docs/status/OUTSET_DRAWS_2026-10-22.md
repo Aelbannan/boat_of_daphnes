@@ -23,28 +23,38 @@ Draw fusion (#225, patch 0166) has already taken the display lists from 8.8 M dr
 whole of Outset, and draw batching (0102) pairs what it can. What is left is 662 draws a frame, and two
 thirds of them are 4-vertex quads: sprites, HUD pieces, particles, and the sea's strips.
 
-## The runs worth fusing
+## How much of each frame could fuse without touching a vertex
 
-The six largest runs of consecutive draws with identical state:
+The same dump at the tour's other stops (`--mode headless` produces no draws: the dump is on the rendered
+path, so these are paced runs of the same build on a desktop, warped with `BLUEWAKE_TEST_WARP`). "same
+transform" counts runs of two or more consecutive draws with identical state **and** identical position
+matrix, which is the case that needs no vertex baking:
 
-| Draws | Verts | Primitive | Transform | Note |
-| --- | --- | --- | --- | --- |
-| 142 | 568 | 0x80 quads | x 150675, z -332703 on every draw | same transform throughout |
-| 84 | 336 | 0x80 quads | x 0, z 0 | same transform, two tags |
-| 57 | 228 | 0x80 quads | x 150675, z -332703 on every draw | depth test off, same transform |
-| 44 | 8,121 | 0x98 strips | x -39 to 312200, z -753 to 136414 | world geometry, spread out |
-| 29 | 4,416 | 0x98 strips | x -23 to 60, z -350 to -240 | one model's parts |
-| 25 | 120 | 0x80 quads | x 0 to 150675, z -332703 to 0 | same transform, tags vary |
+| Stop | Draws | Verts | Signatures | Runs | Runs 2+ | Draws in same-transform runs | After fusing those | All runs (ceiling) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Outset | 531 | 40,871 | 44 | 85 | 30 | 328 | 220 (-59%) | 85 |
+| Windfall | 663 | 41,350 | 54 | 106 | 50 | 365 | 318 (-52%) | 106 |
+| Dragon Roost Cavern | 583 | 70,933 | 47 | 105 | 40 | 340 | 265 (-55%) | 105 |
+| Forest Haven | 646 | 37,251 | 38 | 243 | 21 | 226 | 427 (-34%) | 243 |
 
-Three of those (142, 57 and 25 draws) share their transform on every draw, so their vertex data could be
-concatenated and submitted as one draw each without baking anything into the vertices: 224 draws become 3.
-That is a third of the frame's draw count, from a change that does not touch the game's code and does not
-need the vertex format or the shader constants to change.
+So the cheap half of the idea is not a third of one frame: it is between a third and three fifths of every
+frame measured, and Forest Haven is the weakest because its state changes 243 times a frame.
 
-The whole set of runs (113) is the upper bound if the transform were baked into the vertices, which is what
-the HD project's batching does and what Dusklight-style particle batching would need; that is 662 draws down
-to 113, an 83% cut, but it changes the vertex data and every draw's position matrix, so it is the second
-step, not the first.
+The largest same-transform runs at each stop, which is where a first change would show up:
+
+| Stop | Runs |
+| --- | --- |
+| Outset | 142 draws / 568 verts, 84 / 336, 57 / 228 |
+| Windfall | 143 / 572, 90 / 360, 57 / 228 |
+| Dragon Roost Cavern | 130 / 520, 90 / 360, 33 / 132 |
+| Forest Haven | 92 / 368, 72 / 288, 50 / 200 |
+
+Those are 4-vertex quads drawn one at a time: sprites, HUD pieces, particles, and the sea's strips.
+
+The run count is the upper bound if the transform were baked into the vertices, which is what the HD
+project's batching does and what Dusklight-style particle batching would need: 531 draws down to 85 at
+Outset, 663 to 106 at Windfall, 583 to 105 at Dragon Roost, 646 to 243 at Forest Haven. That changes the
+vertex data and every draw's position matrix, so it is the second step, not the first.
 
 ## Why the draw count is worth attacking on four cores
 
