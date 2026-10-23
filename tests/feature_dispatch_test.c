@@ -51,6 +51,15 @@ static void compare_dispatch(u32 address) {
     bluewake_feature_dispatch(NULL, address);
     assert(memcmp(expected, calls, sizeof calls) == 0);
     assert(order == expected_order);
+    /* The turn-entry form is the same less Forest Water, which the host
+     * dispatches at turn start itself. Forest Water runs first and adds no
+     * digit to the order, so the order is unchanged. */
+    memset(calls, 0, sizeof calls);
+    order = 0;
+    bluewake_feature_dispatch_turn_entry(NULL, address);
+    expected[4] = 0;
+    assert(memcmp(expected, calls, sizeof calls) == 0);
+    assert(order == expected_order);
 }
 
 int main(void) {

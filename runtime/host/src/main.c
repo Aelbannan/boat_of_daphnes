@@ -2217,12 +2217,22 @@ static inline __attribute__((always_inline)) bool host_chassis_edge_service_with
     return false;
 }
 
+// The address whose features the chassis observed before handing it, still
+// undispatched, to the host. The host's turn-entry dispatch skips it once.
+static u32 g_edge_returned_pc = 0xFFFFFFFFu;
+
 static bool host_chassis_edge_service(void* user, CPUState* cpu, u32 address) {
-    return host_chassis_edge_service_with(user, cpu, address, false);
+    if (!host_chassis_edge_service_with(user, cpu, address, false))
+        return false;
+    g_edge_returned_pc = address;
+    return true;
 }
 
 static bool host_chassis_edge_service_stage_select(void* user, CPUState* cpu, u32 address) {
-    return host_chassis_edge_service_with(user, cpu, address, true);
+    if (!host_chassis_edge_service_with(user, cpu, address, true))
+        return false;
+    g_edge_returned_pc = address;
+    return true;
 }
 
 // Host-only CPU state has no representation in the retail OSContext image.
@@ -14137,6 +14147,9 @@ int main(int argc, char** argv) {
             g_turn_edge_hit = false;
             g_turn_downcount_before_last_block = cpu.downcount;
         }
+        if (cpu.pc != g_edge_returned_pc)
+            bluewake_feature_dispatch_turn_entry(&cpu, cpu.pc);
+        g_edge_returned_pc = 0xFFFFFFFFu;
         int dispatched = mod->dispatch(&cpu, cpu.pc);
         if (turn_census)
             host_turn_exit_classify(&cpu, dispatched);
