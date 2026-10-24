@@ -226,6 +226,7 @@ void apply_live() {
     aurora_set_fps_overlay(env_on("DOL_AURORA_SHOW_FPS", false));
     apply_fps_position();
     aurora_set_pause_on_focus_lost(env_on("BLUEWAKE_PAUSE_UNFOCUSED", false));
+    aurora_set_background_input(env_on("BLUEWAKE_BACKGROUND_INPUT", false));
     bluewake_mouse_camera_reload();  // the mouse, both sticks, gyro and the mouse's buttons
     bluewake_haptics_reload();
     bluewake_climb_reload();
@@ -259,6 +260,8 @@ void apply_now(const bw_settings::Setting& s) {
         aurora_set_forced_anisotropy(static_cast<unsigned>(std::atoi(value.c_str())));
     else if (std::strcmp(key, "BLUEWAKE_PAUSE_UNFOCUSED") == 0)
         aurora_set_pause_on_focus_lost(value != "0");
+    else if (std::strcmp(key, "BLUEWAKE_BACKGROUND_INPUT") == 0)
+        aurora_set_background_input(value != "0");
     else if (std::strcmp(key, "BLUEWAKE_FOREST_WATER_KEEP_TREES") == 0 ||
              std::strcmp(key, "BLUEWAKE_FOREST_WATER_30_MINUTES") == 0)
         bluewake_forest_water_reload();
