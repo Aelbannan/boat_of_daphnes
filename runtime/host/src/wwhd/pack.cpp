@@ -541,13 +541,23 @@ ImportResult import_pack(const ImportOptions& o) {
         if (ext != ".wux" && ext != ".wud" && ext != ".iso")
             throw FormatError("HD input must be a WUD/WUX disc or a decrypted content folder");
         WiiUDiscKeys keys;
-        keys.disc = read_disc_key(o.disc_key_file.empty() ? (input.parent_path() / "game.key").string() : o.disc_key_file);
+        // Each key field is a key file or a key the player pasted; a keys file
+        // holds every title's key, so the image picks its own from the list.
+        const auto keys_from = [](const std::string& source, const char* role) {
+            std::vector<DiscKey> keys = key_candidates(source);
+            if (keys.empty())
+                throw FormatError(std::string("the ") + role + " is neither a key file nor a 32-digit hex key");
+            return keys;
+        };
+        const std::string disc_source =
+            o.disc_key_file.empty() ? (input.parent_path() / "game.key").string() : o.disc_key_file;
+        keys.disc = keys_from(disc_source, "disc key");
         if (!o.title_key_file.empty()) {
-            keys.title = read_disc_key(o.title_key_file);
+            keys.title = keys_from(o.title_key_file, "title key");
         } else {
             const fs::path common = o.common_key_file.empty() ? input.parent_path() / "common.key" : fs::path(o.common_key_file);
             if (!o.common_key_file.empty() || fs::is_regular_file(common, ec))
-                keys.common = read_disc_key(common.string());
+                keys.common = keys_from(common.string(), "common key");
         }
         disc = std::make_unique<WiiUDisc>(o.hd_folder, keys);
         for (const WiiUDiscEntry& entry : disc->entries()) {
