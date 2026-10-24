@@ -1,0 +1,150 @@
+name: Windows beta
+
+# Builds the player on Windows and packs it the way tools/package.ps1 does, then publishes the zip
+# under the pushed beta tag. The zip carries no game code: the player's first start builds the game
+# and the randomizer from their own disc.
+
+on:
+  push:
+    tags: ['v*-beta*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for the zip name (default: git describe --tags)'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-beta-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - name: Check out, with the renderer
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # The randomizer runs on its own offline Python in the player's folder (tools/rando/rando_runtime.py).
+      - name: The randomizer's offline runtime (Python, wwrando, gclib)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tools/rando/rando_runtime.py
+          if ($LASTEXITCODE) { throw 'the randomizer runtime could not be fetched' }
+          python tools/rando/rando_runtime.py --check
+          if ($LASTEXITCODE) { throw 'the randomizer runtime is not current' }
+
+      # The first start compiles the game from the disc with the clang that ships in tools\llvm.
+      - name: Assemble the compiler the player's first start uses
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'Visual Studio C++ tools missing' }
+          $bin = "$vs\VC\Tools\Llvm\x64\bin"
+          if (-not (Test-Path "$bin\clang.exe") -or -not (Test-Path "$bin\lld-link.exe")) {
+            Write-Host 'Visual Studio has no LLVM toolset: installing LLVM'
+            choco install llvm -y --no-progress
+            if ($LASTEXITCODE) { throw 'the LLVM install failed' }
+            $bin = 'C:\Program Files\LLVM\bin'
+          }
+          New-Item -ItemType Directory -Force build/llvm | Out-Null
+          Copy-Item "$bin\clang.exe", "$bin\lld-link.exe" build/llvm -Force
+          $license = @("$vs\VC\Tools\Llvm\LICENSE.TXT", "$vs\VC\Tools\Llvm\x64\LICENSE.TXT",
+                       (Join-Path (Split-Path -Parent (Split-Path -Parent $bin)) 'LICENSE.TXT')) |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($license) {
+            Copy-Item $license build/llvm/LICENSE.TXT -Force
+          } else {
+            Invoke-WebRequest 'https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/llvm/LICENSE.TXT' -OutFile build/llvm/LICENSE.TXT
+          }
+          foreach ($f in 'clang.exe', 'lld-link.exe', 'LICENSE.TXT') {
+            if (-not (Test-Path "build/llvm/$f")) { throw "build/llvm/$f missing" }
+          }
+          Get-ChildItem build/llvm | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+
+      - name: Build the player
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'Visual Studio C++ tools missing' }
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=amd64 -host_arch=amd64'
+          # clang-cl (the preset's compiler) and the CMake/Ninja Visual Studio ships, as tools/devenv.ps1 does.
+          $env:PATH = "$vs\VC\Tools\Llvm\x64\bin;$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;$env:PATH"
+          cmake --preset windows-clang
+          if ($LASTEXITCODE) { throw 'the configuration failed' }
+          cmake --build build/windows-clang --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
+          if ($LASTEXITCODE) { throw 'the build failed' }
+          foreach ($f in 'boat-of-daphnes.exe', 'boat-of-daphnes.lib', 'SDL3.dll', 'webgpu_dawn.dll', 'libpng16.dll', 'zlib1.dll') {
+            if (-not (Test-Path "build/windows-clang/$f")) { throw "build/windows-clang/$f missing" }
+          }
+          if (Test-Path 'build/gen/*.cpp') { throw 'a developer game module was generated in the build' }
+
+      - name: Pack the release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = "${{ inputs.version }}"
+          if (-not $version -and $env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME -replace '^v', '' }
+          if (-not $version) { $version = (git describe --tags --always) }
+          Write-Host "version: $version"
+          powershell -NoProfile -File tools/package.ps1 -Version $version -Llvm (Resolve-Path build/llvm).Path
+          if ($LASTEXITCODE) { throw 'the packaging failed' }
+          $zip = Get-ChildItem dist/*.zip
+          if (-not $zip) { throw 'no zip was made' }
+          $zip | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ($_.Length / 1MB) }
+
+      - name: Keep the zip for the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: boat-of-daphnes-windows-x64
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish it under the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = $env:GITHUB_REF_NAME
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $notes = @"
+          Automatic beta build from $short.
+
+          Unzip it anywhere and start boat-of-daphnes.exe: pick your disc image (GZLE01, revision 0) and
+          the first start builds the game and the randomizer from it in 10 to 20 minutes, once. No game
+          code or game data is in the zip.
+
+          Windows 10 or 11, a GPU with Direct3D 12 or Vulkan, a CPU with AVX2.
+
+          What changed:
+          "@
+          $notes += "`n" + ((git log --no-merges --format='- %s' -15) -join "`n")
+          $notes | Set-Content -Encoding utf8 NOTES.md
+          Get-Content NOTES.md | Select-Object -First 5
+          gh release view $tag --json name 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag dist/*.zip --clobber
+            if ($LASTEXITCODE) { throw 'the release upload failed' }
+          } else {
+            gh release create $tag dist/*.zip --prerelease --title "$tag (beta)" --notes-file NOTES.md
+            if ($LASTEXITCODE) { throw 'the release could not be published' }
+          }
+          gh release view $tag --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'
