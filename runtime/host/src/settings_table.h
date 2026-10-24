@@ -168,6 +168,11 @@ inline constexpr Setting kSettings[] = {
     {.key = "BLUEWAKE_DPAD_MENUS", .old_windows = "dpad_menus", .kind = Kind::Bool,
      .label = "D-pad moves the cursor in Items and Quest Status", .tab = Tab::Controls,
      .control = Control::Switch},
+    {.key = "BLUEWAKE_BACKGROUND_INPUT", .kind = Kind::Bool,
+     .label = "Controller works while another window is in front", .tab = Tab::Controls,
+     .control = Control::Switch,
+     .note = "The keyboard and mouse stay with the window in front. With Pause while the window is in the "
+             "background on, the game waits there anyway."},
     {.key = "BLUEWAKE_BUTTON_MAP", .old_windows = "button_map", .label = "Controller button mapping",
      .tab = Tab::Controls, .control = Control::Custom},
     {.key = "BLUEWAKE_KEY_MAP", .old_windows = "key_map", .label = "Keyboard mapping", .tab = Tab::Controls,
