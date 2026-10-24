@@ -1,73 +1,37 @@
-# Private user data - never commit
-ref/
-local-research/
-generated/
-/build*/
-game/
+# Build output and the player's release
+/build/
+/dist/
+/out/
 
-# Disc images and extracted game data
+# Anything made from a disc: never committed (the game's code is built from the player's own disc)
+/orig/
+/game/
 *.iso
-*.rvz
 *.gcm
-*.nfs
-*.wbfs
-*.wia
 *.ciso
-*.gcz
-*.wud
-*.wux
-*.tik
-*.key
-*.szs
-*.bfres
-*.bflim
+*.rvz
+*.wia
 *.dol
 *.rel
+/disc_files.txt
 
-# Saves, captures, credentials, signing material
+# A run's own files (settings, saves, logs, seeds, mods) when the program is started from the checkout
+/saves/
+/Save/
+/Randomizer/
+/mods/
+/logs/
+/cache/
+*.log
+/boat-of-daphnes.json
+/tww-settings.json
+/imgui.ini
+/launch.pending
+/setup.log
+
+# Python
 __pycache__/
-*.sav
-*.gci
-*.card
-*.raw
-*.ipa
-*.profraw
-*.profdata
-dolphin_*.bin
-*.provisionprofile
-*.p12
-*.mobileprovision
-.DS_Store
+*.pyc
 
-# Build artifacts
-*.o
-*.a
-*.dylib
-# Windows: gGZLE01_recomp.dll is the translated game (personal build)
-*.dll
-*.exe
-*.obj
-*.lib
-*.exp
-*.pdb
-*.app
-*.dmg
-*.xcarchive
-DerivedData/
-cmake-build-*/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*~
-
-# The online play server's npm packages.
+# The Anchor server's packages
 server/anchor/node_modules/
-server/anchor/.wrangler/
-
-# Where the developer tools find your disc and source checkouts (scripts/bod_paths.py)
-/local_paths.json
-
-# Working files of this checkout: test fixtures, saved modules, release checks, tools (never committed)
-/local/

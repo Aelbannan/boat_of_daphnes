@@ -1,0 +1,31 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "windows-clang",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl"
+      }
+    },
+    {
+      "name": "linux-clang",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AURORA_SDL3_PROVIDER": "vendor",
+        "AURORA_SDL3_LINKAGE": "shared"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-clang", "configurePreset": "windows-clang" },
+    { "name": "linux-clang", "configurePreset": "linux-clang" }
+  ]
+}

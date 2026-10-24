@@ -1,1 +1,4 @@
-*.patch whitespace=-blank-at-eol
+# Patches for the Aurora submodule are applied with git apply: they must keep LF line endings.
+*.patch text eol=lf
+# Shell scripts run on Linux: LF, whatever the checkout does with line endings.
+*.sh text eol=lf

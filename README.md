@@ -1,102 +1,167 @@
 # Boat of Daphnes
 
-A PC port of *The Legend of Zelda: The Wind Waker* (GameCube, USA) with quality-of-life enhancements, a built-in
-randomizer and online co-op. It is a static recompilation: the game's own code, translated to native code from
-**your own disc**, running on a reimplementation of the GameCube's hardware. Boat of Daphnes is built on
-[BlueWake](https://github.com/chrissotraidis/bluewake) and keeps its license (GPL-3.0-or-later).
+**The Legend of Zelda: The Wind Waker on PC: a native static recompilation of the GameCube original, with
+smooth in-between frames, widescreen, a seamless randomizer, online co-op, player models and a menu made from the
+game's own art.**
 
-You need your own copy of the game: *The Legend of Zelda: The Wind Waker* for GameCube, USA (game ID `GZLE01`), as a
-disc image (`.iso`, `.gcm`, `.rvz`, `.wia`, `.gcz` or `.ciso`). Nothing from the game is included in this repository.
+![The title screen](docs/images/title.png)
+
+> [!IMPORTANT]
+> **Bring your own disc.** Boat of Daphnes needs your own copy of *The Wind Waker* for GameCube, USA version
+> (`GZLE01`, revision 0), as an `.iso`, `.gcm`, `.ciso`, `.rvz` or `.wia` disc image. This repository and its
+> releases contain no game code, assets or saves: the game's code is built on your PC from your disc the first time
+> you start it.
 
 ## Play
 
-1. Download the latest Windows build from [Releases](../../releases).
-2. Unzip it anywhere you can write to (not Program Files) and run `boat-of-daphnes.exe`.
-3. The first time, pick your Wind Waker (USA) disc image. The game data it needs is prepared from it once.
+1. Download `boat-of-daphnes-<version>-windows-x64.zip` from the [Releases](../../releases) page and unzip it anywhere.
+2. Start `boat-of-daphnes.exe` and pick your disc image when it asks.
+3. The first start builds the game and the randomizer from your disc. It takes about 10 to 20 minutes on a modern PC,
+   with a progress bar, and happens once. After that the program goes straight to the game.
 
-To update, unzip a new release over the old folder; your saves (`Save\`) and settings stay.
+Press **F1** (or **Esc**) for the menu. Settings, saves, mods and logs live beside the program.
 
-Requirements: Windows 10 or 11, 64-bit, a CPU with AVX2, and a GPU with Direct3D 12 or Vulkan.
+You need Windows 10 or 11, a GPU with Direct3D 12 or Vulkan, and a CPU with AVX2.
 
-### Linux (preview, untested)
+## What's in it
 
-A native Linux x86-64 build is new and has not been played on real hardware yet. You build it from your own disc
-with one command; see [docs/linux.md](docs/linux.md):
+### Smooth motion and a modern picture
 
-```
-git clone https://github.com/AgitationSkeleton/boat_of_daphnes.git
-cd boat_of_daphnes
-python3 scripts/linux/build.py /path/to/TheWindWaker.iso --rando-variant
-```
+The game runs at its own 30 frames a second; on a faster display the renderer draws in-between frames, so the picture
+moves at 60, 120 or 144 Hz without changing how the game plays. The camera is blended once per frame and every object
+is placed in the world and seen through it, so nothing shakes as the camera turns.
 
-Reports of how it goes (good or bad) are very welcome on the Issues page.
+![30 fps against in-between frames](docs/images/interpolation.gif)
 
-## Features
+([WebM version](docs/images/interpolation.webm))
 
-- **Widescreen and high frame rates:** any aspect ratio including ultrawide, HUD anchored to the screen edges,
-  in-between frames for 60, 120 or more FPS, higher internal resolution.
-- **Enhancements:** Swift Sail, Instant Text, faster animations and transitions, skip the intro and song replays,
-  Quick Doors, autosave, audio volume sliders, Hero Mode, camera options, player model and colour editors, a save
-  editor, and more (Settings menu, F1).
-- **Randomizer:** generate a [wwrando](https://github.com/LagoLunatic/wwrando) seed from the menu and play it without
-  rebuilding anything; switch between the randomizer and the normal game at the file select; Check Tracker (F4) with
-  wwrando's own logic, hints and what your teammates found.
-- **Anchor online co-op:** play in rooms with friends. Other players appear as Link (with their own models,
-  colours, items and boats), on the minimap and on the Sea Chart. Shared items and story flags per team, live
-  switches and doors, teleport to a teammate, chat, and optional PvP (Off / No Damage / On). See
-  [docs/anchor.md](docs/anchor.md).
-- **Tingle Tuner:** the Game Boy Advance link runs in the app (with a free GBA BIOS); no hardware or BIOS dump.
-- **Controllers:** XInput, DualShock/DualSense, Switch controllers, the GameCube controller adapter, keyboard and
-  mouse, with remapping.
+Also: widescreen with the HUD at its proper place, any window size or fullscreen, internal resolution, anisotropic
+filtering, integer scaling and an FPS counter.
 
-## Build from source
+### A menu made from The Wind Waker
 
-The app builds from this repository alone. The game module is translated from your disc on your own machine, so
-every build of the full game is personal. See [docs/building.md](docs/building.md).
+The menu follows the layout of [Dusklight](https://github.com/TwilitRealm/dusklight)'s menus, drawn with the game's
+own art read from your disc: the sea chart's paper, the file select's plates, the pause menu's cursor and the game's
+lettering, with Hylian script on the tabs and the help pane. It slides in with F1, and everything in it eases between
+states. Prefer the original look? **Settings › General › Menu Theme › Classic** brings back Boat of Daphnes' first menu.
 
-```
-python scripts/windows/build.py "path/to/your/Wind Waker (USA).iso" --rando-variant
-```
+| Wind Waker theme | Classic theme |
+| --- | --- |
+| ![Wind Waker theme](docs/images/menu-wind-waker.png) | ![Classic theme](docs/images/menu-classic.png) |
 
-The online play server is in [server/anchor](server/anchor) (a Cloudflare Worker); see its README to run your own.
+### Enhancements
 
-## Documentation
+Better Wind Waker's switches and more, each on its own:
 
-- [How it works](docs/how-it-works.md): the recompilation, the runtime and how the port hooks the game.
-- [Game code map](docs/game-code-map.md): the game functions the port intercepts, with their places in the
-  [zeldaret/tww](https://github.com/zeldaret/tww) decompilation.
-- [Building](docs/building.md), [Linux](docs/linux.md), [Testing](docs/testing.md), [Randomizer](docs/randomizer.md), [Anchor](docs/anchor.md).
+- **Skips and speed-ups:** Swift Sail and Brisk Sail, instant text, Text Speed (1x to 5x), Skip Text (hold B), faster
+  rolling, grappling, block pushing, climbing and Ballad of Gales, quick doors, faster transitions, Skip Intro with
+  Start, Remove Title and Ending Videos.
+- **Quality of life:** Tingle Chests without the Tingle Tuner, Reveal Sea Chart (it changes only what the chart shows,
+  never your save), treasure lights up close, Forest Water helpers, unrestricted boat and camera, Switch Targeting.
+- **Difficulty and fixes:** Hero Mode, no low-health beep, wwrando's vanilla-bug fixes, and a fix for the freezes after
+  some warps (a missing start point now starts Link at the room's first point).
+- **The Bunny Hood:** a new item, worn from the Hero's Charm slot, that makes Link run faster, with its own colours.
+
+![Enhancements](docs/images/enhancements.png)
+
+### Randomizer
+
+[The Wind Waker Randomizer](https://github.com/LagoLunatic/wwrando) is built in. Choose your options and generate a
+seed in the menu, then pick **Quest: Randomizer** on the file select: the game switches into the seed **without
+restarting**, and back to the normal game the same way. Seed hash icons, a spoiler log, an item tracker and a check
+tracker are included.
+
+![Randomizer](docs/images/randomizer-menu.png)
+
+### Cosmetics
+
+The Cosmetics Editor recolours Link's Hero's and Outset clothes, his hair, eyes and skin, sword trails, the HUD's
+buttons, Tetra, Princess Zelda, the King of Red Lions and **every piece of equipment**: swords, scabbards, shields,
+bow and arrows, boomerang, hookshot, Deku Leaf, bombs, telescope and Power Bracelets. Each colour has Random, Rainbow
+and Lock. Equipment that comes from a player model mod takes the same colours. Link's voice pitch and a Player Gender
+setting (how the game's text refers to you) are here too.
+
+![Cosmetics Editor: equipment](docs/images/cosmetics-equipment.png)
+
+### Mods and player models
+
+Drop folders or `.zip`, `.7z` and `.rar` archives into `mods\`. Boat of Daphnes reads player models in wwrando's
+format (Link, his equipment and his voice can each come from a different mod), file replacements and Dolphin-format
+texture packs, and swaps Link's model without a restart.
+
+**Browse Models** lists The Wind Waker's player models on [GameBanana](https://gamebanana.com/games/6173) with their
+pictures. Pick one and **Download & Install** fetches it through GameBanana's own link into your mods folder and
+puts it on Link. Models belong to their authors: the browser shows each one's author and licence and links to its page.
+
+| Browse Models | Mods |
+| --- | --- |
+| ![Browse Models](docs/images/browse-models.png) | ![Mods](docs/images/mods.png) |
+
+![Young Link by ColonelBirdstrong, from GameBanana](docs/images/young-link-mod.png)
+
+*[Young Link](https://gamebanana.com/mods/250753) by ColonelBirdstrong, installed from the browser.*
+
+### Online co-op (Anchor)
+
+Play together over the internet: other players appear as Link (in their own models, colours and voices) in your
+world and on your Sea Chart, progress is shared with your team, switches sync live, you can carry each other, and PvP
+can be turned on per room. Self-host the server from [`server/anchor`](server/anchor).
+
+![Network](docs/images/network.png)
+
+### And
+
+The Tingle Tuner works with a built-in Game Boy Advance (mGBA), GameCube controller adapters are supported with rumble,
+buttons can be rebound per port, an input viewer shows what the game receives, and the Dev Tools have a save editor,
+flag viewer and actor viewer.
+
+## Build it yourself
+
+You need Windows with Visual Studio 2022 (Desktop development with C++, plus its Clang tools), CMake, Ninja, Git and
+Python 3.
+
+~~~bat
+git clone --recursive https://github.com/AgitationSkeleton/boat-of-daphnes
+cd boat-of-daphnes
+cmake --preset windows-clang
+cmake --build --preset windows-clang --target tww
+~~~
+
+This builds `build\windows-clang\boat-of-daphnes.exe`. Aurora (the renderer, `extern/aurora`) is patched from
+`patches/aurora` automatically. Then:
+
+- `python tools\rando\rando_runtime.py` fetches the randomizer's generator: an embedded Python, wwrando and gclib,
+  each checked against a pinned hash.
+- `python tools\rando\install_dev.py` sets up the generator, the randomizer's reference disc and the extras beside the
+  program you built, for development. A player's first start does the same through `src/setup`.
+- `powershell -File tools\package.ps1 -Version <version>` makes the release zip in `dist\`. It carries the program, the
+  bundled compiler the first start builds the game with, and the randomizer's generator, and it refuses to include
+  anything made from a disc.
+
+How it works, in short: `src/recompiler` translates the game's PowerPC code (`main.dol` and its 415 modules) to C++,
+which is compiled into `tww_game.dll`; `src/runtime` is the console: CPU state, the OS and hardware replacements, the
+DSP's audio, the disc, and a GX translator feeding Aurora. Boat of Daphnes' features live in `src/bod` (its menus,
+editors, online play and host features) and `src/runtime/bod_*.cpp` (their game-side hooks).
 
 ## Credits
 
-Boat of Daphnes stands on the work of these projects and their contributors:
+- **Boat of Daphnes** by [AgitationSkeleton](https://github.com/AgitationSkeleton): the features, menus, editors,
+  online play, Bunny Hood and randomizer integration this port carries.
+- **[The Wind Waker Randomizer](https://github.com/LagoLunatic/wwrando)** and
+  **[gclib](https://github.com/LagoLunatic/gclib)** by LagoLunatic (MIT).
+- **[zeldaret/tww](https://github.com/zeldaret/tww)**, The Wind Waker's decompilation, for names and structures.
+- **[Aurora](https://github.com/encounter/aurora)** by encounter, the renderer.
+- **[Dolphin](https://dolphin-emu.org/)** (GPL-2.0-or-later): the Zelda audio microcode and GBA link are ported from it.
+- **[Better Wind Waker](https://github.com/WideBoner/betterww)**, whose switches the enhancements follow.
+- **[Dusklight](https://github.com/TwilitRealm/dusklight)** (CC0), whose menu layout the Wind Waker theme follows.
+- **[mGBA](https://mgba.io/)** (MPL-2.0) with [emibios](https://github.com/coolbho3k/emibios) (LGPL-3.0-or-later);
+  [libarchive](https://www.libarchive.org/) (BSD-2-Clause); [stb_image](https://github.com/nothings/stb) (public
+  domain); [picojson](https://github.com/kazuho/picojson) (BSD-2-Clause);
+  [RocknRoll One](https://fonts.google.com/specimen/RocknRoll+One) by Takashi Funayama (OFL-1.1).
+- Player models and texture packs belong to their authors on GameBanana and elsewhere; none are included.
 
-- **[BlueWake](https://github.com/chrissotraidis/bluewake)** (GPL-3.0-or-later): the original Wind Waker static
-  recompilation this port is a fork of: the translation pipeline, the runtime, the renderer integration, the
-  Windows app it grew from, and its history, which is kept in this repository. BlueWake builds on
-  [RecompCore](https://github.com/chrissotraidis/RecompCore) (a Dolphin-derived runtime, vendored here) and
-  [DolRecomp](https://github.com/chrissotraidis/DolRecomp) (the translator).
-- **[Wind Waker Randomizer (wwrando)](https://github.com/LagoLunatic/wwrando)** by LagoLunatic (MIT): the randomizer.
-  Seeds are generated by wwrando itself, bundled at a pinned revision; the Check Tracker uses wwrando's own logic.
-  Link colour presets come from wwrando's custom colour masks.
-- **[Better Wind Waker](https://github.com/WideBoner/betterww)** (MIT, based on wwrando): the quality-of-life
-  options in `mods/betterww/` (Swift Sail, Instant Text, faster movement and animations, Tingle chests, and more)
-  follow its patches, applied at their sites in the translated game.
-- **[Ship of Harkinian (Shipwright)](https://github.com/HarbourMasters/Shipwright)** and
-  **[2 Ship 2 Harkinian](https://github.com/HarbourMasters/2ship2harkinian)** by HarbourMasters: the model for
-  how this port looks and behaves: the menu layout and its settings (CVars), the enhancements, the item and check
-  trackers, and Anchor online play, whose protocol this port speaks. Their code is not used; the behaviour was
-  studied and written anew for this game.
-- [Dolphin](https://dolphin-emu.org/): the hardware knowledge and the code RecompCore is derived from.
-- [zeldaret/tww](https://github.com/zeldaret/tww): the decompilation that names the game's code (see the
-  [game code map](docs/game-code-map.md)).
-- [mGBA](https://mgba.io/) (MPL-2.0) for the in-app Game Boy Advance, and
-  [emibios](https://github.com/coolbho3k/emibios) (LGPL-3.0) for the free GBA BIOS the Tingle Tuner runs on.
+## License
 
-See [RIGHTS_AND_LICENSES.md](RIGHTS_AND_LICENSES.md) for every component's license.
-
-## Legal
-
-Boat of Daphnes is an independent, unofficial project, not affiliated with or endorsed by Nintendo. *The Legend of
-Zelda: The Wind Waker* and everything in it belong to Nintendo. This repository contains no game code, data or
-assets; you need your own legally obtained copy of the game.
+Boat of Daphnes is licensed under the GNU General Public License, version 3 or later: see [LICENSE.md](LICENSE.md).
+Third-party parts keep their own licenses, listed above and in their folders. The Legend of Zelda and The Wind Waker
+are Nintendo's; this project is not affiliated with Nintendo, and it ships nothing of the game.

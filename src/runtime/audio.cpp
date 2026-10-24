@@ -1,0 +1,144 @@
+// Host audio: every block the AI DMA "plays" (32 kHz, 16-bit big-endian right/left pairs, mixed
+// by src/runtime/ax.cpp) goes to an SDL audio stream. Silent with --headless, --mute or SA2_MUTE;
+// --volume <percent> (or SA2_VOLUME) scales it.
+#include "runtime/runtime.h"
+
+#include <SDL3/SDL.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <vector>
+
+namespace rt {
+
+namespace {
+SDL_AudioStream* s_stream = nullptr;
+std::atomic<int> s_beep{-1};  // the beep being mixed in: its next sample (-1: none)
+
+// A short two-note chime (co-op chat), over the game's own sound.
+void mixBeep(s16* buf, u32 frames) {
+    int at = s_beep.load();
+    if (at < 0) return;
+    constexpr int kNote = 32000 * 7 / 100;  // 70 ms a note
+    for (u32 i = 0; i < frames && at < 2 * kNote; i++, at++) {
+        const int inNote = at % kNote;
+        const float env = std::min(1.f, inNote / 160.f) * (1.f - float(inNote) / kNote);  // (no click in, fading out)
+        const float hz = at < kNote ? 1046.5f : 1568.f;  // C6, then G6
+        const int v = int(std::sin(6.2831853f * hz * float(at) / 32000.f) * 7000.f * env);
+        for (int ch = 0; ch < 2; ch++) buf[i * 2 + ch] = s16(std::clamp(int(buf[i * 2 + ch]) + v, -32768, 32767));
+    }
+    s_beep = at < 2 * kNote ? at : -1;
+}
+
+// Boat of Daphnes' puppet voices (dol_aurora_audio_mix_voice): up to 16 short mono sounds at once, mixed in as they play.
+struct Voice {
+    std::vector<s16> pcm;
+    double at = 0, step = 1;
+    float left = 1, right = 1;
+};
+std::mutex s_voiceLock;
+std::vector<Voice> s_voices;
+void mixVoices(s16* buf, u32 frames) {
+    std::lock_guard g(s_voiceLock);
+    for (auto it = s_voices.begin(); it != s_voices.end();) {
+        Voice& v = *it;
+        for (u32 i = 0; i < frames; i++) {
+            const size_t k = size_t(v.at);
+            if (k + 1 >= v.pcm.size()) break;
+            const double f = v.at - double(k);
+            const float s = float(v.pcm[k] * (1.0 - f) + v.pcm[k + 1] * f);
+            buf[i * 2] = s16(std::clamp(int(buf[i * 2] + s * v.left), -32768, 32767));
+            buf[i * 2 + 1] = s16(std::clamp(int(buf[i * 2 + 1] + s * v.right), -32768, 32767));
+            v.at += v.step;
+        }
+        it = size_t(v.at) + 1 >= v.pcm.size() ? s_voices.erase(it) : it + 1;
+    }
+}
+}  // namespace
+
+namespace bod {
+std::atomic<bool> g_resetRequested{false};
+void mixVoice(const int16_t* mono, uint32_t frames, float gainLeft, float gainRight, float step) {
+    if (!mono || !frames || step <= 0.f) return;
+    std::lock_guard g(s_voiceLock);
+    if (s_voices.size() >= 16) return;
+    Voice v;
+    v.pcm.assign(mono, mono + frames);
+    v.step = step, v.left = gainLeft, v.right = gainRight;
+    s_voices.push_back(std::move(v));
+}
+}  // namespace bod
+
+float s_baseGain = 1.f;  // --volume
+void audioBeep() { s_beep = 0; }
+
+void audioInit(bool enabled, float volume) {
+    if (!enabled) {
+        log("[audio] muted\n");
+        return;
+    }
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        log("[audio] no audio: %s\n", SDL_GetError());
+        return;
+    }
+    const SDL_AudioSpec spec{SDL_AUDIO_S16, 2, 32000};
+    s_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (!s_stream) {
+        log("[audio] no audio device: %s\n", SDL_GetError());
+        return;
+    }
+    s_baseGain = std::max(0.f, volume);
+    SDL_SetAudioStreamGain(s_stream, s_baseGain);
+    SDL_ResumeAudioStreamDevice(s_stream);
+    log("[audio] 32 kHz stereo output, volume %.0f%%\n", volume * 100);
+}
+
+// The output's gain: Boat of Daphnes' Master Volume, times --volume.
+void audioSetGain(float gain) {
+    if (s_stream) SDL_SetAudioStreamGain(s_stream, std::max(0.f, gain) * s_baseGain);
+}
+
+void audioPushAi(u32 addr, u32 bytes) {
+    // SA2_AUDIO_DUMP=<file>: also write everything played as raw 32 kHz 16-bit stereo (even muted).
+    static std::FILE* s_dump = std::getenv("SA2_AUDIO_DUMP") ? std::fopen(std::getenv("SA2_AUDIO_DUMP"), "wb") : nullptr;
+    if (!s_stream && !s_dump) return;
+    static std::vector<s16> buf;
+    const u32 frames = bytes / 4;
+    buf.resize(frames * 2);
+    for (u32 i = 0; i < frames; i++) {  // (address 0: silence)
+        buf[i * 2] = addr ? s16(rd16(addr + i * 4 + 2)) : 0;  // left
+        buf[i * 2 + 1] = addr ? s16(rd16(addr + i * 4)) : 0;  // right
+    }
+    mixBeep(buf.data(), frames);
+    mixVoices(buf.data(), frames);
+    if (s_dump) std::fwrite(buf.data(), 4, frames, s_dump);
+    if (!s_stream) return;
+    // The AI is paced by the host clock and the device by its own, and the AI thread wakes a little
+    // early or late: a cushion of ~60 ms stays queued. The two clocks drift apart slowly, so the
+    // device plays a fraction of a percent faster or slower to hold the cushion (inaudible) instead
+    // of blocks being dropped or the queue running dry (clicks, crackle). Should it run dry anyway
+    // (the host stalled), silence refills the cushion at once: one gap, not a crackle per block.
+    constexpr int kBytesPerMs = 32 * 4, kTarget = 60 * kBytesPerMs;
+    const int queued = SDL_GetAudioStreamQueued(s_stream);
+    static u32 s_refills = 0, s_drops = 0, s_pushes = 0;
+    if (queued < 15 * kBytesPerMs) {
+        static const std::vector<u8> s_silence(size_t(kTarget), 0);
+        SDL_PutAudioStreamData(s_stream, s_silence.data(), kTarget - queued - int(frames * 4) > 0 ? kTarget - queued - int(frames * 4) : 0);
+        if (s_pushes) s_refills++;
+    }
+    if (queued > 4 * kTarget) s_drops++;  // far behind (a long stall): let this block go
+    else SDL_PutAudioStreamData(s_stream, buf.data(), int(frames * 4));
+    const float off = float(queued - kTarget) / float(kTarget);  // -1 (dry) .. +1 (twice the cushion)
+    SDL_SetAudioStreamFrequencyRatio(s_stream, 1.f + std::clamp(off, -1.f, 1.f) * 0.005f);
+    if (++s_pushes % 6000 == 0 && (s_refills || s_drops)) {
+        log("[audio] queue ran dry %u times, %u blocks dropped (last %u blocks)\n", s_refills, s_drops, 6000u);
+        s_refills = s_drops = 0;
+    }
+}
+
+}  // namespace rt

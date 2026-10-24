@@ -1,7 +1,0 @@
-description Makes the state 'outset': the scripted opening to player control on Outset's lookout, next to Aryll.
-start boot
-size 1280x960
-save_state outset
-wait 4
-shot
-wait 10
