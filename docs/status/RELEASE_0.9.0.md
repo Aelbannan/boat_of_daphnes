@@ -33,6 +33,7 @@ texture importer and the one desktop menu that are already in `main`.
 | **HD textures from a real Wind Waker HD disc image:** the importer reads the hashed content a WUD/WUX stores (#443), takes a key file, a pasted key or an emulator `keys.txt` as it is, keeps the form after a failure, and colours the result (#444) (jkoehler11) | #336 | Every platform but Android | Importer and parser tests; a USA WUX on Linux with the player's `keys.txt`: 3,546 textures imported, 124 skipped for a taken name, 17 unreadable | A Windows import from the menu; an iPhone or iPad import with a `keys.txt` |
 | The Android builder runs on macOS too (benwolfram, #391), and Android training refuses a run that never reaches player control (#445) | #75 | Android (experimental, own-disc) | Tests; the Mac run to a signed APK | The builder on a Windows PC; fresh `--retrain` measurements on a phone |
 | A sea compass switch, off by default: on, the red end points the way you're sailing, on a north-up dial (jslay88, #456, merged October 24) | none | Every platform | Linux screenshots on and off at all four headings | The clock hand; a Windows sail |
+| **Controls:** a controller can play while another window is in front, off by default (#465); and “The right stick aims too (first person, items)”, on by default, so the right-stick camera can stay while first person and items aim with the left stick (#466) | #442, #402 | Windows, Mac, Linux | The settings table test; the host builds on the Mac. #466 on the Mac test candidate, scripted: the right stick turns first person only with the switch on | A controller by hand, the bow with the switch off; the Windows rows in WINDOWS_TASKS.md |
 
 ### In the test candidate, waiting on Sunday's review
 
@@ -93,6 +94,8 @@ Nothing from the game is included except in the ready-made Windows and Linux bui
   skipped (thanks to jkoehler11).
 - **Share Session Log** includes the session before, so a crash can be reported after relaunching.
 - **Linux** builds at the player's CPU target again (thanks to jslay88).
+- **Controls:** a controller can play while another window is in front (off by default), and the right-stick
+  camera can stay while first person and items aim with the left stick: turn off “The right stick aims too”.
 - **New, off by default:** a sea compass switch: the red end points the way you're sailing (jslay88).
 - **Android, experimental:** the builder runs on macOS too (thanks to benwolfram).
 
@@ -112,6 +115,8 @@ does, or under the 14-day rule (AGENTS.md).
 | #104 Built BlueWake with PadMint? | How long the build took and how it runs, on which iPhone, iPad or Mac |
 | #336 Texture pack status | Whether the import's result and the loaded count are clear |
 | #57 The Wii U HD look | Whether the sun shadows look right with the HD look |
+| #442 Background input | Whether the controller works with another window in front |
+| #402 Camera and aiming apart | Whether the bow feels right with “The right stick aims too” off |
 
 
 ## Checks before publishing
