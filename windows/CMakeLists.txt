@@ -412,7 +412,11 @@ if(BLUEWAKE_WINDOWS_REGRESSION_TESTS)
     target_link_libraries(bluewake_windows_disc_test PRIVATE bluewake_posix_compat comctl32 comdlg32)
     target_compile_definitions(bluewake_windows_disc_test PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
     add_test(NAME bluewake_windows_disc_test COMMAND bluewake_windows_disc_test)
-    set_tests_properties(bluewake_windows_disc_test PROPERTIES TIMEOUT 30)
+    # 120 s, not 30. On the CI runners this test and bluewake_windows_crash_test
+    # (both start processes and write many files) have hung past 30 s together, at
+    # the same moments in unrelated pull requests, while passing in under a second
+    # (the crash test in about 5 s) otherwise. A real hang still fails.
+    set_tests_properties(bluewake_windows_disc_test PROPERTIES TIMEOUT 120)
 
     enable_testing()
     add_executable(bluewake_card_dispatch_lock_test ${BLUEWAKE_REPO_ROOT}/tests/card_dispatch_lock_test.c)
@@ -493,7 +497,8 @@ set_tests_properties(bluewake_audio_sink_test PROPERTIES TIMEOUT 15)
     target_compile_definitions(bluewake_windows_crash_driver PRIVATE BLUEWAKE_ENABLE_DEVELOPER_TRACING=1)
     add_test(NAME bluewake_windows_crash_test COMMAND powershell -NoProfile -ExecutionPolicy Bypass
         -File ${BLUEWAKE_REPO_ROOT}/tests/windows_crash_test.ps1 -Driver $<TARGET_FILE:bluewake_windows_crash_driver>)
-    set_tests_properties(bluewake_windows_crash_test PROPERTIES TIMEOUT 30)
+    # 120 s, as bluewake_windows_disc_test above.
+    set_tests_properties(bluewake_windows_crash_test PROPERTIES TIMEOUT 120)
 
 
 add_executable(bluewake_crash_text_test ${BLUEWAKE_REPO_ROOT}/tests/crash_text_test.c)
