@@ -93,7 +93,13 @@ inline void draw_setting(const bw_settings::Setting& s) {
         return;
     if (s.label == nullptr && s.control != bw_settings::Control::Custom)
         return;
-    const bool waiting = s.needs != nullptr && !on(s.needs, bw_settings::default_on(setting(s.needs)));
+    // The first switch along s.needs, and what that one needs in turn, that is
+    // off: the aim speed needs "aims too", which needs the stick camera.
+    const char* off_need = nullptr;
+    for (const char* need = s.needs; need != nullptr && off_need == nullptr; need = setting(need).needs)
+        if (!on(need, bw_settings::default_on(setting(need))))
+            off_need = need;
+    const bool waiting = off_need != nullptr;
     const bool overridden = s.dead_when != nullptr && !get(s.dead_when, "").empty();
     if (s.group != nullptr)
         s.group[0] == '\0' ? ImGui::Separator() : ImGui::SeparatorText(s.group);
@@ -105,7 +111,7 @@ inline void draw_setting(const bw_settings::Setting& s) {
     if (waiting || overridden) {
         char why[160];
         if (waiting)
-            std::snprintf(why, sizeof why, "Turn on \"%s\" to change this.", setting(s.needs).label);
+            std::snprintf(why, sizeof why, "Turn on \"%s\" to change this.", setting(off_need).label);
         else
             std::snprintf(why, sizeof why, "Off while \"%s\" is set.", setting(s.dead_when).label);
         ImGui::PushID(s.key);
