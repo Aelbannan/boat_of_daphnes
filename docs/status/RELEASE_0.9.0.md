@@ -104,7 +104,9 @@ Nothing from the game is included except in the ready-made Windows and Linux bui
 - **New, off by default:** a sea compass switch: the red end points the way you're sailing (jslay88).
 - **Android, experimental:** the builder runs on macOS too (thanks to benwolfram).
 
-Known issues: the Wind Temple's rooms R04 and R08 need an opt-in switch to load (#318). The Windows download isn't
+Known issues: 0.9.0 doesn't make Windows, Linux, the Steam Deck or Android faster than 0.8.0. On slower CPUs
+the game can still dip below full speed where its own thread is the limit (#215, #427); that's the next version's
+focus. The Wind Temple's rooms R04 and R08 need an opt-in switch to load (#318). The Windows download isn't
 code-signed; its SHA-256 goes here, with [If Windows says it's a virus](../WINDOWS.md#if-windows-says-its-a-virus).
 
 ## After publishing
