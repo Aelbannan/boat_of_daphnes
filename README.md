@@ -121,8 +121,8 @@ You need Windows with Visual Studio 2022 (Desktop development with C++, plus its
 Python 3.
 
 ~~~bat
-git clone --recursive https://github.com/AgitationSkeleton/boat-of-daphnes
-cd boat-of-daphnes
+git clone --recursive https://github.com/AgitationSkeleton/boat_of_daphnes
+cd boat_of_daphnes
 cmake --preset windows-clang
 cmake --build --preset windows-clang --target tww
 ~~~
