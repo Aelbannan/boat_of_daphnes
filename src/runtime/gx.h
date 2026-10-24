@@ -25,6 +25,8 @@ struct GxPatch {
     u8 fmt = 0;        // Vertex/Array: component format (GX_F32 4, GX_S16 3, GX_U16 2...), comps in `comps`
     u8 comps = 0;      // Vertex/Array: position components (2 or 3)
     u8 shift = 0;      // Vertex/Array: fixed-point shift
+    u8 prim = 0;       // Vertex: the primitive the draw sent (0x98: a strip through an emitter's
+                       // particles - a trail, whose vertices pair up at a shift: alignVerticesShifted)
     bool flat = false; // used by a 2D draw (sprites, text, menus): not blended - they have no lasting
                        // names (glyphs and sprites come and go), and pairing them by order wobbles
     u32 at = 0;        // offset in cmds of the first value (Array: of the pointer in the ARRAYBASE command)

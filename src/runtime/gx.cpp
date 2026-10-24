@@ -1066,6 +1066,7 @@ size_t command(const u8* p, size_t n, int depth) {
                 v.kind = GxPatch::Vertex, v.at = u32(s_out.size()) + 3, v.count = count, v.stride = vertexSize(op & 7);
                 for (u32 i = 0; i < 9; i++) v.posOff += (s_vcdLo >> i) & 1;
                 v.fmt = u8((a >> 1) & 7), v.comps = u8((a & 1) ? 3 : 2), v.shift = u8((a >> 4) & 31);
+                v.prim = u8(prim);
                 v.key2 = tag(1, count << 8 | v.stride);
                 v.key = s_drawPart ? mix(s_drawPart ^ 0x7E47) : v.key2;
                 v.group = s_drawGroup, v.occ = s_drawOcc;

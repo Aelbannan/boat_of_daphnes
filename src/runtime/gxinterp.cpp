@@ -247,16 +247,23 @@ void wrComp(u8* p, u32 fmt, float v, float scale) {
 }
 u32 compBytes(u32 fmt) { return fmt == 4 ? 4 : fmt >= 2 ? 2 : 1; }
 
-// Positions of n vertices (a at pa, b at pb, `stride` apart): Jump if one moved far more than the
-// size of the whole (a teleport, a buffer reused for something else); else blended into out.
-Verdict blendPositions(const u8* pa, const u8* pb, u8* out, u32 n, u32 stride, u32 comps, u32 fmt, u32 shift, float t) {
-    const float scale = fmt == 4 ? 1.f : 1.f / float(1u << shift);
+// Positions of a draw's vertices (a at pa, b at pb, `stride` apart), paired one for one from `shift`:
+// vertex j of b against vertex j - shift of a (a strip that grew, see alignVerticesShifted; 0 for the
+// same vertices), over the vertices both frames have. Jump if one moved far more than the size of the
+// whole (a teleport, a buffer reused for something else); else blended into out at t.
+Verdict blendPositions(const u8* pa, u32 na, const u8* pb, u32 nb, u8* out, u32 stride, u32 comps, u32 fmt, u32 fshift, float t,
+                       int shift) {
+    const int first = std::max(0, shift), last = std::min<int>(nb, int(na) + shift);
+    if (last <= first) return Same;
+    const float scale = fmt == 4 ? 1.f : 1.f / float(1u << fshift);
     const u32 cb = compBytes(fmt);
     float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f}, maxd = 0;
     bool same = true;
-    for (u32 v = 0; v < n; v++) {
+    for (int j = first; j < last; j++) {
         for (u32 c = 0; c < comps; c++) {
-            const float x = rdComp(pa + v * stride + c * cb, fmt, scale), y = rdComp(pb + v * stride + c * cb, fmt, scale);
+            const u8* xa = pa + size_t(j - shift) * stride + c * cb;
+            const u8* xb = pb + size_t(j) * stride + c * cb;
+            const float x = rdComp(xa, fmt, scale), y = rdComp(xb, fmt, scale);
             if (!(std::fabs(x) < 1e9f && std::fabs(y) < 1e9f)) return Jump;  // not positions after all
             lo[c] = std::min(lo[c], y), hi[c] = std::max(hi[c], y);
             maxd = std::max(maxd, std::fabs(y - x));
@@ -267,19 +274,57 @@ Verdict blendPositions(const u8* pa, const u8* pb, u8* out, u32 n, u32 stride, u
     float ext = 0;
     for (u32 c = 0; c < comps; c++) ext = std::max(ext, hi[c] - lo[c]);
     if (maxd > std::max(2.f * ext, 64.f)) return Jump;
-    for (u32 v = 0; v < n; v++)
+    for (int j = first; j < last; j++)
         for (u32 c = 0; c < comps; c++) {
-            const u8* x = pa + v * stride + c * cb;
-            const u8* y = pb + v * stride + c * cb;
-            const float a = rdComp(x, fmt, scale), b = rdComp(y, fmt, scale);
-            wrComp(out + v * stride + c * cb, fmt, a + (b - a) * t, scale);
+            const float a = rdComp(pa + size_t(j - shift) * stride + c * cb, fmt, scale);
+            const float b = rdComp(pb + size_t(j) * stride + c * cb, fmt, scale);
+            wrComp(out + size_t(j) * stride + c * cb, fmt, a + (b - a) * t, scale);
         }
     return Blend;
+}
+
+// The shift that lines up a draw with the frame before it when its vertex count changed: a strip
+// through an emitter's particles is two vertices for each, and a particle is added at one end each
+// frame while the oldest leaves the other. Vertex j of b pairs with vertex j - shift of a, and the
+// shift taken is the one whose shared particles lie nearest their places in the frame before (the
+// newest particle grows out of the one beside it, which was the end). False if no shift leaves most
+// of the vertices in common, or if the best one still fits badly (two different strips).
+bool alignVerticesShifted(const u8* pa, u32 na, const u8* pb, u32 nb, u32 stride, u32 posOff, u32 comps, u32 fmt, u32 fshift,
+                          int& best) {
+    if (!na || !nb || comps < 2) return false;
+    const float scale = fmt == 4 ? 1.f : 1.f / float(1u << fshift);
+    const u32 cb = compBytes(fmt);
+    const u32 cc = comps < 3 ? comps : 3;
+    // How big the whole is: a shift that lines the wrong strip up fits about as badly as one whole.
+    float lo[2] = {1e30f, 1e30f}, hi[2] = {-1e30f, -1e30f};
+    for (u32 j = 0; j < nb; j++)
+        for (u32 c = 0; c < 2; c++) {
+            const float y = rdComp(pb + size_t(j) * stride + posOff + c * cb, fmt, scale);
+            lo[c] = std::min(lo[c], y), hi[c] = std::max(hi[c], y);
+        }
+    const double extent = std::max(double(hi[0] - lo[0]), double(hi[1] - lo[1]));
+    bool any = false;
+    double bestErr = 0;
+    for (int shift = -8; shift <= 8; shift++) {
+        const int first = std::max(0, shift), last = std::min<int>(nb, int(na) + shift);
+        if (last - first < 8 || 2 * (last - first) < int(std::min(na, nb))) continue;
+        double err = 0;
+        for (int j = first; j < last; j++)
+            for (u32 c = 0; c < cc; c++) {
+                const double e = double(rdComp(pb + size_t(j) * stride + posOff + c * cb, fmt, scale)) -
+                                 double(rdComp(pa + size_t(j - shift) * stride + posOff + c * cb, fmt, scale));
+                err += e * e;
+            }
+        err /= double(last - first);
+        if (!any || err < bestErr) any = true, bestErr = err, best = shift;
+    }
+    return any && std::sqrt(bestErr) <= 0.5 * extent + 1.f;
 }
 
 struct Shown {
     std::shared_ptr<GxFrame> f;
     std::vector<int> match;  // per patch: the previous frame's patch it blends from (-1: none, -2: unchanged)
+    std::vector<s8> shift;   // per patch: the vertex it blends with (a Vertex patch whose count changed)
     bool cut = false;
     double pts = 0;          // when it is shown (steady 60 Hz steps following the game's frames)
 };
@@ -288,11 +333,44 @@ u32 s_starved = 0;         // builds past the newest frame's time (for the stats
 double s_gap = 1.0 / 59.94;  // time between frames (smoothed)
 double s_lateMax = 0.004;    // how long after its retrace a frame arrives, at most lately
 
-// One copy of a model part in a frame: which draw of it, and where (view space).
+// One copy of a model part in a frame: which draw of it, and where.
 struct Copy {
     u32 occ;
-    float t[3];
+    float t[3];            // its first position (a position matrix's translation, or its first vertex)
+    bool haveCentre = false;
+    float centre[3] = {};  // the mean of the positions it sent itself (alignCopiesByCentre)
+    float radius = 0.f;    // and their mean distance from it (its size)
 };
+
+// The centre of the positions a draw sent with itself (a cloud, a wave crest, a ripple's ring) and
+// their mean distance from it; false if the patch is not one carrying positions of its own in the
+// world. Positions the CPU put in the camera's space (wake stripes, waves) are left out: they move
+// with the camera, so their centre is not a place that holds from one frame to the next.
+bool centreOf(const GxPatch& p, const u8* v, float centre[3], float& radius) {
+    if (p.kind != GxPatch::Vertex || !p.count || p.comps < 2 || p.viewSpace) return false;
+    const float scale = p.fmt == 4 ? 1.f : 1.f / float(1u << p.shift);
+    const u32 cb = compBytes(p.fmt);
+    const u32 comps = p.comps < 3 ? p.comps : 3;
+    double sum[3] = {0, 0, 0};
+    for (u32 i = 0; i < p.count; i++)
+        for (u32 c = 0; c < comps; c++) {
+            const float x = rdComp(v + size_t(i) * p.stride + p.posOff + c * cb, p.fmt, scale);
+            if (!(std::fabs(x) < 1e9f)) return false;  // not positions after all
+            sum[c] += x;
+        }
+    for (u32 c = 0; c < 3; c++) centre[c] = float(sum[c] / p.count);
+    double rad = 0;
+    for (u32 i = 0; i < p.count; i++) {
+        double d = 0;
+        for (u32 c = 0; c < comps; c++) {
+            const double e = double(rdComp(v + size_t(i) * p.stride + p.posOff + c * cb, p.fmt, scale)) - double(centre[c]);
+            d += e * e;
+        }
+        rad += std::sqrt(d);
+    }
+    radius = float(rad / p.count);
+    return true;
+}
 
 // Pairs the copies of a part in two frames (B's copy -> A's, or kNewCopy). They come in drawing
 // order, which mostly holds from frame to frame while some come and go: aligned like two texts
@@ -344,9 +422,59 @@ void alignCopies(const std::vector<Copy>& va, const std::vector<Copy>& vb, std::
     }
 }
 
+// Pairs the copies of a part that each sent positions of their own by where they stand (B's copy ->
+// A's, or kNewCopy). Copies drawn with one matrix (the sky's clouds, the sea's wave crests: the
+// camera's) all stand where its motion carries any of them, so the same place in the drawing order
+// always passed - and the order is the game's slots with the invisible copies left out, so one cloud
+// fading out shifted every copy after it onto its neighbour, whose positions the in-between frames
+// then blended toward: a cloud or a crest jumping to its neighbour's place and back (#136). Each copy
+// takes the copy whose centre is nearest, once (and, where two are about equally near, the one that
+// held its place in the drawing order - see kOrder). How far that may be is half its own size (the
+// rings of the trail a swimming Link leaves stand a ring's width apart: a new one took the last one
+// born as its own, and each ring after it the one behind it, so the whole trail went back a ring each
+// time one was born), and never more than the boat under full sail goes in a frame. A copy with none
+// near enough is new, and drawn as it is.
+void alignCopiesByCentre(const std::vector<Copy>& va, const std::vector<Copy>& vb, std::unordered_map<u32, u32>& map) {
+    constexpr float kReach = 1000.f;  // world units
+    // A copy that stays where it was in the drawing order is preferred by this much centre distance:
+    // the game draws each cloud twice with one shape (once with alpha 1 for every cloud, then with its
+    // own), and those two copies stand about 15 units apart while the sky moves up to 130 a frame as
+    // the camera pans, so the nearest centre alone can be the cloud's other copy. The order tells them
+    // apart. A copy that really moved next to another one moves far more than this (the sky's slots
+    // stand ~100 units apart), so the order never overrides where a copy actually is.
+    constexpr float kOrder = 30.f;
+    struct Pair {
+        float d;
+        u32 a, b;
+    };
+    std::vector<Pair> pairs;
+    for (u32 j = 0; j < vb.size(); j++)
+        for (u32 i = 0; i < va.size(); i++) {
+            float d = 0;
+            for (int k = 0; k < 3; k++) d += (vb[j].centre[k] - va[i].centre[k]) * (vb[j].centre[k] - va[i].centre[k]);
+            d = std::sqrt(d) + std::fabs(vb[j].radius - va[i].radius);
+            // How far it may be: half its own size, and never more than the boat under full sail goes
+            // in a frame (the order's part is a tie-break, so it cannot keep two apart by itself).
+            if (d > std::min(kReach, 25.f + 0.5f * std::min(vb[j].radius, va[i].radius))) continue;
+            pairs.push_back({d + kOrder * float(i > j ? i - j : j - i), i, j});
+        }
+    // Nearest pairs first: a copy with several within reach takes the one it stood closest to, and a
+    // copy already taken leaves the next best.
+    std::sort(pairs.begin(), pairs.end(), [](const Pair& x, const Pair& y) { return x.d < y.d; });
+    std::vector<bool> takenA(va.size(), false), takenB(vb.size(), false);
+    for (const Pair& p : pairs) {
+        if (takenA[p.a] || takenB[p.b]) continue;
+        takenA[p.a] = takenB[p.b] = true;
+        map[vb[p.b].occ] = va[p.a].occ;
+    }
+    for (u32 j = 0; j < vb.size(); j++)
+        if (!takenB[j]) map[vb[j].occ] = kNewCopy;
+}
+
 void matchFrames(const GxFrame& a, Shown& bs) {
     const GxFrame& b = *bs.f;
     bs.match.assign(b.patches.size(), -1);
+    bs.shift.assign(b.patches.size(), 0);
     std::unordered_map<u64, int> byKey, byKey2;
     byKey.reserve(a.patches.size() * 2);
     byKey2.reserve(a.patches.size() * 2);
@@ -359,7 +487,7 @@ void matchFrames(const GxFrame& a, Shown& bs) {
     // spawned must not shift every pairing after it.
     auto copies = [](const GxFrame& f) {
         // Where each copy is: its first position matrix's translation, or (drawn without one) its
-        // first vertex.
+        // first vertex; and, for a copy that sent positions of its own, the centre of them.
         std::unordered_map<u64, std::vector<Copy>> out;
         for (const GxPatch& p : f.patches) {
             if (!p.group || p.flat) continue;
@@ -370,14 +498,47 @@ void matchFrames(const GxFrame& a, Shown& bs) {
             } else if (p.kind == GxPatch::Vertex && p.count) {
                 const float scale = p.fmt == 4 ? 1.f : 1.f / float(1u << p.shift);
                 for (u32 k = 0; k < p.comps && k < 3; k++) c.t[k] = rdComp(f.cmds.data() + p.at + p.posOff + k * compBytes(p.fmt), p.fmt, scale);
+                c.haveCentre = centreOf(p, f.cmds.data() + p.at, c.centre, c.radius);
             } else continue;
             auto& v = out[p.group];
-            if (!v.empty() && v.back().occ == p.occ) continue;  // the copy's first one stands for it
+            if (!v.empty() && v.back().occ == p.occ) {  // the copy's first one stands for it
+                Copy& have = v.back();                   // (a positions patch of it has its centre)
+                if (!have.haveCentre && c.haveCentre) {
+                    have.haveCentre = true, have.radius = c.radius;
+                    std::memcpy(have.centre, c.centre, sizeof have.centre);
+                }
+                continue;
+            }
             v.push_back(c);
         }
         return out;
     };
     const auto ca = copies(a), cb = copies(b);
+    // SA2_INTERP_PAIR=order: pair copies by their place in the drawing order, as before (to hear the
+    // difference).
+    static const bool s_byOrder = [] {
+        const char* v = std::getenv("SA2_INTERP_PAIR");
+        return v != nullptr && !std::strcmp(v, "order");
+    }();
+    // Copies with centres pair by where they are: dozens of clouds and crests, and every copy of a
+    // part that sends its positions. Beyond this many, the drawing order is what is stable (thousands
+    // of particles), and pairing every copy with every other one would not pay.
+    constexpr size_t kCentreCopies = 128;
+    auto allCentred = [](const std::vector<Copy>& v) {
+        for (const Copy& c : v)
+            if (!c.haveCentre) return false;
+        return true;
+    };
+    u32 centreParts = 0, orderParts = 0, centreCopies = 0, orderCopies = 0;
+    // SA2_INTERP_COPIES: the parts whose copies were paired by centre, and the largest of the rest
+    // (which parts of the game are clouds and crests, and which are effects).
+    static const bool s_copiesLog = std::getenv("SA2_INTERP_COPIES") != nullptr;
+    struct Part {
+        u64 g;
+        size_t na, nb;
+        bool centre;
+    };
+    std::vector<Part> parts;
     std::unordered_map<u64, std::unordered_map<u32, u32>> occMap;  // group -> B copy -> A copy
     for (const auto& [g, vb] : cb) {
         const auto ia = ca.find(g);
@@ -388,12 +549,23 @@ void matchFrames(const GxFrame& a, Shown& bs) {
             map[vb[0].occ] = va[0].occ;
             continue;
         }
-        alignCopies(va, vb, map);
+        const bool centre = !s_byOrder && va.size() <= kCentreCopies && vb.size() <= kCentreCopies && allCentred(va) && allCentred(vb);
+        if (centre) {
+            alignCopiesByCentre(va, vb, map);
+            centreParts++, centreCopies += u32(vb.size());
+        } else {
+            alignCopies(va, vb, map);
+            orderParts++, orderCopies += u32(vb.size());
+        }
+        if (s_copiesLog) parts.push_back({g, va.size(), vb.size(), centre});
     }
     std::unordered_map<u64, int> byCopy;  // group, copy, kind, XF address / stride, count -> A patch
-    // (Vertex arrays: not by size - the extent snapshotted depends on which draw read the array first.)
+    // (Vertex arrays: not by size - the extent snapshotted depends on which draw read the array first.
+    // A strip through an emitter's particles: not by size either - a particle is added at an end each
+    // frame, so the same particles are drawn with another count every frame.)
     auto copyKey = [](const GxPatch& p, u32 occ) {
-        return mix64(p.group ^ mix64(u64(occ) << 40 ^ u64(p.kind) << 32 ^ u64(p.stride) << 12 ^ (p.kind == GxPatch::Array ? 0 : p.count)));
+        const u64 size = p.kind == GxPatch::Array || p.prim == 0x98 ? 0 : p.count;
+        return mix64(p.group ^ mix64(u64(occ) << 40 ^ u64(p.kind) << 32 ^ u64(p.stride) << 12 ^ size));
     };
     for (size_t i = 0; i < a.patches.size(); i++)
         if (a.patches[i].group) byCopy.emplace(copyKey(a.patches[i], a.patches[i].occ), int(i));
@@ -436,11 +608,23 @@ void matchFrames(const GxFrame& a, Shown& bs) {
         }
         const GxPatch& pa = a.patches[size_t(from)];
         if (pa.kind != pb.kind || pa.stride != pb.stride || pa.fmt != pb.fmt) continue;
-        if (pa.count != pb.count && pb.kind != GxPatch::Array) continue;  // (arrays: their shared extent blends)
+        // A strip through an emitter's particles (the wake a swimming Link leaves, the wind's lines)
+        // is two vertices for each particle, one added at an end each frame and the oldest leaving the
+        // other: the same particle stands at a different place in the list, and its count changes. It
+        // pairs at the shift that lines its particles up (alignVerticesShifted); everything else needs
+        // the same values in both frames (arrays: their shared extent blends).
+        int shift = 0;
+        if (pa.count != pb.count) {
+            if (pb.kind != GxPatch::Vertex || pb.prim != 0x98 || pa.prim != 0x98 || pa.posOff != pb.posOff ||
+                std::min(pa.count, pb.count) < 12 || !alignVerticesShifted(a.cmds.data() + pa.at, pa.count, b.cmds.data() + pb.at, pb.count,
+                                                                          pb.stride, pb.posOff, pb.comps, pb.fmt, pb.shift, shift))
+                continue;
+            bs.shift[i] = s8(shift);
+        }
         const u8* va = pa.kind == GxPatch::Array ? pa.data : a.cmds.data() + pa.at;
         const u8* vb = pb.kind == GxPatch::Array ? pb.data : b.cmds.data() + pb.at;
-        const size_t bytes = pb.kind == GxPatch::Array ? std::min(pa.count, pb.count) : pb.kind == GxPatch::Vertex ? size_t(pb.count) * pb.stride : size_t(pb.count) * 4;
-        if (!std::memcmp(va, vb, bytes)) {  // nothing moved (2: left as it is, not a value with no partner)
+        const size_t bytes = pb.kind == GxPatch::Array || pb.kind == GxPatch::Vertex ? size_t(std::min(pa.count, pb.count)) * (pb.kind == GxPatch::Array ? 1 : pb.stride) : size_t(pb.count) * 4;
+        if (!shift && !std::memcmp(va, vb, bytes)) {  // nothing moved (2: left as it is, not a value with no partner)
             bs.match[i] = -2;
             continue;
         }
@@ -490,8 +674,16 @@ void matchFrames(const GxFrame& a, Shown& bs) {
             std::snprintf(buf, sizeof buf, " %s %u/%u (%u unpaired)", names[k], got[k], tot[k], unpaired[k]);
             s += buf;
         }
-        log("[interp] frame %llu:%s; 3D matrices moved %u, jumped %u%s\n", (unsigned long long)b.index, s.c_str(), moved, jumped,
-            bs.cut ? " -> CUT" : "");
+        log("[interp] frame %llu:%s; 3D matrices moved %u, jumped %u%s; copies: %u parts (%u copies) by centre, %u parts (%u copies) by order\n",
+            (unsigned long long)b.index, s.c_str(), moved, jumped, bs.cut ? " -> CUT" : "", centreParts, centreCopies, orderParts, orderCopies);
+    }
+    // SA2_INTERP_COPIES: which parts of the game have many copies, and how they were paired - the
+    // sky's clouds and the sea's crests are the parts paired by centre.
+    if (s_copiesLog && (b.index % 300 == 0 || bs.cut)) {
+        std::sort(parts.begin(), parts.end(), [](const Part& x, const Part& y) { return x.nb > y.nb; });
+        for (size_t i = 0; i < parts.size() && i < 6; i++)
+            log("[interp] copies: part %016llX %zu -> %zu, %s\n", (unsigned long long)parts[i].g, parts[i].na, parts[i].nb,
+                parts[i].centre ? "by centre" : "by order");
     }
 }
 
@@ -745,7 +937,8 @@ std::shared_ptr<GxFrame> gxInterpBuild(double when, std::vector<u8>& out, std::v
             break;
         }
         case GxPatch::Vertex:
-            blendPositions(va + pa.posOff, vb + pb.posOff, vo + pb.posOff, pb.count, pb.stride, pb.comps, pb.fmt, pb.shift, t);
+            blendPositions(va + pa.posOff, pa.count, vb + pb.posOff, pb.count, vo + pb.posOff, pb.stride, pb.comps, pb.fmt, pb.shift, t,
+                           sb.shift.empty() ? 0 : int(sb.shift[i]));
             break;
         case GxPatch::Array: {
             const u32 n = std::min(pa.count, pb.count) / pb.stride;  // the extent both frames have
