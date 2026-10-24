@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 20, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 23, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -31,39 +31,46 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## Where things stand on October 20
+## Where things stand on October 23
 
-No release this week. Chris reviews around Sunday, October 25, and 0.9.0 follows that review; the Windows build is
-made once, then, from the frozen commit. Until then `main` keeps moving and stays releasable: every pull request
-passes CI, and anything that changes gameplay, timing or rendering is played on the platform it changes before it
-merges.
+This is preparation for Chris's gameplay and visual review on Sunday, October 25. No public release is being
+made in this pass. Builds, synthetic tests and contributor measurements below do not replace those play checks.
 
-**Merged on October 20:** one desktop menu for Mac, Linux and Windows (#384 to #388, pdale-boop; the Mac host and
-the settings tests built and passed on the M3 Max), the native work pool tests (#397, irregularthanis), and the Mac
-and iPad benchmark-tour results (#425, #428).
+**Done since the last plan:** the worker correctness and lifecycle tests (#424), the native/translated interaction
+guide (#435), the Android training guard (#445), the WUD/WUX content-bounds fix (#443), and the Deck
+cache-flush/GX profiling records (#452, #453) are merged. The Android guard rejects a full training run
+that never reaches player control; it does not establish a speedup. The one desktop menu (#384 to #388) and the
+Mac/iPad recipe measurements (#425, #428) were already merged on October 20.
 
-**Waiting on Chris's review:**
+| Next, in order | Evidence and scope | Done when |
+| --- | --- | --- |
+| Restore native generation before asking for more hashes | [#451](https://github.com/chrissotraidis/bluewake/issues/451) reports unsupported `_ato` accesses and missing block leaders with the current preparations. Rounds 4, 5 and 7 remain opt-in; the GroundCross experiment (#436) was closed without merging. | Reproduce with recorded preparation flags and pinned tools, generate without bypassing the accounting/decline guards, then pass guest-state comparisons before a matched performance test. No game-derived output goes in GitHub. |
+| Use one retained guest state for comparisons | [#450](https://github.com/chrissotraidis/bluewake/pull/450) adds card-route state retention/reuse to the tour. The merged Deck records #452/#453 separate cache-flush and GX-worker costs; #454 still needs to distinguish pre-batching plans from actual GPU calls. | Review the tour change and evidence records; alternate builds from the same state and record host/module provenance. Do not repeat the withdrawn 25–27% host-flag claim on #433. |
+| Prepare the camera candidate | [#455](https://github.com/chrissotraidis/bluewake/pull/455) connects #401 and #430 to a missed direct-camera hook at the first dispatch block. Linux reproduction is contributor evidence. | Review the hook/dispatch change and test the camera with direct right-stick control on and off on Windows and Mac. Keep the reports open until their reporters confirm. |
+| Finish the Dawn build repair | RecompCore#44 preserves #43's original commit and corrects two callbacks for the existing Apple/Android headers. Downstream [#446](https://github.com/chrissotraidis/bluewake/pull/446) passes Linux/AppImage, Windows host, audit, attribution and sanitizer checks at `48a5872e`. | Sunday renderer/cache checks, then merge the runtime and downstream pin in order, keeping the shadow/flicker stack on a commit that contains all accepted fixes. |
+| Measure Android builds that players actually use | #445 is merged; old cached profiles are not re-certified by it. Android already inherits the lean and behaviour-timing defaults. One Fold 7 Outset comparison is not a result for every phone. | A fresh `--retrain` comparison with device/SoC, host/module build, training choices, scene/settings and cold versus sustained warm measurements. Separate app PGO (`--train-app`) from game-module training before choosing an optimization. |
 
-- **Smooth Motion without the flicker** (#371, RecompCore#40) and **sun shadows from a shadow map** (#398,
-  RecompCore#42): a look on the Mac, then the two RecompCore pull requests merge into `bluewake-next`, then #371, then
-  #398 rebased on it.
-- **The Mac and iOS speed default** (draft #431): the Windows and Linux preparations made the game 64 to 81% faster on
-  the M3 Max and the iPad Pro ([record](status/APPLE_RECIPE_TOUR_2026-10-20.md)). It merges after Chris plays the test
-  builds by hand on the Mac and the iPad.
-- **The menu stack's hands-on pass** on the Mac with a controller, before the release.
+**Sunday's checks remain:**
 
-**Waiting on contributors:** #424 rebased on #397 (irregularthanis); #398 rebased on `main` (pdale-boop); whether
-#392's slow-chunk flags still help on top of #431 (jslay88).
+- **Smooth Motion flicker and sun shadows:** #371 / RecompCore#40 and #398 / RecompCore#42. The final #398 pin contains Dawn and both rendering fixes, but #371 still pins the older runtime.
+  Reconcile that intermediate pin or the integration order before building; play/look checks on Mac and iPad remain pending.
+- **Apple speed defaults:** draft #431, with the [Mac/iPad measurements](status/APPLE_RECIPE_TOUR_2026-10-20.md).
+  Chris still needs to play both builds by hand. #392's slow-chunk flags need a new comparison on top of that recipe.
+- **The desktop menu with a controller, the direct-camera candidate, and the relevant renderer/cache checks.**
+  Windows-specific follow-up stays in [WINDOWS_TASKS.md](WINDOWS_TASKS.md).
 
-**0.9.0, after the review:** freeze `version.json` and the candidate commit; overnight on the Mac, the app-only IPA,
-PadMint's `player-check.sh` before tagging, the benchmark tour against 0.8.0 and the 468-place sweep; then the Windows
-build and its play checks on Chris's PC, a Linux AppImage if a contributor has built one, publishing and
-`player-check.sh` after publishing.
+**Other checks that need hardware or player input:** #347's Android HD-import phone/lifecycle pass, #316's iPad
+menu tap test, #342 / RecompCore#39's cold Picto photo, and #444's desktop key-entry UI plus the iOS HD importer checks. Keep these separate
+from the native-generator repair and documentation work; none requires publishing a build now.
 
-After 0.9.0: #347 (the Android HD import, which needs a phone), #342, and natives round 7 on the benchmark tour, which
-needs one extra Windows build.
+When Chris chooses a release candidate after review, use the existing release checks: frozen version/commit,
+benchmark and stage sweep, platform play checks, artifact audit and PadMint player checks. Sunday is a review,
+not an automatic publication date.
 
 ## Where things stood on October 17
+
+Historical record, including notes added around the 0.8.0 release. Use the October 23 section above for current
+actions; the old download and pending-release rows below are not today's instructions.
 
 **The latest download is 0.8.0** (published October 18 from `f2611b1`): the Windows zip, the iPhone and iPad app for
 PadMint, the recipe and the source. [Its release record](status/RELEASE_0.8.0.md) lists what it contains and every
