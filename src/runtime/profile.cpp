@@ -13,6 +13,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <dbghelp.h>
+#include <tlhelp32.h>
 #include <timeapi.h>
 #endif
 
@@ -97,6 +98,33 @@ void report(std::unordered_map<u64, u32>& hits, u64 total) {
     hits.clear();
 }
 
+// SA2_PROFILE_RENDER: Aurora's own threads too (its FIFO processor decodes the GX stream, its render worker records
+// and submits), found by their names once they exist.
+void addAuroraThreads() {
+    static std::vector<DWORD> s_added;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    THREADENTRY32 te{sizeof te};
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != GetCurrentProcessId()) continue;
+        if (std::find(s_added.begin(), s_added.end(), te.th32ThreadID) != s_added.end()) continue;
+        HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+        if (!h) continue;
+        PWSTR name = nullptr;
+        const bool aurora = SUCCEEDED(GetThreadDescription(h, &name)) && name &&
+                            (wcsstr(name, L"Aurora FIFO") || wcsstr(name, L"Aurora render worker"));
+        if (name) LocalFree(name);
+        if (!aurora) {
+            CloseHandle(h);
+            continue;
+        }
+        s_added.push_back(te.th32ThreadID);
+        std::lock_guard g(s_lock);
+        s_threads.push_back(h);
+    }
+    CloseHandle(snap);
+}
+
 void profilerMain(int seconds) {
     timeBeginPeriod(1);
     HMODULE exe = GetModuleHandleA(nullptr);
@@ -108,8 +136,11 @@ void profilerMain(int seconds) {
     u64 total = 0, waitTotal = 0;
     if (s_waits) symInit();
     auto last = GetTickCount64();
+    static const bool s_render = std::getenv("SA2_PROFILE_RENDER") != nullptr;
+    auto nextScan = GetTickCount64() + 3000;
     for (;;) {
         Sleep(1);
+        if (s_render && GetTickCount64() >= nextScan) addAuroraThreads(), nextScan = GetTickCount64() + 10000;
         std::vector<HANDLE> threads;
         {
             std::lock_guard g(s_lock);

@@ -55,6 +55,14 @@ void hostSettings() {
     // Its data folder is the working one (settings, Save\): the seed generator writes Randomizer\ there too, where the
     // file select reads it (it otherwise writes beside the program).
     if (!std::getenv("BLUEWAKE_DATA_DIR")) _putenv_s("BLUEWAKE_DATA_DIR", dir.c_str());
+    // Its card path (BLUEWAKE_CARD_PATH, its launcher's Save\GZLE01.card): this runtime's card (src/runtime/exi.cpp,
+    // SA2_CARD or saves\MemoryCardA.raw). The randomizer keeps which files are a seed's beside it (rando_flow.cpp:
+    // MemoryCardA.slots.json), so they stay randomizer files from one start to the next.
+    if (!std::getenv("BLUEWAKE_CARD_PATH")) {
+        const char* card = std::getenv("SA2_CARD");
+        const std::filesystem::path path = std::filesystem::current_path() / (card ? card : "saves/MemoryCardA.raw");
+        _putenv_s("BLUEWAKE_CARD_PATH", path.string().c_str());
+    }
     bw_settings_load(dir.c_str());
 }
 

@@ -60,6 +60,8 @@ bool Save(const fs::path& path, const Sidecar& sidecar) {
     // Written beside and moved in, so a crash never leaves half a sidecar.
     const fs::path temp = path.string() + ".tmp";
     {
+        std::error_code made;
+        fs::create_directories(path.parent_path(), made);  // (a first save: no folder yet)
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         if (!out)
             return false;

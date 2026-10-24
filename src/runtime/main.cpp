@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
     // Played sessions keep their log; test runs (headless) capture
     // the console instead and leave it alone.
     // (logs\session-<date>.log in the data folder, which Settings > Open Logs Folder opens; a crash's report goes in it,
-    // src/runtime/crash.cpp; the newest ten are kept)
+    // src/runtime/crash.cpp; the newest ten sessions are kept)
     if (!headless) {
         std::error_code ec;
         const std::filesystem::path logs = std::filesystem::current_path() / "logs";
@@ -175,11 +175,16 @@ int main(int argc, char** argv) {
         for (const auto& e : std::filesystem::directory_iterator(logs, ec))
             if (e.path().filename().string().rfind("session-", 0) == 0) old.push_back(e.path());
         std::sort(old.begin(), old.end());
-        for (size_t i = 0; i + 9 < old.size(); i++) std::filesystem::remove(old[i], ec);
+        for (size_t i = 0; i + 19 < old.size(); i++) std::filesystem::remove(old[i], ec);
         char name[64];
         const std::time_t now = std::time(nullptr);
         std::strftime(name, sizeof name, "session-%Y%m%d-%H%M%S.log", std::localtime(&now));
         logToFile((logs / name).string().c_str());
+        // Boat of Daphnes' own messages (its menus, the randomizer's file select, online play: stderr) beside it
+        std::string host = name;
+        host.replace(host.size() - 4, 4, "-host.log");
+        if (!std::freopen((logs / host).string().c_str(), "w", stderr)) log("[log] the host log could not be opened\n");
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
     }
     installCrashHandler();
     audioInit(!headless && !mute, volume);  // headless runs are always silent

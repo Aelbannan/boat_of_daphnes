@@ -264,18 +264,31 @@ std::vector<ScopedDl> s_scopedDls;  // lists recorded under a scope (the latest 
 // ---- vertex/matrix arrays ----
 // The hardware has no array sizes, but Aurora copies each array a draw reads into a per-frame
 // storage buffer, so a base is sent only once a draw uses it, as a snapshot of the extent the draws
-// have reached so far; it is resent larger (doubling) when a later draw indexes further. Every new
-// base and every frame starts over (s_arraySent = 0).
+// have reached so far; it is resent larger (doubling) when a later draw indexes further. Every frame
+// starts over (s_arraySent = 0). A base the game sets again in the same frame - J3D sets its model's
+// arrays before every shape - gets the snapshot it already has: copying them again for each shape
+// cost the game thread and Aurora (which copies each new snapshot to the GPU) milliseconds a frame in
+// busy scenes. (The hardware reads arrays when it runs the frame, after the CPU has written them.)
 u32 s_arrayBase[16], s_arrayStride[16], s_arraySent[16];
+struct ArraySnap {
+    u8* copy;
+    u32 size;
+};
+std::unordered_map<u64, ArraySnap> s_arraySnaps;  // (slot, stride, base) -> this frame's snapshot
+u8* s_arrayCopy[16];   // the current base's snapshot (none yet: null)
+u8* s_arrayShown[16];  // the snapshot Aurora has for the slot
 
-// `vat`: the draw's VAT A word (array 0, positions: what the renderer needs to blend them).
-void needArray(u32 i, u32 bytes, u32 vat = 0) {
-    if (bytes <= s_arraySent[i]) return;
-    const u32 limit = kHostMemSize - (s_arrayBase[i] & 0x01FFFFFF);
-    const u32 size = std::min((std::max(bytes, s_arraySent[i] * 2) + 63) & ~63u, limit);
-    s_arraySent[i] = size;
-    u8* copy = s_arena.alloc(size);
-    std::memcpy(copy, hostp(0x80000000u | (s_arrayBase[i] & 0x01FFFFFF)), size);
+u64 arraySnapKey(u32 i) { return u64(i) << 56 | u64(s_arrayStride[i]) << 32 | (s_arrayBase[i] & 0x01FFFFFF); }
+
+// The slot's base or stride changed: its snapshot this frame, if it has one.
+void arrayBaseChanged(u32 i) {
+    const auto it = s_arraySnaps.find(arraySnapKey(i));
+    s_arrayCopy[i] = it != s_arraySnaps.end() ? it->second.copy : nullptr;
+    s_arraySent[i] = it != s_arraySnaps.end() ? it->second.size : 0;
+}
+
+// Points Aurora's slot at a snapshot.
+void sendArray(u32 i, u8* copy, u32 size, u32 vat) {
     aurora(u16(AUR_ARRAYBASE | i));
     if (i == 0 && s_arrayStride[0] && !s_noRecord) {  // positions: the CPU rewrites some every frame (skinned models)
         GxPatch p{};
@@ -291,6 +304,23 @@ void needArray(u32 i, u32 bytes, u32 vat = 0) {
     put64(u64(reinterpret_cast<uintptr_t>(copy)));
     put32(size);
     put8(0);  // big-endian
+    s_arrayShown[i] = copy;
+}
+
+// `vat`: the draw's VAT A word (array 0, positions: what the renderer needs to blend them).
+void needArray(u32 i, u32 bytes, u32 vat = 0) {
+    if (bytes <= s_arraySent[i]) {
+        if (s_arrayShown[i] != s_arrayCopy[i]) sendArray(i, s_arrayCopy[i], s_arraySent[i], vat);  // (back to it)
+        return;
+    }
+    const u32 limit = kHostMemSize - (s_arrayBase[i] & 0x01FFFFFF);
+    const u32 size = std::min((std::max(bytes, s_arraySent[i] * 2) + 63) & ~63u, limit);
+    s_arraySent[i] = size;
+    u8* copy = s_arena.alloc(size);
+    std::memcpy(copy, hostp(0x80000000u | (s_arrayBase[i] & 0x01FFFFFF)), size);
+    s_arrayCopy[i] = copy;
+    s_arraySnaps[arraySnapKey(i)] = {copy, size};
+    sendArray(i, copy, size, vat);
 }
 
 // Reads the indices of a draw's vertices and makes sure every array they index is sent big enough.
@@ -758,12 +788,12 @@ void translateCp(u32 reg, u32 v) {
     if (reg >= 0xA0 && reg < 0xB0) {  // array base: physical address, sent when a draw uses it
         s_arraysSet |= 1u << (reg & 0xF);
         s_arrayBase[reg & 0xF] = v;
-        s_arraySent[reg & 0xF] = 0;
+        arrayBaseChanged(reg & 0xF);
         return;
     }
     if (reg >= 0xB0 && reg < 0xC0) {  // array stride
         s_arrayStride[reg & 0xF] = v & 0xFF;
-        s_arraySent[reg & 0xF] = 0;
+        arrayBaseChanged(reg & 0xF);
     }
     put8(CMD_LOAD_CP);
     put8(reg);
@@ -1326,6 +1356,9 @@ void gxEndFrame() {
     s_occurrences.clear();
     s_pendingXf.clear();
     std::fill(std::begin(s_arraySent), std::end(s_arraySent), 0u);  // next frame snapshots afresh
+    std::fill(std::begin(s_arrayCopy), std::end(s_arrayCopy), nullptr);
+    std::fill(std::begin(s_arrayShown), std::end(s_arrayShown), nullptr);
+    s_arraySnaps.clear();
     s_drawIndex = 0;
     s_copyDests.clear();
     s_backdropDepths[0].swap(s_backdropDepths[1]);

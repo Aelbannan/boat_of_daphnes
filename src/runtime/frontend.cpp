@@ -42,6 +42,11 @@
 #include <string>
 #include <thread>
 
+extern "C" void aurora_perf_take(double out[7]);  // (patches/aurora: frame-end timings)
+extern "C" void aurora_perf_cmds(double out[13]);  // (patches/aurora: command processing timings)
+extern "C" void aurora_texture_memo_reset();  // (patches/aurora: texture hashes kept for one game frame)
+extern "C" void aurora_texture_memo_stats(uint64_t* hashedBytes, uint64_t* memoHits);
+
 namespace rt {
 
 extern std::atomic<u64> g_relLinkFrame[kMaxModules];  // src/runtime/dispatch.cpp
@@ -72,6 +77,24 @@ void auroraLog(AuroraLogLevel level, const char* module, const char* message, un
     static const char* names[] = {"debug", "info", "warn", "error", "fatal"};
     static const int minLevel = std::getenv("SA2_AURORA_LOG") ? std::atoi(std::getenv("SA2_AURORA_LOG")) : LOG_WARNING;
     if (int(level) < minLevel) return;
+    // The same message again and again (a warning a frame) is logged three times, then once every thousand, counted:
+    // each line costs the render thread a console write and a flush.
+    if (level < LOG_FATAL) {
+        static std::mutex s_lock;
+        static std::string s_last;
+        static u64 s_repeats = 0;
+        std::lock_guard g(s_lock);
+        const std::string text = std::string(module) + ": " + std::string(message, len);
+        if (text == s_last) {
+            if (++s_repeats > 2 && s_repeats % 1000 != 0) return;
+            if (s_repeats % 1000 == 0) {
+                log("[aurora %s] %s (%llu times)\n", names[level < 5 ? level : 4], text.c_str(), (unsigned long long)s_repeats);
+                return;
+            }
+        } else {
+            s_last = text, s_repeats = 0;
+        }
+    }
     log("[aurora %s] %s: %.*s\n", names[level < 5 ? level : 4], module, int(len), message);
     if (level == LOG_FATAL) std::abort();
 }
@@ -416,6 +439,9 @@ void padSnapshot(u8 out[4][12]) {
 }
 
 int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*startGuest)()) {
+    // SA2_PROFILE_RENDER (with SA2_PROFILE): this thread - building in-between frames, Aurora's command processing and
+    // submission - is sampled with the game's threads.
+    if (std::getenv("SA2_PROFILE_RENDER")) profileRegisterThread();
 #if defined(_WIN32)
     if (headless) _putenv("AURORA_HEADLESS=1");
 #else
@@ -644,6 +670,7 @@ int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*star
         if (!gxInterpNewest()) continue;  // keep the window responsive while the game loads
         if (bod::g_presentSuppressed) continue;  // (fast-forward through a black scene change: nothing to show)
         const bool newFrame = !fresh.empty();
+        if (newFrame) aurora_texture_memo_reset();  // (Aurora is idle here: the last frame end drained it)
         // What to draw: without in-between frames, each game frame once; with them, the frames due
         // one frame (and a little) after the game finished them, blended to the display's time.
         double when;
@@ -683,18 +710,33 @@ int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*star
             if (!newFrame) continue;
             when = 1e300;
         } else {
-            // Even pacing: one in-between frame every k refreshes, k as many as one takes to draw
-            // (144 Hz with 9 ms frames: every second, 72 a second). Each is drawn for its own slot in
-            // that steady schedule, so what it shows moves by equal steps: drawing as fast as possible
-            // put frames on the screen one or two refreshes after they were timed - judder.
+            // Even pacing: one in-between frame every k refreshes. Each is drawn for its own slot in that steady schedule,
+            // so what it shows moves by equal steps (drawing as fast as possible put frames on the screen one or two
+            // refreshes after they were timed - judder). k is 1 - every refresh - unless frames actually come late: more
+            // than half of them in half a second takes it to 2, and after 1 s 1 is tried again. (A frame now and then
+            // a refresh late shows less than every other refresh for seconds: a quarter took busy scenes to 72 for
+            // 3 s at a time, averaging 110-120 where 144 nearly held.) (k came from the
+            // measured cost of a frame before; at 144 Hz that cost included the wait for the display once k was 2, so a
+            // busy scene that had dipped stayed at 72 even when it could draw at 144.)
             // (at most Boat of Daphnes' Interpolation FPS: 30 times one more than its in-between frames)
             const float rate = std::min(refresh, 30.f * float(std::max(1, bod::g_interpSteps.load() + 1)));
             const double period = 1.0 / double(std::max(30.f, rate));
-            const int k = std::max(1, int(std::ceil(s_drawCost / (0.85 * period))));
+            static int s_k = 1, s_late = 0, s_count = 0;
+            static double s_retryAt = 0;
             const double now0 = gxNow();
-            s_slot += k * period;
-            if (s_slot < now0 + s_drawCost || s_slot > now0 + 4 * k * period) s_slot = now0 + s_drawCost;  // fell behind, or a stall
-            if (const double start = s_slot - s_drawCost; start > now0)
+            if (s_k > 1 && now0 >= s_retryAt) s_k = 1, s_late = s_count = 0;  // try every refresh again
+            s_slot += s_k * period;
+            const bool late = s_slot < now0;
+            if (late || s_slot > now0 + 4 * s_k * period) s_slot = now0 + (s_k == 1 ? period : s_drawCost);  // fell behind, or a stall
+            if (s_k == 1) {
+                s_late += late ? 1 : 0;
+                if (++s_count >= int(0.5 / period)) {
+                    if (s_late * 2 > s_count) s_k = 2, s_retryAt = now0 + 1.0;  // can't keep up: every other refresh for a while
+                    s_late = s_count = 0;
+                }
+            }
+            // (every refresh: the present waits for the display; every other: start in time for the slot)
+            if (const double start = s_slot - s_drawCost; s_k > 1 && start > now0)
                 sleepUntil(std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                                     std::chrono::duration<double>(start - now0)),
                            true);
@@ -702,7 +744,7 @@ int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*star
         }
         keep[kb].clear();
         float t = 1.f;
-        static double s_tBuild = 0, s_tWrite = 0, s_tEnd = 0;  // seconds spent, for the stats line
+        static double s_tBuild = 0, s_tWrite = 0, s_tOverlay = 0, s_tEnd = 0;  // seconds spent, for the stats line
         const double c0 = gxNow();
         std::shared_ptr<GxFrame> shown = gxInterpBuild(when, frame, keep[kb], &t);
         if (!shown) continue;
@@ -823,8 +865,10 @@ int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*star
             }
         }
         if (!headless) bod::hostOverlay();  // Boat of Daphnes' menu and windows, over the picture
+        const double c3 = gxNow();
+        s_tOverlay += c3 - c2;
         aurora_end_frame();
-        s_tEnd += gxNow() - c2;
+        s_tEnd += gxNow() - c3;
         // What drawing one costs (building, Aurora's processing and submission), for pacing; paced,
         // the frame end barely waits for the display.
         s_drawCost = std::clamp(0.9 * s_drawCost + 0.1 * (gxNow() - c0), 0.002, 0.1);
@@ -845,7 +889,26 @@ int runFrontend(int argc, char** argv, bool headless, u64 maxFrames, void (*star
                 "commands %.2f, end %.2f); %zu bytes GX; Aurora: %u draws (%u merged), %u pipelines\n",
                 (unsigned long long)presented, fps, gameFps, hz, drawFps, s_tBuild / per, s_tWrite / per, s_tEnd / per,
                 frame.size(), st->drawCallCount, st->mergedDrawCallCount, st->createdPipelines);
-            s_tBuild = s_tWrite = s_tEnd = 0;
+            // where the frame end goes (Aurora: decoding the commands, finishing, ImGui, the hand-off to its render
+            // worker, and that worker's time - all its items, the frame ends - and the wait for room in its queue)
+            double ap[7];
+            aurora_perf_take(ap);
+            log("[frontend]   ms each: overlay %.2f; Aurora: drain %.2f, finish %.2f, imgui %.2f, hand-off %.2f; worker %.2f "
+                "(frame end %.2f), queue full %.2f\n",
+                s_tOverlay / per, ap[0] / per, ap[1] / per, ap[2] / per, ap[3] / per, ap[4] / per, ap[5] / per, ap[6] / per);
+            double cp[13];
+            aurora_perf_cmds(cp);
+            static const bool s_gxProfile = std::getenv("SA2_GX_PROFILE") != nullptr;  // (Aurora times each command)
+            if (s_gxProfile) log("[frontend]   decode ms each: BP %.2f, CP %.2f, XF %.2f, XF indexed %.2f, Aurora cmds %.2f, draws %.2f (pipeline "
+                "%.2f, textures %.2f, uniforms %.2f, arrays %.2f, draw cmd %.2f, indices %.2f, vertices %.2f)\n",
+                cp[0] / per / 1000.0, cp[1] / per / 1000.0, cp[2] / per / 1000.0, cp[3] / per / 1000.0, cp[4] / per / 1000.0,
+                cp[5] / per / 1000.0, cp[6] / per / 1000.0, cp[7] / per / 1000.0, cp[8] / per / 1000.0, cp[9] / per / 1000.0,
+                cp[10] / per / 1000.0, cp[11] / per / 1000.0, cp[12] / per / 1000.0);
+            uint64_t hashed = 0, memoHits = 0;
+            aurora_texture_memo_stats(&hashed, &memoHits);
+            log("[frontend]   textures: %.0f KB hashed and %.0f lookups saved per drawn frame\n",
+                double(hashed) / 1024.0 / (per * 1000.0), double(memoHits) / (per * 1000.0));
+            s_tBuild = s_tWrite = s_tOverlay = s_tEnd = 0;
         }
     }
     log("[frontend] exiting after %llu frames\n", (unsigned long long)presented);
