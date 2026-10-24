@@ -1,6 +1,6 @@
 # What we're doing
 
-The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 23, 2026. The ranked
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 24, 2026. The ranked
 backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
 and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
 15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
@@ -31,45 +31,38 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 | 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
 | 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## Where things stand on October 23
+## Where things stand on October 24
 
-This is preparation for Chris's gameplay and visual review on Sunday, October 25. No public release is being
-made in this pass. Builds, synthetic tests and contributor measurements below do not replace those play checks.
+**0.9.0 is scoped** in [status/RELEASE_0.9.0.md](status/RELEASE_0.9.0.md): the camera fix (#455), Smooth Motion without
+the flicker (#371), the HD look's sun shadows (#398), the Dawn fix that lets Linux build at the player's CPU target
+again (#446), and the Apple speed defaults (#431), on top of the one desktop menu and the HD importer already in
+`main`. A test candidate holding all of them (`f55ffba5`) is built for the Mac and the iPad for Chris's review on
+Sunday, October 25. Nothing is published until Chris decides after that review.
 
-**Done since the last plan:** the worker correctness and lifecycle tests (#424), the native/translated interaction
-guide (#435), the Android training guard (#445), the WUD/WUX content-bounds fix (#443), and the Deck
-cache-flush/GX profiling records (#452, #453) are merged. The Android guard rejects a full training run
-that never reaches player control; it does not establish a speedup. The one desktop menu (#384 to #388) and the
-Mac/iPad recipe measurements (#425, #428) were already merged on October 20.
+**Done since October 23:** the Deck game-thread plan (#421), the HD importer's key handling (#444) and the Outset draw
+record (#454) are merged. Every open issue and pull request is assigned to Chris.
 
 | Next, in order | Evidence and scope | Done when |
 | --- | --- | --- |
-| Restore native generation before asking for more hashes | [#451](https://github.com/chrissotraidis/bluewake/issues/451) reports unsupported `_ato` accesses and missing block leaders with the current preparations. Rounds 4, 5 and 7 remain opt-in; the GroundCross experiment (#436) was closed without merging. | Reproduce with recorded preparation flags and pinned tools, generate without bypassing the accounting/decline guards, then pass guest-state comparisons before a matched performance test. No game-derived output goes in GitHub. |
-| Use one retained guest state for comparisons | [#450](https://github.com/chrissotraidis/bluewake/pull/450) adds card-route state retention/reuse to the tour. The merged Deck records #452/#453 separate cache-flush and GX-worker costs; #454 still needs to distinguish pre-batching plans from actual GPU calls. | Review the tour change and evidence records; alternate builds from the same state and record host/module provenance. Do not repeat the withdrawn 25–27% host-flag claim on #433. |
-| Prepare the camera candidate | [#455](https://github.com/chrissotraidis/bluewake/pull/455) connects #401 and #430 to a missed direct-camera hook at the first dispatch block. Linux reproduction is contributor evidence. | Review the hook/dispatch change and test the camera with direct right-stick control on and off on Windows and Mac. Keep the reports open until their reporters confirm. |
-| Finish the Dawn build repair | RecompCore#44 preserves #43's original commit and corrects two callbacks for the existing Apple/Android headers. Downstream [#446](https://github.com/chrissotraidis/bluewake/pull/446) passes Linux/AppImage, Windows host, audit, attribution and sanitizer checks at `48a5872e`. | Sunday renderer/cache checks, then merge the runtime and downstream pin in order, keeping the shadow/flicker stack on a commit that contains all accepted fixes. |
-| Measure Android builds that players actually use | #445 is merged; old cached profiles are not re-certified by it. Android already inherits the lean and behaviour-timing defaults. One Fold 7 Outset comparison is not a result for every phone. | A fresh `--retrain` comparison with device/SoC, host/module build, training choices, scene/settings and cold versus sustained warm measurements. Separate app PGO (`--train-app`) from game-module training before choosing an optimization. |
-
-**Sunday's checks remain:**
-
-- **Smooth Motion flicker and sun shadows:** #371 / RecompCore#40 and #398 / RecompCore#42. The final #398 pin contains Dawn and both rendering fixes, but #371 still pins the older runtime.
-  Reconcile that intermediate pin or the integration order before building; play/look checks on Mac and iPad remain pending.
-- **Apple speed defaults:** draft #431, with the [Mac/iPad measurements](status/APPLE_RECIPE_TOUR_2026-10-20.md).
-  Chris still needs to play both builds by hand. #392's slow-chunk flags need a new comparison on top of that recipe.
-- **The desktop menu with a controller, the direct-camera candidate, and the relevant renderer/cache checks.**
-  Windows-specific follow-up stays in [WINDOWS_TASKS.md](WINDOWS_TASKS.md).
+| Sunday's review of the test candidate | [RELEASE_0.9.0.md](status/RELEASE_0.9.0.md#checks-before-publishing) lists each check, with the iPad and Mac results from October 24 | #455, #371, #398, #446 and #431 are played or looked at on the Mac and the iPad; then they merge in the record's order and the freeze pull request sets 0.9.0 |
+| Keep one guest state in the tour | [#450](https://github.com/chrissotraidis/bluewake/pull/450) is reviewed and needs a rebase onto `main` (`PERFORMANCE.md`); [#459](https://github.com/chrissotraidis/bluewake/pull/459) then becomes one commit and fixes #458 | Both merged; a setup run that never reaches gameplay fails instead of being measured |
+| Word the sea compass switch | [#456](https://github.com/chrissotraidis/bluewake/pull/456) works on and off at all four headings (Linux screenshots); its note has to say what players see | Reworded, with an HD reference if there is one; then it merges, off by default |
+| Android's first run and its log | [#460](https://github.com/chrissotraidis/bluewake/pull/460) adds a first-run disc import and a log a crash leaves; reviewed | Split into the screen and the log, the disc image in the ready check, a visible message kept; then a phone run: a fresh install, a killed import and the Share Its Log offer |
+| Restore native generation before asking for more hashes | [#451](https://github.com/chrissotraidis/bluewake/issues/451) reports unsupported `_ato` accesses and missing block leaders with the current preparations. Rounds 4, 5 and 7 remain opt-in. | Reproduce with recorded preparation flags and pinned tools, generate without bypassing the accounting/decline guards, then pass guest-state comparisons before a matched performance test. No game-derived output goes in GitHub. |
+| Measure Android builds that players actually use | #445 is merged; old cached profiles are not re-certified by it. One Fold 7 Outset comparison is not a result for every phone. | A fresh `--retrain` comparison with device/SoC, host/module build, training choices, scene/settings and cold versus sustained warm measurements, app PGO (`--train-app`) kept separate from game-module training. |
 
 **Other checks that need hardware or player input:** #347's Android HD-import phone/lifecycle pass, #316's iPad
-menu tap test, #342 / RecompCore#39's cold Picto photo, and #444's desktop key-entry UI plus the iOS HD importer checks. Keep these separate
-from the native-generator repair and documentation work; none requires publishing a build now.
+menu tap test, #342 / RecompCore#39's cold Picto photo, and #444's Windows menu import and an iPhone or iPad import
+with a `keys.txt`. Windows-specific follow-up stays in [WINDOWS_TASKS.md](WINDOWS_TASKS.md).
 
-When Chris chooses a release candidate after review, use the existing release checks: frozen version/commit,
-benchmark and stage sweep, platform play checks, artifact audit and PadMint player checks. Sunday is a review,
-not an automatic publication date.
+After the review, the release checks in [RELEASE_0.9.0.md](status/RELEASE_0.9.0.md) apply: the frozen version and
+commit, the benchmark and stage sweep, platform play checks, the artifact audit and PadMint's player checks. Sunday
+is a review, not an automatic publication date.
+
 
 ## Where things stood on October 17
 
-Historical record, including notes added around the 0.8.0 release. Use the October 23 section above for current
+Historical record, including notes added around the 0.8.0 release. Use the October 24 section above for current
 actions; the old download and pending-release rows below are not today's instructions.
 
 **The latest download is 0.8.0** (published October 18 from `f2611b1`): the Windows zip, the iPhone and iPad app for
