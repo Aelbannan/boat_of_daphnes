@@ -2210,6 +2210,14 @@ static inline __attribute__((always_inline)) bool host_chassis_edge_service_with
     }
     if (bluewake_jump_button_dispatch(cpu, address))
         return true;
+    // The HD look's room culling (J3DUClipper::clipByBox's entry, called only
+    // by the room draw). Here, before the full service, which only sees the
+    // intercept table's addresses; when it has culled, the guest is at the return.
+    if (__builtin_expect(bluewake_hd_room_clip, 0) && address == 0x80256CB8u) {
+        bluewake_hd_look_room_clip(cpu, address);
+        if (cpu->pc != address)
+            return true;
+    }
     if (host_chassis_requires_full(cpu, address))
         return host_chassis_edge_service_full(user, cpu, address);
     if (address == BW_SEARCH_JUDGE_FILTER && g_actor_search_native)

@@ -151,3 +151,36 @@ Patch 0182 is RecompCore #41: the HD look's cloud shadows take the sea's place f
 depth far out on the sea made straight-edged steps (the "square" shadows on Vulkan, a hard band on Metal), with gradient
 noise turned per octave. The cloud, sun-shadow, ambient-occlusion and bloom passes add half an 8-bit step of dither so
 their smooth shades don't band on the sea. 0181 is taken by draft #342.
+
+Patch 0179 is pdale-boop's RecompCore #40, for BlueWake #136: Smooth Motion without the flicker in the HD look, the
+clouds and the wave crests. Every in-between frame gets the HD look's effects (only the first of three at 120 FPS did,
+and the first of five at 180); their shadows and lights come from the in-between frame's camera, moved as
+`frame_interp` moves the scenery, instead of the latest one the game set; and copies drawn with the view matrix and
+their own world positions (the sky's clouds, the wave crests at sea) are paired by the centre of their vertices
+instead of their place in the list, which shifted whenever one faded or came into view and blended a cloud toward its
+neighbour's alpha, with their colours counting too (each cloud is drawn twice, once with alpha 1). The water around a
+swimming Link follows him as well: a ripple's growing rings, the trail of rings behind him and his wake, which stepped
+at 30 FPS or jumped back a ring whenever a new one was born. It sits on `bluewake-next` after #41, so this pin carries
+#37, #38 and #41 as well.
+
+Patch 0183 is pdale-boop's sun shadow map (`aurora_set_sun_shadow_map`). BlueWake turns it on with its sun shadows
+(`BLUEWAKE_HD_SUN_SHADOWS=1`, still off by default); `DOL_AURORA_SUN_SHADOW_MAP=0` keeps the screen's version alone. The HD look's sun shadows came from the screen, so something off screen cast nothing.
+With the map, each EFB pass's solid draws are drawn again from the sun into a depth map before the pass, with two
+fixed pipelines and each draw's own constants (no pipeline per draw), and each pixel's place in the world is looked up
+in it with a turned disc of lookups, at full resolution and without the screen's steps. Alpha-tested scenery (leaves,
+fences) casts its texture's cutout, the sail and flags cast, and blended furniture casts when its vertices stand still;
+the game's own shadows are left out while the map is on (`DOL_AURORA_GAME_SHADOWS=1` keeps them). In an in-between
+frame the draws take their blended constants and the map that frame's camera. The map is four cascades (1,250 to
+80,000 units; 4096 texels each on the high shadow quality, the default, 2048 on medium and low), with a bias for a low sun that grows with the surface's angle to it and nothing at
+the sea's height shading the water. Its long shadows hold until the sun is 3 degrees up, and at night it is drawn
+from the moon (opposite the sun) at half strength, from 12 degrees up. It keeps debug tools for testers, each off
+unless its variable is set (the F3 frame dump, `_DEBUG` views, `DOL_AURORA_SUN_SHADOW_MAP_ALL`,
+`DOL_AURORA_SUN_CASTER_LOG`, `DOL_AURORA_GAME_SHADOW_LOG`); docs/HD_SUN_SHADOW_MAP.md lists them.
+
+Patch 0184 preserves jslay88's RecompCore #43: vendored Dawn advances to `1155e0ed`, whose bundled
+Abseil includes `immintrin.h` correctly when the Linux AppImage builder enables BMI2 through
+`-march=x86-64-v3`. Cache callbacks use Dawn's setters; the prebuilt package tag stays unchanged.
+Patch 0185 keeps those callbacks compatible with the pinned Apple headers by omitting `noexcept`
+on their lambdas (RecompCore #44). The existing header's callback traits do not accept that qualifier.
+Focused Mac, iOS, tvOS and Android NDK source checks and a callback-forwarding fixture pass; full application
+builds and the Sunday gameplay/visual checks are separate. 0183 is reserved for #398's sun shadows.

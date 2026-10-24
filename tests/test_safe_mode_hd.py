@@ -39,6 +39,9 @@ int bloom = -1, far_blur = -1, ao = -1;
 void aurora_set_bloom(bool on) { bloom = on; }
 void aurora_set_far_blur(bool on) { far_blur = on; }
 void aurora_set_ambient_occlusion(bool on) { ao = on; }
+int map_on = -1;
+void aurora_set_sun_shadow_map(bool on) { map_on = on; }
+void aurora_set_sun_shadow_quality(int) {}
 std::string read_file(const std::string& path) {
     std::ifstream file(path);
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
@@ -86,6 +89,8 @@ void check_hd(int on, int bloom_on, int sun_on) {
     assert(bloom == bloom_on && far_blur == on && ao == on);
     // The HD look switch leaves sun shadows off (#321): only their own switch turns them on.
     assert(g_clouds == on && g_sun == sun_on && g_edge == on && g_torch == on);
+    // Sun shadows come from the shadow map whenever they are on.
+    assert(sun_on ? map_on == 1 : map_on != 1);
 }
 '''
 
