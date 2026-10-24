@@ -38,4 +38,26 @@ static inline void bluewake_feature_dispatch(CPUState* cpu, u32 address) {
     bluewake_feature_dispatch_turn_entry(cpu, address);
 }
 
+/* The handoff between the two: when the edge service observes an address and
+ * returns to the host without dispatching it, the turn that dispatches it must
+ * not observe it again. */
+#define BLUEWAKE_TURN_ENTRY_NONE 0xFFFFFFFFu
+typedef struct BluewakeTurnEntry {
+    u32 edge_returned_pc;
+} BluewakeTurnEntry;
+
+// The edge service's result, passed through; a return to the host marks its address.
+static inline bool bluewake_turn_entry_edge(BluewakeTurnEntry* entry, u32 address, bool returned) {
+    if (returned)
+        entry->edge_returned_pc = address;
+    return returned;
+}
+
+// Just before the host dispatches a turn's first block, at pc.
+static inline void bluewake_turn_entry_begin(BluewakeTurnEntry* entry, CPUState* cpu, u32 pc) {
+    if (pc != entry->edge_returned_pc)
+        bluewake_feature_dispatch_turn_entry(cpu, pc);
+    entry->edge_returned_pc = BLUEWAKE_TURN_ENTRY_NONE;
+}
+
 #endif
