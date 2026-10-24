@@ -2225,12 +2225,16 @@ static inline __attribute__((always_inline)) bool host_chassis_edge_service_with
     return false;
 }
 
+static BluewakeTurnEntry g_turn_entry = {BLUEWAKE_TURN_ENTRY_NONE};
+
 static bool host_chassis_edge_service(void* user, CPUState* cpu, u32 address) {
-    return host_chassis_edge_service_with(user, cpu, address, false);
+    return bluewake_turn_entry_edge(&g_turn_entry, address,
+                                    host_chassis_edge_service_with(user, cpu, address, false));
 }
 
 static bool host_chassis_edge_service_stage_select(void* user, CPUState* cpu, u32 address) {
-    return host_chassis_edge_service_with(user, cpu, address, true);
+    return bluewake_turn_entry_edge(&g_turn_entry, address,
+                                    host_chassis_edge_service_with(user, cpu, address, true));
 }
 
 // Host-only CPU state has no representation in the retail OSContext image.
@@ -14145,6 +14149,7 @@ int main(int argc, char** argv) {
             g_turn_edge_hit = false;
             g_turn_downcount_before_last_block = cpu.downcount;
         }
+        bluewake_turn_entry_begin(&g_turn_entry, &cpu, cpu.pc);
         int dispatched = mod->dispatch(&cpu, cpu.pc);
         if (turn_census)
             host_turn_exit_classify(&cpu, dispatched);
