@@ -7,7 +7,7 @@
 // prefixes: gSettings.*, gEnhancements.*, gCheats.*, gOpenWindows.*. The menu
 // is ship_menu.h, laid out as SoH's port menu: Settings, Enhancements and Dev
 // Tools, each a sidebar of pages. Every setting applies at once, while the
-// game runs (the Audio Mode, texture packs and Precompile Shaders too).
+// game runs (the Audio Mode and texture packs too).
 //
 // At launch the settings that the host reads once become its variables
 // (BLUEWAKE_*, DOL_*) unless the command line already set one, so the command
@@ -132,7 +132,6 @@ float g_font_scale = 1.0f;  // the scale the UI font was drawn at (see load_font
 shipmenu::Menu g_menu;
 bool g_menu_built;
 void sync_live_textures();
-void start_shader_warmup();
 
 constexpr int kAnisotropy[] = {1, 2, 4, 8, 16};
 // Force Aspect Ratio: Off, then the presets; the last (6) is the custom X:Y.
@@ -1580,110 +1579,6 @@ void sync_live_textures() {
     sync_texture_set(pack, packs ? texture_folder() : std::string());
 }
 
-// Precompile Shaders. The renderer compiles the pipelines its cache lists in
-// the background from the start; with the setting on, the game is also held
-// at its first present until they are done (below). Turning it on while the
-// game runs starts the same watch now, without holding anything: a counter in
-// the corner counts the pipelines still compiling.
-bool g_warmup;
-Uint64 g_warmup_since;
-uint32_t g_warmup_first;
-
-void start_shader_warmup() {
-    if (!CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0)) {
-        g_warmup = false;
-        std::fprintf(stderr, "[windows] precompile shaders off\n");
-        return;
-    }
-    const AuroraStats* stats = aurora_get_stats();
-    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
-    std::fprintf(stderr, "[windows] precompile shaders: warm-up started in the background, %u shaders to compile\n",
-                 left);
-    if (left == 0u) {
-        std::fprintf(stderr, "[windows] shaders compiled in background: none were waiting\n");
-        return;
-    }
-    g_warmup = true;
-    g_warmup_since = SDL_GetTicks();
-    g_warmup_first = left;
-}
-
-// Once a frame: ends the warm-up when nothing is left (or after two minutes).
-void draw_shader_warmup(SDL_Window* w) {
-    if (!g_warmup)
-        return;
-    const AuroraStats* stats = aurora_get_stats();
-    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
-    const Uint64 waited = SDL_GetTicks() - g_warmup_since;
-    if (!CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0) || left == 0u || waited > 120000) {
-        g_warmup = false;
-        std::fprintf(stderr, "[windows] shaders compiled in background: %u in %.1f s%s\n", g_warmup_first,
-                     waited / 1000.0, left != 0u ? " (stopped waiting)" : "");
-        return;
-    }
-    ImGuiIO& io = ImGui::GetIO();
-    const float scale = ui_scale(w);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 12 * scale, 12 * scale), ImGuiCond_Always, ImVec2(1, 0));
-    ImGui::SetNextWindowBgAlpha(0.6f);
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##shaderwarmup", nullptr, flags)) {
-        ImGui::SetWindowFontScale(scale / g_font_scale);
-        ImGui::Text("Compiling shaders: %u to go", left);
-    }
-    ImGui::End();
-}
-
-// Precompile Shaders (at start): the game is held at its first present (dol_aurora_set_hold,
-// the picture redrawn under this overlay) until every pipeline the cache queued
-// at start is compiled, or two minutes have passed.
-bool g_shader_wait;
-Uint64 g_shader_wait_since;
-uint32_t g_shader_wait_first;
-
-bool shader_wait_hold(void*) {
-    if (!g_shader_wait)
-        return false;
-    const AuroraStats* stats = aurora_get_stats();
-    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
-    if (g_shader_wait_since == 0) {
-        g_shader_wait_since = SDL_GetTicks();
-        g_shader_wait_first = left;
-    }
-    const Uint64 waited = SDL_GetTicks() - g_shader_wait_since;
-    if (left == 0u || waited > 120000) {
-        g_shader_wait = false;
-        std::fprintf(stderr, "[windows] shaders compiled before play: %u in %.1f s%s\n", g_shader_wait_first,
-                     waited / 1000.0, left != 0u ? " (stopped waiting)" : "");
-        return false;
-    }
-    return true;
-}
-
-void draw_shader_wait(SDL_Window* w) {
-    if (!g_shader_wait)
-        return;
-    const AuroraStats* stats = aurora_get_stats();
-    const uint32_t left = stats != nullptr ? stats->queuedPipelines : 0u;
-    ImGuiIO& io = ImGui::GetIO();
-    const float scale = ui_scale(w);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
-                            ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowBgAlpha(0.75f);
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##shaders", nullptr, flags)) {
-        ImGui::SetWindowFontScale(scale / g_font_scale);
-        ImGui::Text("Compiling shaders: %u to go", left);
-        if (g_shader_wait_first > 0u)
-            ImGui::ProgressBar(1.f - static_cast<float>(left) / static_cast<float>(g_shader_wait_first),
-                               ImVec2(260.f * scale, 0.f), "");
-    }
-    ImGui::End();
-}
-
 // For the first few seconds: how to open the menu.
 void draw_hint(SDL_Window* w) {
     const Uint64 shown = SDL_GetTicks() - g_first_frame_at;
@@ -1903,9 +1798,7 @@ void frame(void*) {
         ImGui::PopTextWrapPos();
         ImGui::End();
     }
-    draw_shader_wait(w);
-    draw_shader_warmup(w);
-    sync_live_textures();
+
     // The menu slides down when it opens and back up when it closes: drawn until it has gone.
     static float menu_in = 0.f;
     const float menu_dt = ImGui::GetIO().DeltaTime;
@@ -2075,14 +1968,7 @@ extern "C" void bw_settings_apply_launch(void) {
 
 extern "C" void bw_settings_install(void) {
     dol_aurora_set_overlay(frame, nullptr);
-    // BLUEWAKE_SHADERS_FIRST=0/1 overrides the setting (testing).
-    const char* first = std::getenv("BLUEWAKE_SHADERS_FIRST");
-    g_shader_wait = first != nullptr && first[0] != '\0' ? first[0] != '0'
-                                                         : CVarGetInteger(CVAR_SETTING("PrecompileShaders"), 0) != 0;
-    if (g_shader_wait) {
-        dol_aurora_set_hold(shader_wait_hold, nullptr);
-        dol_aurora_set_hold_redraw(true);
-    }
+    // (Precompile Shaders waits: not this renderer, which makes its shaders while you play - see the menu's note)
     std::atexit(save_at_exit);
 }
 
