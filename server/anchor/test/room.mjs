@@ -77,6 +77,20 @@ await wait(300);
 check(b.inbox.filter((m) => m.type === 'UPDATE_ROOM_STATE').pop().roomState.pvp === 'off', 'an unknown PvP mode becomes off');
 a.ws.send(JSON.stringify({ type: 'UPDATE_ROOM_STATE', roomState: { pvp: 'on' } }));
 await wait(200);
+// What the room shares at all: 1 by default, and the owner can turn syncing off (only the live streams are shared).
+check(a.inbox.some((m) => m.type === 'UPDATE_ROOM_STATE' && m.roomState.syncItemsAndFlags === 1),
+      'a new room syncs the team save and switches');
+b.inbox.length = 0;
+a.ws.send(JSON.stringify({ type: 'UPDATE_ROOM_STATE', roomState: { syncItemsAndFlags: 0 } }));
+await wait(300);
+check(got(b, 'UPDATE_ROOM_STATE', (m) => m.roomState.syncItemsAndFlags === 0), 'the owner turns syncing off and everyone is told');
+a.ws.send(JSON.stringify({ type: 'UPDATE_ROOM_STATE', roomState: { syncItemsAndFlags: 'yes' } }));
+await wait(300);
+check(b.inbox.filter((m) => m.type === 'UPDATE_ROOM_STATE').pop().roomState.syncItemsAndFlags === 1, 'it is stored as 0 or 1');
+b.inbox.length = 0;
+c.ws.send(JSON.stringify({ type: 'UPDATE_ROOM_STATE', roomState: { syncItemsAndFlags: 0 } }));
+await wait(300);
+check(!got(b, 'UPDATE_ROOM_STATE', (m) => m.roomState.syncItemsAndFlags === 0), 'only the owner turns syncing off');
 b.ws.send(JSON.stringify({ type: 'PVP_HIT', targetClientId: a.id, damage: 2, hitType: 2, pos: [0, 0, 0], direction: [0, 1] }));
 b.ws.send(JSON.stringify({ type: 'PVP_HIT', damage: 2 }));
 await wait(300);

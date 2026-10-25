@@ -21,6 +21,7 @@ const PVP_MODES = ['off', 'no_damage', 'on'];
 // The player-interaction settings (pvp mode, damage scale, friendly fire, player collision, carrying) as the room keeps them: a value
 // out of range or of the wrong kind becomes the default, so no client has to guard against a stranger's JSON.
 function cleanInteraction(rs) {
+  if ('syncItemsAndFlags' in rs) rs.syncItemsAndFlags = rs.syncItemsAndFlags ? 1 : 0;
   if ('pvp' in rs && !PVP_MODES.includes(rs.pvp)) rs.pvp = 'off';
   if ('pvpScale' in rs) rs.pvpScale = Math.min(4, Math.max(0.25, Number(rs.pvpScale) || 1));
   if ('pvpFriendlyFire' in rs) rs.pvpFriendlyFire = rs.pvpFriendlyFire ? 1 : 0;

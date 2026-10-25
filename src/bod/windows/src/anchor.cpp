@@ -294,10 +294,13 @@ void send_state() {
     g_last_state_sent = SDL_GetTicks();
 }
 
-// The owner's change to the room's player-interaction settings: to the server, which keeps them and sends them to everyone
-// (they come back through UPDATE_ROOM_STATE, so the globals above are the server's word).
+// The owner's change to the room's settings (what it shares, then how players meet): to the server, which keeps them and
+// sends them to everyone (they come back through UPDATE_ROOM_STATE, so the globals above are the server's word).
 void send_room_state() {
     picojson::object r;
+    // What the room shares: progress (the save, switches) or only what players do live. The client's gate is g_room_sync
+    // (Team sync below); this is the owner saying it for everyone, so no one is left sharing into a room that does not.
+    r["syncItemsAndFlags"] = picojson::value(static_cast<int64_t>(g_room_sync != 0 ? 1 : 0));
     r["pvp"] = picojson::value(std::string(g_room_pvp == BLUEWAKE_PVP_ON ? "on" : g_room_pvp == BLUEWAKE_PVP_NO_DAMAGE ? "no_damage" : "off"));
     r["pvpScale"] = picojson::value(g_room_pvp_scale / 100.0);
     r["pvpFriendlyFire"] = picojson::value(static_cast<int64_t>(g_room_friendly_fire ? 1 : 0));
@@ -333,6 +336,7 @@ void disconnect() {
     g_room_pvp_scale = 100;
     g_room_friendly_fire = false;
     g_room_collision = true;
+    g_room_sync = 1;
     CVarSetInteger("gNetwork.Anchor.Enabled", 0);
     CVarSaveNextFrame();
 }
@@ -1430,6 +1434,17 @@ void draw_room_settings() {
     const bool owner = g_self != 0 && g_self == g_owner;
     bool changed = false;
     ImGui::BeginDisabled(!owner);
+    bool sync = g_room_sync != 0;
+    if (ImGui::Checkbox("Share Progress with the Team", &sync)) {
+        g_room_sync = sync ? 1 : 0;
+        changed = true;
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("On: the team's progress is shared (items, flags, small keys, charts, each stage's chests and "
+                          "switches, and switches live), and what a teammate finds is merged into your save.\nOff: nothing "
+                          "of the save is sent or taken, and switches do not sync; only what players do live is shared "
+                          "(where they are, their boat and animation, their sounds, the Sea Chart, PvP hits and carrying "
+                          "each other).");
     static const char* const kModes[] = {"Off", "No Damage", "On"};
     int mode = g_room_pvp;
     if (ImGui::Combo("PvP", &mode, kModes, 3)) {
@@ -1867,6 +1882,7 @@ void Frame(float scale, float fontScale) {
         g_room_friendly_fire = false;
         g_room_collision = true;
         g_room_carry = false;
+        g_room_sync = 1; // until the room says otherwise (as the server's default)
         carry::reset();
     }
     g_last_status = status;

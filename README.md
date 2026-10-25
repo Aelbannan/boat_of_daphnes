@@ -104,8 +104,9 @@ puts it on Link. Models belong to their authors: the browser shows each one's au
 ### Online co-op (Anchor)
 
 Play together over the internet: other players appear as Link (in their own models, colours and voices) in your
-world and on your Sea Chart, progress is shared with your team, switches sync live, you can carry each other, and PvP
-can be turned on per room. Self-host the server from [`server/anchor`](server/anchor).
+world and on your Sea Chart, progress is shared with your team (the room can turn that off, leaving only what
+players do live), switches sync live, you can carry each other, and PvP can be turned on per room. Self-host the
+server from [`server/anchor`](server/anchor).
 
 ![Network](docs/images/network.png)
 
